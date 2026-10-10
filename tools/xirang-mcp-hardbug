@@ -300,6 +300,17 @@ def graft_lib():
 
 use xirang_toolchain::run_method::registry_core::{{FrameworkId, Registry}};
 
+/// The identity namespace this crate's faces compile under.
+/// 本 crate 的注册面编译时所用的身份命名空间。
+///
+/// An external implementation never calls `host!()`, so it owns this constant itself: the
+/// declaration macros read it (audit `M7`, P3.3), one place per crate. Without it every
+/// `external_object!` fails with `cannot find value XIRANG_NAMESPACE in the crate root`.
+/// 外部实现从不调用 `host!()`，因此这个常量由它自己拥有：声明宏读的就是它（审计 `M7`，P3.3），
+/// 每个 crate 一处。缺了它，每个 `external_object!` 都会报
+/// `cannot find value XIRANG_NAMESPACE in the crate root`。
+pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
+
 /// Must match the host framework, or the overlay rejects this tree.
 pub const FRAMEWORK: FrameworkId = FrameworkId::new("xirang.example.control-button");
 
@@ -1283,7 +1294,24 @@ def build(directory, klass):
         truth["specimen"] = specimen
         truth["lapsed"] = {"anchor": f"root/control/{H2_LAPSED}", "file": lapsed_files[0]}
 
-    run([cli_binary(), "check"], host, check=False)
+    # The lockfile has to be resolvable **offline**: this environment's cargo cannot write its registry
+    # cache (a sandbox boundary, not a policy), so a lock naming a version that is not already cached
+    # makes the CLI's own `cargo` try to download and die with `Permission denied`. Resolving offline
+    # first pins the cached versions; and the CLI's exit code is asserted rather than swallowed,
+    # because a silent failure here is exactly the "no scope at …" abort below with no cause printed.
+    # 锁文件必须**离线可解**：这个环境的 cargo 写不了自己的注册表缓存（是沙箱边界，不是策略），
+    # 于是锁里点了一个没缓存的版本时，CLI 自己那次 cargo 会去下载并死在 `Permission denied`。
+    # 先离线解析把它钉到已缓存的版本；并且这里**断言** CLI 的退出码而不是吞掉它——静默失败正是
+    # 下面那句 "no scope at …" 的成因，且不带任何原因。
+    run(["cargo", "generate-lockfile", "--offline"], host, check=False)
+    cli_exit, cli_out = run([cli_binary(), "check"], host, check=False)
+    if cli_exit != 0:
+        raise SystemExit(
+            "the CLI's own check failed, so the tree has no build-time scope\n"
+            f"  command: {cli_binary()} check   (cwd: {host})\n"
+            f"  exit: {cli_exit}\n"
+            f"  output: {first_lines(cli_out)}"
+        )
     selected = scope_sources(host)
     truth["scope"] = {
         "selected": len(selected),

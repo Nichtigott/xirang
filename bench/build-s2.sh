@@ -12,7 +12,7 @@ rm -rf "$E"; mkdir -p "$E"
 # ① 一个**没有被计划点名**的面（会被构建丢掉）
 mkdir -p "$E/src/slider"
 cat > "$E/src/slider/slider.rs" <<'EOF'
-// generated-by=NichLink
+// generated-by=XiRang
 //! Slider registration face.
 //! Slider 注册面。
 
