@@ -10,3 +10,7 @@ target/
 # than a published surface: they run against this checkout and are not committed.
 # Python 度量/评测脚本（bench、判分、抽取器）是本地工具而不是发布面：它们只对着本检出跑，不提交。
 *.py
+
+# 装置日志（wrapper 默认落点；每轮应由 BENCH_CALLS 指到 run 目录）
+calls.log
+bench/**/calls.log

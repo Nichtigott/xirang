@@ -1,0 +1,11 @@
+#!/bin/sh
+# bench-k27 wrapper: log every codegraph call, then run it.
+# 用法与 codegraph 一致；日志追加到 $BENCH_CALLS（未设置则 ./calls.log）。
+BIN=/home/nich/Moirai_N3/nichlink/target/round7/tools-upstream/v1.6.1/bin/codegraph
+LOG=${BENCH_CALLS:-./calls.log}
+printf '=== CMD: cg %s\n' "$*" >> "$LOG"
+OUT=$(NO_COLOR=1 "$BIN" "$@" 2>&1)
+CODE=$?
+printf '%s\n=== EXIT: %s\n' "$OUT" "$CODE" >> "$LOG"
+printf '%s\n' "$OUT"
+exit "$CODE"

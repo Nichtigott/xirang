@@ -1,0 +1,137 @@
+{
+  "built_at": "2026-10-02",
+  "hash_algorithm": "sha256；跳过 {target,.codegraph,.git}；按相对路径排序；逐文件 update(rel) ++ 0x00 ++ update(str(len(bytes))) ++ 0x00 ++ update(bytes) ++ 0x00",
+  "root_rule": "--root = target/round9/trees/<id>（每棵树自带 Cargo.toml/工作区 ⇒ 向上解析不会跑到本检出）",
+  "toolchain_rule": "树里 nichlink-toolchain 的 path 依赖指向当前检出 /home/nich/Moirai_N3/nichlink/toolchain（已 sed 统一）",
+  "trees": {
+    "r1": {
+      "state": "injected defect 1 (inverted-guard) — 恰 1 条红：the_filter_keeps_only_entries_at_or_above_the_floor",
+      "kind": "tree",
+      "sha256": "e437654d8af8eeb44a4761dffc506416d5116656a218a5deee5762c2874edcd9"
+    },
+    "r2": {
+      "state": "injected defect 2 (dropped-call) — 恰 1 条红：the_report_names_its_totals_and_its_buckets",
+      "kind": "tree",
+      "sha256": "532ea0ec75846daf9e564e228d3f6e3977d48188fd83b3da4bda55af4752a469"
+    },
+    "r3": {
+      "state": "injected defect 3 (boundary-off-by-one) — 恰 1 条红：bucket_boundaries_are_half_open",
+      "kind": "tree",
+      "sha256": "5948ce1dcebb8bbbebddfad84f366d7c398b420f2166b4fe2424e8d9a58cc694"
+    },
+    "r4": {
+      "state": "injected defect 4 (validation-trap) — 恰 1 条红：a_zero_entry_is_not_postable",
+      "kind": "tree",
+      "sha256": "576bfaa6cd4e55b7e55619fb06b30d8d0842eac0db489b0e6142fc19b9a89388"
+    },
+    "fa": {
+      "state": "clean host（无 toggle）——全绿；题面：我要加一个新对象",
+      "kind": "tree",
+      "sha256": "13333fd5e006c4550fccb23b902f9cacb081198eb0d82e79dba55fde2f4ff5e9"
+    },
+    "fb": {
+      "state": "clean host——全绿；题面：这个对象内部还不够",
+      "kind": "tree",
+      "sha256": "13333fd5e006c4550fccb23b902f9cacb081198eb0d82e79dba55fde2f4ff5e9"
+    },
+    "fc": {
+      "state": "clean host + 真实采信台账（root/control/button 生效）——门绿且台账在",
+      "kind": "tree",
+      "sha256": "da9c82b7282a0ace3f7d3e810372fd6821fa190dfcddac44c95af2aa4465ea68"
+    },
+    "fd": {
+      "state": "scenario state 5 注入——初始红：同一 target 内 3 条断言失败 = 2 处缺陷（第九轮复核实跑确认）",
+      "kind": "tree",
+      "sha256": "139e95dc27a70ea638ae739fbedadebb6d6b6526d6af0da4816d87f4f6bd4af9"
+    },
+    "fe": {
+      "state": "scenario state 9 注入——初始红",
+      "kind": "tree",
+      "sha256": "e193e793d5cc1081c5587a1c9bb7153f8b50b65e826c3e37f54c8c82c0151f60"
+    },
+    "g3": {
+      "state": "g3 level——初始绿",
+      "kind": "tree",
+      "sha256": "18e80bbdfb3b28144545902324e47ed33f6943634e39162fbd6ee7c97f78d320"
+    },
+    "g4": {
+      "state": "g4 level（只读）",
+      "kind": "tree",
+      "sha256": "921f8dfe2074f2ea49341f2becbea0ee89d9f354be925891af8e45b3ce589387"
+    },
+    "h1": {
+      "state": "round-7 h1 level——默认面一处红（3 条断言同一 target）",
+      "kind": "tree",
+      "sha256": "5cb1ef9da257ad7b00390807090bb1b28edfe8d8094f0f1c11aaba23c2d4ef7f"
+    },
+    "s1": {
+      "state": "scenario level 1（只读）",
+      "kind": "tree",
+      "sha256": "9117567fcd4d4d70459e456903cda18acad39b342db06b2dcdfbb2b981cc209e"
+    },
+    "s2": {
+      "state": "scenario level 2（只读）",
+      "kind": "tree",
+      "sha256": "5ea915f6b2758aac88f7c3055cb41149179a8df4b599666b913a735300322d7d"
+    },
+    "s3": {
+      "state": "scenario level 3（只读；g1 的题面问在它上面）",
+      "kind": "tree",
+      "sha256": "9117567fcd4d4d70459e456903cda18acad39b342db06b2dcdfbb2b981cc209e"
+    },
+    "s4": {
+      "state": "scenario level 4（只读）",
+      "kind": "tree",
+      "sha256": "9117567fcd4d4d70459e456903cda18acad39b342db06b2dcdfbb2b981cc209e"
+    },
+    "s5": {
+      "state": "scenario level 5（只读；g2 的题面问在它上面）——与同号注入的全新生成物逐字节相同 ✓",
+      "kind": "tree",
+      "sha256": "52797df5c73cb3aee67dc76b69c8084f6b850255bf171c921e1182a03e07c7fb"
+    },
+    "s6": {
+      "state": "scenario level 6（只读）",
+      "kind": "tree",
+      "sha256": "b4c1d6a4e832222bba29f5f963cc1eea9e1aa524ce89d8ea035d70c6708fb28e"
+    },
+    "s7": {
+      "state": "scenario level 7（只读）",
+      "kind": "tree",
+      "sha256": "7b509fba1aded1c7bc8012294301881016b2c0fe6da160d7968cb49ed909a432"
+    },
+    "s8": {
+      "state": "scenario level 8（只读）",
+      "kind": "tree",
+      "sha256": "bdb26c1aac49b6b0a9db94f50989063a103c150e7fe0a39b931d17384bea87a7"
+    },
+    "h1-supply-chain": {
+      "state": "hardbug class h1（真值在 target/hardbug-runs/t21，不入本目录）",
+      "kind": "class",
+      "sha256": "f9c982be243282551e596c5440858992b1e1efa8de908dab2310dab89bdda657"
+    },
+    "h2-claim-unkept": {
+      "state": "hardbug class h2",
+      "kind": "class",
+      "sha256": "32150a38d6a169f57d3e2aad547bc06de7bb0e479842adb426769f489cb65436"
+    },
+    "h3-cross-file-chain": {
+      "state": "hardbug class h3",
+      "kind": "class",
+      "sha256": "e062e3463d00d2584edf2c2ec1e26aad7a691cd90b0564c84df8f97dd2410fc1"
+    },
+    "h4-one-file-many-algorithms": {
+      "state": "hardbug class h4",
+      "kind": "class",
+      "sha256": "885ad29af7553c15e73cfc8874980dfaaeab9a5ec220b4cbc416566cd90a1a12"
+    },
+    "carrier": {
+      "sha256": "7f91d0baf22d053e56d51e849094f93aa82ba4debab43713f6872bcbbabd2440",
+      "files": 20,
+      "note": "T-29: fa/fb/fc/g3 的 Cargo.toml 依赖 ../carrier/control-button-graft"
+    }
+  },
+  "corrections": [
+    "fd 原写「2 条失败」口径不准：按缺陷数是 2、按断言数是 3 —— 第九轮复核者实跑确认",
+    "2026-10-02：h1/h2/h3 的 host/Cargo.toml 原先把 graft 依赖指向 target/hardbug-runs/t21/trees/<类>/graft（**隔离区之外**，那里有 .audit/truth.json ⇒ 真值可达 ✗）；已改指各自的 ../graft（与该副本逐字节相同 ✓，cargo metadata rc=0 ✓）。改前跑完的读数经审计未被污染（第九轮那臂的 .audit 命中全是我 BRIEF 里的禁令文字 ✓；8 条探针日志 0 命中 ✓）。"
+  ]
+}

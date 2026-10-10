@@ -1,0 +1,11 @@
+#!/bin/sh
+# bench-k27 wrapper: log every xirang-mcp call, then run it.
+# 用法与 xirang-mcp 一致；日志追加到 $BENCH_CALLS（未设置则 ./calls.log）。
+BIN="$(dirname "$0")/xirang-mcp"
+LOG=${BENCH_CALLS:-./calls.log}
+printf '=== CMD: nl %s\n' "$*" >> "$LOG"
+OUT=$("$BIN" "$@" 2>&1)
+CODE=$?
+printf '%s\n=== EXIT: %s\n' "$OUT" "$CODE" >> "$LOG"
+printf '%s\n' "$OUT"
+exit "$CODE"
