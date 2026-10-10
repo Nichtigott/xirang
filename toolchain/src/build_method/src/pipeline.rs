@@ -8,6 +8,8 @@ use super::{
     write_graft_manifest, write_graph_manifest, write_if_changed, write_pruning_manifest,
     write_shape_manifest, write_source_scope_manifest,
 };
+use std::time::{Duration, Instant};
+
 use xirang_kernel::lexicon;
 
 /// Whether `entry` is one a later entry superseded (its subtree is in `dropped`).
@@ -18,6 +20,7 @@ fn is_superseded(entry: &xirang_kernel::syntax::GraftSyntax, dropped: &[String])
 
 pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
     let manifest = &input.manifest;
+    let mut phases = PhaseLog::for_run();
     // Two bases, resolved once: `scan` is the tree the walk reads, and `src` is
     // what an identity path is taken relative to. They are the same directory for
     // every package that keeps its sources under `src/`, and differ for one whose
@@ -62,6 +65,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
     let nodes = discover_root_reporting(scan, &mut unplaced);
     prime_node_id_cache(manifest, src, &nodes);
     let discovery_fingerprint = super::discovery_fingerprint(src, scan, &nodes);
+    phases.mark("discover");
     // One entry, resolved once, for both readers below. Pruning and the generated
     // cut table must describe the same file, and they silently stopped doing so
     // when each resolved the entry on its own — `XIRANG_ENTRY` reached only
@@ -104,6 +108,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
     );
     let cache_units = cache_directory(manifest).join("units");
     let cache_state = update_discovery_cache(manifest, src, &nodes, &discovery_fingerprint);
+    phases.mark("scope");
 
     // Faces the build cannot place or parse are reported first: the stages below
     // decode fields from a parsed face, and they skip a file they cannot parse, so
@@ -135,6 +140,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
     let parent_macro_errors = aggregate_parent_macro_errors(src, &nodes);
     append_error(&mut compile_errors, parent_macro_errors);
     let demo_errors = aggregate_requirements(src, &nodes, true, &scope, Some(&cache_units));
+    phases.mark("declare");
     let (static_faces, static_errors) = static_plan(src, &nodes, &scope);
     append_error(&mut compile_errors, static_errors);
     // A plan with cuts narrows the build to the subtrees those cuts name, and a face no cut names is not
@@ -247,6 +253,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
         &mut compile_errors,
         graft_plan_check::unsupported_version_errors(manifest),
     );
+    phases.mark("plan");
     // The crate shape is an input to the **render** as well as to the release checks: a subtree the
     // declaration hands to another crate must not be compiled here a second time, so the host's
     // generated tree emits no module for it while the records below still carry every face (the tree
@@ -334,6 +341,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
         .unwrap_or_else(|_| super::registry_identity::package_namespace());
     let owners: Vec<(String, String)> =
         super::crate_plan::owners(&host_crate, &shape_faces, &planned);
+    phases.mark("shape");
     // A crate asserts only about the faces **it compiles**. The registration block and the identity
     // assertions both name modules, so after a partition the host must drop every face a ghost took and
     // a ghost must keep only its own — otherwise the host's generated tree names `panel::frame::…`, a
@@ -393,6 +401,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
         },
     );
     let out_dir = &input.out_dir;
+    phases.mark("render");
     // Write failures are collected rather than fatal here. They are the one
     // failure the generated tree cannot carry, because the file that would carry
     // it is exactly what could not be written, so the two callers are told
@@ -553,6 +562,7 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
         // Nothing was published, and the diagnostic above says which lock to clear.
         // 什么都没发布，上面那条诊断说明了该清哪把锁。
     }
+    phases.mark("write");
     if !write_errors.is_empty() {
         let message = format!(
             "xirang could not write its generated tree: {}",
@@ -608,6 +618,13 @@ pub(crate) fn run(input: &BuildInput) -> Option<BuildDiagnostics> {
                 .display()
         );
     }
+    // The per-phase reading lands here, after every phase has run and whether or not the run
+    // succeeded: a failing build is exactly when "where did the time go" gets asked.
+    // 逐相位读数落在这里：所有相位都跑完之后，而且无论这次运行成功与否——失败的构建正是会问
+    // "时间花在哪了"的时候。
+    if input.emit_cargo_directives && build_output_is_verbose() {
+        println!("cargo:warning={}", phases.line());
+    }
     if compile_errors.is_empty() {
         None
     } else {
@@ -621,6 +638,59 @@ fn build_output_is_verbose() -> bool {
 
 fn cache_status_line(cache_state: &str, fingerprint: &str, verbose: bool) -> Option<String> {
     verbose.then(|| format!("xirang discovery cache {cache_state} ({fingerprint})"))
+}
+
+/// Wall time per pipeline phase, for the one verbose line that reports them.
+/// 管线各相位的墙钟耗时，供那一条 verbose 行报告。
+///
+/// It exists because "the build script is 73% of the wall" is an aggregate, and the next change
+/// would be a guess without a per-phase reading. Measured on a 1001-face host, these phases
+/// separate `discover` + `declare` (the whole tree read and parsed by several passes) from
+/// `render` and `write`, which are the only parts a partition turns per-package.
+/// 它存在的理由是："构建脚本占墙 73%"是个聚合数，没有逐相位读数，下一步改动就是猜。在一个 1001 面的宿主上
+/// 实测，这些相位把 `discover` ＋ `declare`（整棵树被若干遍读取与解析）与 `render`、`write` 分开——后者是
+/// 分片唯一按包计的那两部分。
+struct PhaseLog {
+    total: Instant,
+    last: Instant,
+    marks: Vec<(&'static str, Duration)>,
+}
+
+impl PhaseLog {
+    /// A log whose clock starts now — one per `run`, named for that run rather than for the verb
+    /// (`start` is a bare verb, which this workspace's `verb_table` gate refuses outside entry
+    /// positions).
+    /// 时钟从此刻开始的一份记录——每次 `run` 一份；名字按"为这次运行"取，而不是按动词（`start`
+    /// 是裸动词，本工作区的 `verb_table` 门禁不允许它出现在入口位以外）。
+    fn for_run() -> Self {
+        let now = Instant::now();
+        Self {
+            total: now,
+            last: now,
+            marks: Vec::new(),
+        }
+    }
+
+    fn mark(&mut self, name: &'static str) {
+        let now = Instant::now();
+        self.marks.push((name, now.duration_since(self.last)));
+        self.last = now;
+    }
+
+    fn line(&self) -> String {
+        phase_line(&self.marks, self.total.elapsed())
+    }
+}
+
+/// One line: every phase in order, then the whole run's wall time.
+/// 一行：按顺序列出每个相位，最后是整次运行的墙钟时间。
+fn phase_line(marks: &[(&'static str, Duration)], total: Duration) -> String {
+    let mut line = String::from("xirang build phases:");
+    for (name, elapsed) in marks {
+        line.push_str(&format!(" {name}={:.3}s", elapsed.as_secs_f64()));
+    }
+    line.push_str(&format!(" total={:.3}s", total.as_secs_f64()));
+    line
 }
 
 /// Keep the generated diagnostic stream deterministic and compact.

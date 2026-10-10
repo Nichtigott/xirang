@@ -23,19 +23,34 @@ on is already cheap — walking 1003 files and hashing all of them costs 0.06 s.
 一个碎片 ≈ 一个整宿主（1.27×），三个包合起来 **17.8 s vs 5.43 s = 3.28×**，而它渲染的那一份只值 **0.19 s（3%）**。
 10k 面时这一段占构建墙的 **73.3%**（103.885 / 141.635 s，`scale-logs/compile-wall.json`）⇒ 分片不拆发现，分布式无从谈起。
 
-### 1.1 钱花在哪（外部量出来的）
+（同一量器在 2026-10-10 重跑时读到 cold 7.3 / 6.8 / 9.2 / 7.8 s、warm 4.5 / 4.6 / 4.6 / 5.1 s——机器更忙；**跨时段只比比例，绝对值看同一张表内部**。）
 
-| 相位 | 实测 | 量法 |
-| --- | --- | --- |
-| 走树 + stat 1003 个文件 | **0.020 s** | `find src -type f`，3 次 |
-| 读全部文件 + sha256 | **0.043 s** | `find … -print0 \| sort -z \| xargs -0 sha256sum`，3 次 |
-| 面解析（缓存拿得走的那部分） | **≈2.0 s** | cold − warm（`discovery_cache` 的 unit 命中） |
-| 渲染 + 落盘 | **0.19 s** | 同一二进制：渲染 0 面/5.8 KB 5.245 s vs 渲染 1001 面/1.47 MB 5.432 s |
-| **其余（未归因）** | **≈3.1 s** | warm 3.38 s 减去上面三项 |
+### 1.1 钱花在哪：两个量器
 
-⇒ 结论一：**I/O 不是墙**（走树+哈希 0.06 s）。结论二：warm 之后仍有 3.1 s，只可能是"整棵树被反复分析"。
-证据：`parsed_face(...)` 在非测试代码里有 **≈20 个调用点**（`face_syntax_check.rs` 3 处、`manifests.rs` 5 处、`contracts.rs` 2 处、`static_plan.rs`、`scope_faces.rs`、`node_identity.rs`、`face_view.rs`、`graft_view/matching.rs`、`renderer/aliases.rs` …），而**只有 `registration_phase::aggregate` 那一条路吃 unit 缓存**（`registration_phase.rs:92`，由 `face_syntax_check.rs:20` 的 `cache_units` 传入）。
-⇒ 每个包把这棵树解析了**很多遍**，其中一遍被缓存。
+**外部量器**（只量 I/O）：走树 + stat 1003 个文件 **0.020 s** · 读全部文件 + sha256 **0.043 s**（`find … | xargs sha256sum`，各 3 次）⇒ **I/O 不是墙**。
+
+**管线自报的逐相位表**（阶段 0 加的 `xirang build phases:` 一行；同一棵 1001 面的树，一次 cold（先删发现缓存）一次 warm；**各相位之和 = `total`，逐位对上** ✓）：
+
+| 相位 | cold | warm | 这一相里是什么 |
+| --- | --- | --- | --- |
+| `discover` | 0.081 s | 0.103 s | 走树 + 逐文件指纹 + 身份缓存 |
+| `scope` | 1.709 s | 0.528 s | 入口/范围解析 + **unit 缓存的写与读**（面解析的主要落点） |
+| `declare` | 3.826 s | 1.691 s | 语法检查 + requirements / contracts / registry_rule / stable_name / parent_macro（**多遍重解析整棵树**） |
+| `plan` | 1.471 s | 0.620 s | static plan + 切口记录与计划文件的交叉校验 |
+| `shape` | 0.063 s | 0.062 s | 读声明 + 规划挂载与壳 + 属主 |
+| `render` | 0.491 s | 0.235 s | 渲染 `generated_lib.rs` |
+| `write` | 1.575 s | 1.384 s | **推导**并写 11 份产物（`write_*_manifest` 都从 nodes 重新算行，不是纯 I/O） |
+| **total** | **9.218 s** | **4.624 s** | |
+
+（同一量器在还没有这一行的早先一版里读到 cold 5.4 / warm 3.4 s——本次机器更忙，**绝对值只在本表内可比**，跨时段只比比例。）
+
+三条读数：
+
+1. **"解析"散在三个相位里**：cold−warm 的差分别是 `scope` +1.18 · `declare` +2.14 · `plan` +0.85 ⇒ unit 缓存只覆盖其中一条路，其余几遍照旧全量解析 ✓（与下面那 ≈20 个 `parsed_face` 调用点一致）。
+2. **`write` 一个相位就占 warm 的 30%（1.38 s）**，而它大半是**推导**（`write_pruning_manifest` / `write_graph_manifest` / … 都从 nodes 重新算行）⇒ 7 份树级产物每包重算重写一遍，正是记录该接管的那部分。
+3. `render` 只有 0.24 / 0.49 s、`discover` 0.1 s ⇒ **真正按包计的只有渲染这一小块**。
+
+`parsed_face(...)` 在非测试代码里有 **≈20 个调用点**（`face_syntax_check.rs` 3 处、`manifests.rs` 5 处、`contracts.rs` 2 处、`static_plan.rs`、`scope_faces.rs`、`node_identity.rs`、`face_view.rs`、`graft_view/matching.rs`、`renderer/aliases.rs` …），而**只有 `registration_phase::aggregate` 那一条路吃 unit 缓存**（`registration_phase.rs:92`，由 `face_syntax_check.rs:20` 的 `cache_units` 传入）⇒ 每个包把这棵树解析了**很多遍**，其中一遍被缓存。
 
 ### 1.2 逐包产物对照（同一棵树，三个包各写自己的 OUT_DIR）
 
@@ -62,8 +77,14 @@ on is already cheap — walking 1003 files and hashing all of them costs 0.06 s.
 
 **验收（数字）**：同一棵 1000 面树、同一台机器、同一量器下：
 
-- 单包从 **6.9 s（碎片）/ 5.4 s（宿主）** 降到 **≤1.2 s**（读记录 + 按形状投影 + 渲染 + 落盘）；
-- 三包总 CPU 从 **17.8 s** 降到 **≤9 s**（= 1 份分析 5.4 s + 3 份 ≤1.2 s 的投影；投影做到 ~0.3 s 的话落在 6.5 s 上下），即 10k 面时构建脚本墙的 73% 从"每包一份"变回"整棵树一份"。
+- 单包 cold 从 **9.2 s（碎片）/ 6.8 s（宿主）** 降到 **≤1.5 s**（读记录 + 按形状投影 + 渲染 + 拷贝树级产物 + 写与形状有关的那两份）；warm 从 **4.6 s** 降到 **≤0.8 s**；
+- 三包合计 cold 从 **23.8 s** 降到 **≈14 s**（= 1 份分析 9.2 s + 3 份 ≤1.5 s），warm 从 **14.3 s** 降到 **≈7 s**。
+
+**⚠️ 诚实边界：记录买到的第一样是 CPU 与内存，不是单机墙时间。** 今天三个包的构建脚本是**并发**跑的，每个都是单线程 ⇒ 核数 ≥ 包数时，**墙已经 ≈ 单个包的分析**（冷启 ≈9 s），三个包同时把同一棵树分析三遍只是把 CPU 花成 3×（23.8 s）并占三份内存。墙时间的收益出现在三处，而这三处正是"分布式"这个词指的东西：
+
+1. **核数少于包数**（10k 面、十个碎片时这是常态）——那时每多一个包，墙就多一份全量分析；
+2. **多机**：每台机器不必都拿到源码树、也不必各跑一遍分析（记录本身就是可分发的那件东西）；
+3. **`check` → `build` 之间**：同一个 AI 会话里最常走的那条路（桥先 `check` 出一份记录，随后的 `cargo build` 直接命中）。
 
 **验收（语义，一个字都不许动）**：
 
@@ -106,7 +127,8 @@ diagnostics.json  # 这次分析产生的诊断集合（身份+措辞，用来�
 
 ## 5. 分阶段落地
 
-**阶段 0（先量，不改行为）**：给既有的 verbose 开关（`XIRANG_BUILD_VERBOSE`，`lexicon.rs:171`）加每个相位的耗时行，把 §1.1 里那 3.1 s 摊开成逐相位数字。判据＝同样的树跑两次，相位和 ≈ 构建脚本总耗时（自证守恒）。**这一步是这次改动的第一件要做的事**：记录该装什么由它决定，而不是由我的推测决定。
+**阶段 0（✅ 已完成，2026-10-10）**：给既有的 verbose 开关（`XIRANG_BUILD_VERBOSE`，`lexicon.rs:171`）加了逐相位耗时行——`xirang build phases: discover=… scope=… declare=… plan=… shape=… render=… write=… total=…`，按运行顺序列出，**不改任何行为**（只在 `emit_cargo_directives && verbose` 时多打一条 `cargo:warning=`；失败的那次运行也打）。结果是 §1.1 那张表，它决定了后面几个阶段各该装什么。两条钉子：① `pipeline_tests::the_phase_line_lists_every_phase_and_ends_with_the_total` 钉住那一行的形状（读者与本文都按它解析，改名或漏相位会在这里红）；② 自证守恒——表里**各相位之和逐位等于 `total`**（9.216 vs 9.218、4.623 vs 4.624）。踩到的一处：`PhaseLog::start` 被 `verb_table` 门禁点名（裸动词不许出现在入口位以外）⇒ 改名 `for_run` ✓。
+**阶段 0 顺带确认的一件事**：`write` 那 1.4 s 是**推导**（`write_*_manifest` 从 nodes 重算行）而不只是 I/O ⇒ 记录要接管的正是"每包重算一遍树级产物"这件事。
 
 **阶段 1（树级产物）**：7 份逐字节相同的产物改为"树级算一次、各包复制"，`record.tsv` 记它们的摘要。收益＝省掉每包的 graph/manifests 计算与写入（约 663 KB × N 次写）。语义风险最低，先把记录的管子打通。
 

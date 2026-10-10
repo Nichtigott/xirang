@@ -1,7 +1,9 @@
 //! Tests for the build pipeline's refusal paths.
 //! 构建管线拒绝路径的测试。
 
-use super::cache_status_line;
+use std::time::Duration;
+
+use super::{cache_status_line, phase_line};
 
 /// The demo directory and its feature are two constants, and the `cfg` line the
 /// renderer writes is built from the feature name. Renaming either would change the
@@ -38,6 +40,26 @@ fn successful_build_is_silent_unless_verbose_output_is_requested() {
     assert_eq!(
         cache_status_line("hit", "abc", true).as_deref(),
         Some("xirang discovery cache hit (abc)")
+    );
+}
+
+/// The phase line is what a reader gets instead of "the build script is 73% of the wall": every
+/// phase in the order it ran, then the whole run. The pin keeps the shape a reader (and the
+/// measurement in `docs/design-discovery-record.md`) can parse, so a rename or a dropped phase
+/// shows up here rather than in a table nobody can reproduce.
+/// 相位行是读者在"构建脚本占墙 73%"之外拿到的东西：按运行顺序的每个相位，然后是整次运行。这条钉子守住
+/// 读者（以及 `docs/design-discovery-record.md` 里的测量）能解析的形状，因此改名或漏掉一个相位会在这里
+/// 现形，而不是在一张没人能复现的表里。
+#[test]
+fn the_phase_line_lists_every_phase_and_ends_with_the_total() {
+    let marks = [
+        ("discover", Duration::from_millis(21)),
+        ("declare", Duration::from_millis(2631)),
+        ("render", Duration::from_millis(193)),
+    ];
+    assert_eq!(
+        phase_line(&marks, Duration::from_millis(1500)),
+        "xirang build phases: discover=0.021s declare=2.631s render=0.193s total=1.500s"
     );
 }
 
