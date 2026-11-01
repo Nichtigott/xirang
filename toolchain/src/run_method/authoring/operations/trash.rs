@@ -18,7 +18,9 @@ use super::super::*;
 /// The directory every recoverable copy lands under.
 /// 每个可恢复副本所落的目录。
 pub(super) fn trash_root() -> PathBuf {
-    package_root().join(".xirang").join("trash")
+    package_root()
+        .join(xirang_kernel::lexicon::XIRANG_DIR)
+        .join("trash")
 }
 
 /// A unique-enough suffix for one trash entry.

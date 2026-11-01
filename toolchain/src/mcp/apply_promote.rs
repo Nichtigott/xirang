@@ -334,16 +334,19 @@ pub(crate) fn run_promote(
 /// 一个只给出 `<selector>` 的拒绝，会让读者在请求变成调用之前先去列一遍目录；这里读的就是它所在的那个目录。
 /// `add` 的示例遵循同一条规则——见 `apply::write_example`——而这里工具需要的值就这一个。
 fn promote_example(root: &Path) -> String {
-    let selector = std::fs::read_dir(root.join(".xirang/external-grafts"))
-        .ok()
-        .and_then(|entries| {
-            entries
-                .flatten()
-                .filter(|entry| entry.path().is_dir())
-                .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                .min()
-        })
-        .unwrap_or_else(|| "<selector>".to_owned());
+    let selector = std::fs::read_dir(
+        root.join(xirang_kernel::lexicon::XIRANG_DIR)
+            .join(xirang_kernel::lexicon::EXTERNAL_GRAFT_DIR),
+    )
+    .ok()
+    .and_then(|entries| {
+        entries
+            .flatten()
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .min()
+    })
+    .unwrap_or_else(|| "<selector>".to_owned());
     format!(
         "accepted shape  {{\"action\":\"promote\",\"selector\":\"{selector}\",\"apply\":true,\
          \"confirm\":true}}"

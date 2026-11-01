@@ -173,7 +173,9 @@ pub(crate) fn read_verified_in(
                 entry.display()
             ));
         }
-        let plans = root.join(".xirang/external-grafts");
+        let plans = root
+            .join(xirang_kernel::lexicon::XIRANG_DIR)
+            .join(xirang_kernel::lexicon::EXTERNAL_GRAFT_DIR);
         if let Ok(entries) = std::fs::read_dir(&plans) {
             for plan in entries
                 .flatten()
