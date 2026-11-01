@@ -256,22 +256,21 @@ fn template_arguments(node: &Value) -> Option<Vec<String>> {
             .and_then(Value::as_str)
         {
             arguments.push(text.to_owned());
-        } else if let Some(value) = child.get("value") {
+        } else {
             // A non-type template argument arrives as a JSON scalar, not as a qualType:
-            // `fixed<3>` is `{"kind":"TemplateArgument","value":3}`.
+            // `fixed<3>` is `{"kind":"TemplateArgument","value":3}`. A pack, a template template
+            // argument, or an expression clang did not render has neither, and `?` keeps the
+            // declaration's base name rather than inventing one.
             // 非类型模板实参以 JSON 标量到达，而不是 qualType：`fixed<3>` 是
-            // `{"kind":"TemplateArgument","value":3}`。
+            // `{"kind":"TemplateArgument","value":3}`。参数包、模板模板实参或 clang 未渲染的表达式两者
+            // 皆无，`?` 让声明保留基础名而不是编造一个。
+            let value = child.get("value")?;
             match value {
                 Value::String(text) => arguments.push(text.clone()),
                 Value::Number(number) => arguments.push(number.to_string()),
                 Value::Bool(flag) => arguments.push(flag.to_string()),
                 _ => return None,
             }
-        } else {
-            // A pack, a template template argument, or an expression clang did not render: the
-            // declaration keeps its base name rather than getting a made-up one.
-            // 参数包、模板模板实参或 clang 未渲染的表达式：保留基础名，不编造一个。
-            return None;
         }
     }
     if arguments.is_empty() {
