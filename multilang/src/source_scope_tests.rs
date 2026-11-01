@@ -16,11 +16,9 @@ fn fixture(label: &str) -> PathBuf {
     root
 }
 
+#[cfg(unix)]
 fn link(target: &Path, at: &Path) {
-    #[cfg(unix)]
     std::os::unix::fs::symlink(target, at).expect("symlink");
-    #[cfg(not(unix))]
-    let _ = (target, at);
 }
 
 fn wanted() -> impl Fn(&Path) -> bool {
@@ -49,6 +47,7 @@ fn a_package_file_is_found_with_its_relative_spelling() {
 /// The reproduced defect: a link inside the package that points outside it is refused **by name**,
 /// not followed and not silently skipped.
 /// 被复现的缺陷：包内指向包外的链接按名拒绝，既不跟随也不静默跳过。
+#[cfg(unix)]
 #[test]
 fn an_undeclared_link_out_of_the_package_is_refused() {
     let root = fixture("link");
@@ -70,6 +69,7 @@ fn an_undeclared_link_out_of_the_package_is_refused() {
 /// A root the project declared explicitly is followed — a legitimate materialization may be a
 /// link, so the rule is about declaration, not about links.
 /// 项目显式声明的根会被跟随——合法物化可以是链接，因此规则在于声明，而不在于链接。
+#[cfg(unix)]
 #[test]
 fn a_declared_root_is_followed() {
     let root = fixture("declared");
@@ -88,6 +88,7 @@ fn a_declared_root_is_followed() {
 
 /// A directory linked into its own ancestor terminates and reports each file once.
 /// 链接到自身祖先的目录会终止，且每个文件只报一次。
+#[cfg(unix)]
 #[test]
 fn a_cycle_terminates_and_a_file_reachable_twice_is_reported_once() {
     let root = fixture("cycle");
@@ -107,6 +108,7 @@ fn a_cycle_terminates_and_a_file_reachable_twice_is_reported_once() {
 /// widening what an identity is derived from.
 /// 项目声明、本机绑定的来源经它的物化位置被进入；文件保留包内相对拼写，因此声明扩大的是"可以读什么"，
 /// 而不是"身份由什么推导"。
+#[cfg(unix)]
 #[test]
 fn a_declared_and_bound_source_is_entered_through_its_materialization() {
     let root = fixture("declared-source");
@@ -136,6 +138,7 @@ fn a_declared_and_bound_source_is_entered_through_its_materialization() {
 /// The same link with no declaration is still refused: the declaration is the permission, and the
 /// two answers must not collapse into "links are fine now".
 /// 同一条链接没有声明时仍被拒绝：声明才是许可，而两个答案不得塌成"现在链接都行了"。
+#[cfg(unix)]
 #[test]
 fn a_link_without_a_declaration_stays_refused_even_though_one_with_it_is_followed() {
     let root = fixture("no-declaration");

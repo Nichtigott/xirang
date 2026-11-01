@@ -70,6 +70,7 @@ fn a_self_contained_source_needs_no_binding() {
 /// A source materialized as a link out of the package has no location on this machine until it is
 /// bound, and the refusal says which file to write.
 /// 以包外链接物化的来源在本机没有位置，直到它被绑定；拒绝会说要写哪个文件。
+#[cfg(unix)]
 #[test]
 fn a_link_without_a_binding_refuses_to_guess() {
     let root = fixture("unbound");
@@ -91,6 +92,7 @@ fn a_link_without_a_binding_refuses_to_guess() {
 
 /// A binding resolves the source, and the root the machine reads is the one the binding names.
 /// 绑定解析出来源，而本机读取的根就是绑定点名的那个。
+#[cfg(unix)]
 #[test]
 fn a_binding_resolves_the_source_it_names() {
     let root = fixture("bound");
@@ -165,6 +167,7 @@ fn the_workspace_source_is_implicit() {
 
 /// A binding that names somewhere other than the materialization is two answers to one question.
 /// 与物化位置不同的绑定是同一个问题的两个答案。
+#[cfg(unix)]
 #[test]
 fn a_binding_that_disagrees_with_the_materialization_is_refused() {
     let root = fixture("disagree");

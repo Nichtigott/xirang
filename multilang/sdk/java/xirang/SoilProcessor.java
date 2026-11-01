@@ -39,7 +39,7 @@ import javax.tools.Diagnostic;
  * 取拼写；默认工作目录）。
  */
 @SupportedAnnotationTypes("xirang.Soil")
-@SupportedSourceVersion(SourceVersion.RELEASE_21)
+@SupportedSourceVersion(SourceVersion.RELEASE_17)
 @SupportedOptions({"xirang.faces", "xirang.packageRoot"})
 public final class SoilProcessor extends AbstractProcessor {
     @Override
