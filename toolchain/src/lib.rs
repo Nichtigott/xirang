@@ -40,6 +40,14 @@ mod cargo_metadata;
 #[path = "source_layout.rs"]
 pub(crate) mod source_layout;
 
+// The plain filesystem view of a source tree: the build's discovery walk and the authoring
+// executor's placement read ask the kernel trait the same three questions, so they get one answer.
+// 源码树的朴素文件系统视图：构建的发现遍历与创作执行面的落位读取向内核 trait 问同样三个问题，
+// 因此得到同一个答案。
+#[cfg(any(feature = "build", feature = "authoring"))]
+#[path = "std_source_tree.rs"]
+pub(crate) mod std_source_tree;
+
 // How a manifest spells a path is one rule with two writers — the crate split and the host edge —
 // and both surfaces reach it from here.
 // 清单如何拼写路径是一条规则、有两个写入方——crate 拆分与宿主依赖边——两个执行面都从这里取。

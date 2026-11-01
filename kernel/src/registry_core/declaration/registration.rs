@@ -150,6 +150,32 @@ pub struct RequirementSpec {
     pub provider: &'static str,
 }
 
+/// The admission rule: a denial overrides any allowance, and an empty allow list admits every path
+/// that is not denied.
+/// 门禁规则：拒绝优先于允许；允许列表为空时，接受所有未被拒绝的路径。
+///
+/// The static declaration and its owned twin are two spellings of one gate, so the rule is read
+/// once here: a copy per spelling is how "denied wins" and "empty admits everything" drift apart,
+/// and either drift silently changes which external registries a tree accepts.
+/// 静态声明与它的 owned 孪生是同一道门禁的两种拼法，因此规则在这里只读一次：每种拼法各存一份副本，正是
+/// "拒绝优先"与"空表全放行"逐渐分歧的原因，而任一处分歧都会静默改变这棵树接受哪些外部注册机。
+pub(super) fn admits<A: AsRef<str>, D: AsRef<str>>(
+    allowed: &[A],
+    denied: &[D],
+    path: &str,
+) -> bool {
+    if denied
+        .iter()
+        .any(|prefix| path_is_under(path, prefix.as_ref()))
+    {
+        return false;
+    }
+    allowed.is_empty()
+        || allowed
+            .iter()
+            .any(|prefix| path_is_under(path, prefix.as_ref()))
+}
+
 /// Dependency admission for objects produced outside the current registry tree.
 /// 当前注册树对外部注册机产物的依赖门禁。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -189,18 +215,7 @@ impl Admission {
     /// allow list admits every path not denied.
     /// 外部路径是否可以进入：拒绝前缀优先，允许列表为空时接受所有未被拒绝的路径。
     pub fn accepts(self, path: &str) -> bool {
-        if self
-            .denied_paths
-            .iter()
-            .any(|prefix| path_is_under(path, prefix))
-        {
-            return false;
-        }
-        self.allowed_paths.is_empty()
-            || self
-                .allowed_paths
-                .iter()
-                .any(|prefix| path_is_under(path, prefix))
+        admits(self.allowed_paths, self.denied_paths, path)
     }
 
     /// Copy this admission into the owned form a snapshot can retain.

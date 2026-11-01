@@ -2,6 +2,7 @@
 //! 文件化的新增、编辑和删除操作。
 
 use super::*;
+use crate::std_source_tree::StdSourceTree;
 #[path = "authored.rs"]
 mod authored;
 pub use authored::{AuthoredFace, authored_face};
@@ -351,31 +352,6 @@ pub fn generated_snapshots_in(
 /// 从一个在此解析布局的项目根加载生成的注册面。
 pub fn generated_snapshots_from(root: &Path) -> Result<Vec<RegistrationSnapshot>, String> {
     generated_snapshots_in(&crate::source_layout(root)?)
-}
-
-/// The filesystem facts the kernel's source walk asks this surface for.
-/// 内核源码遍历向本执行面索取的文件系统事实。
-struct StdSourceTree;
-
-impl xirang_kernel::source::SourceTree for StdSourceTree {
-    fn is_directory(&self, path: &Path) -> bool {
-        path.is_dir()
-    }
-
-    fn entries(&self, path: &Path) -> Result<Vec<PathBuf>, String> {
-        fs::read_dir(path)
-            .map_err(|error| format!("cannot scan {}: {error}", path.display()))?
-            .map(|entry| {
-                entry
-                    .map(|entry| entry.path())
-                    .map_err(|error| format!("cannot scan {}: {error}", path.display()))
-            })
-            .collect()
-    }
-
-    fn read_text(&self, path: &Path) -> Result<String, String> {
-        fs::read_to_string(path).map_err(|error| format!("cannot read {}: {error}", path.display()))
-    }
 }
 
 pub(super) fn visit_face_sources(

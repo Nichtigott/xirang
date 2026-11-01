@@ -2,7 +2,6 @@
 //! 声明词表的 owned（堆分配）孪生类型。
 
 use super::*;
-use crate::registry_core::lexicon::path_is_under;
 
 impl fmt::Display for OwnedSourceLocation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -102,19 +101,12 @@ pub struct OwnedObjectContract {
 impl OwnedAdmission {
     /// Check an external path without borrowing static declaration data.
     /// 不借用静态声明数据，直接检查外部依赖路径。
+    ///
+    /// The rule itself lives beside its static twin (`registration::admits`): one gate with two
+    /// spellings must not be two gates.
+    /// 规则本身住在静态孪生旁边（`registration::admits`）：同一道门禁的两种拼法不能变成两道门禁。
     pub fn accepts(&self, path: &str) -> bool {
-        if self
-            .denied_paths
-            .iter()
-            .any(|prefix| path_is_under(path, prefix))
-        {
-            return false;
-        }
-        self.allowed_paths.is_empty()
-            || self
-                .allowed_paths
-                .iter()
-                .any(|prefix| path_is_under(path, prefix))
+        super::registration::admits(&self.allowed_paths, &self.denied_paths, path)
     }
 }
 

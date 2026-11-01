@@ -11,6 +11,7 @@ pub(crate) use super::parallel::{parallel_map, parallel_map_with_workers, worker
 
 use super::Node;
 use super::registry_syntax::parse_face;
+use crate::std_source_tree::StdSourceTree;
 
 /// A registration face that lives where the build cannot compile it.
 /// 长在构建无法编译的位置上的注册面。
@@ -472,31 +473,6 @@ pub(crate) fn collect_source_files(nodes: &[Node], files: &mut Vec<std::path::Pa
             files.push(file.clone());
         }
         collect_source_files(&node.children, files);
-    }
-}
-
-/// The filesystem facts the kernel's source walk asks this surface for.
-/// 内核源码遍历向本执行面索取的文件系统事实。
-struct StdSourceTree;
-
-impl xirang_kernel::source::SourceTree for StdSourceTree {
-    fn is_directory(&self, path: &Path) -> bool {
-        path.is_dir()
-    }
-
-    fn entries(&self, path: &Path) -> Result<Vec<PathBuf>, String> {
-        fs::read_dir(path)
-            .map_err(|error| format!("cannot scan {}: {error}", path.display()))?
-            .map(|entry| {
-                entry
-                    .map(|entry| entry.path())
-                    .map_err(|error| format!("cannot scan {}: {error}", path.display()))
-            })
-            .collect()
-    }
-
-    fn read_text(&self, path: &Path) -> Result<String, String> {
-        fs::read_to_string(path).map_err(|error| format!("cannot read {}: {error}", path.display()))
     }
 }
 
