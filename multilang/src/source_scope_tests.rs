@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{SourceScope, relative_spelling};
+#[cfg(unix)]
 use crate::source_map::{BINDINGS_FILE, BINDINGS_HEADER, SOURCES_FILE, SOURCES_HEADER};
 
 fn fixture(label: &str) -> PathBuf {

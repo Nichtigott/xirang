@@ -104,13 +104,8 @@ fn a_generation_whose_bytes_drifted_is_reported_and_fails() {
     let root = scratch("history-drift");
     let prefix = installed(&root);
     let generation = std::fs::read_link(prefix.join("current")).unwrap();
-    let mut files = Vec::new();
-    visit_files(&prefix.join(&generation), &mut files);
-    let victim = files
-        .iter()
-        .find(|path| path.file_name().is_some_and(|name| name != "manifest.json"))
-        .unwrap();
-    std::fs::write(victim, b"tampered\n").unwrap();
+    let victim = manifested_file(&prefix.join(&generation));
+    std::fs::write(&victim, b"tampered\n").unwrap();
     let reported = invoke(&root, &["history", "--prefix", prefix.to_str().unwrap()]);
     assert!(!reported.status.success(), "{}", both(&reported));
     let text = both(&reported);
@@ -131,20 +126,28 @@ fn history_refuses_a_prefix_that_holds_nothing() {
     );
 }
 
-/// Collect every regular file under `directory`.
-/// 收集 `directory` 下的每个普通文件。
-fn visit_files(directory: &Path, files: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return;
-    };
-    for entry in entries {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            visit_files(&path, files);
-        } else {
-            files.push(path);
-        }
-    }
+/// One file the generation's own manifest covers.
+/// 该世代自己的清单覆盖到的某一个文件。
+///
+/// Tampering has to hit a **manifested** file: a generation also holds files the verification does
+/// not hash, and which one a directory walk meets first depends on the filesystem — the old
+/// "first file that is not manifest.json" picked such an unlisted file on a runner and left the
+/// generation verifying (measured on the all-features face).
+/// 篡改必须落在**清单覆盖**的文件上：世代里还有验证不哈希的文件，而目录遍历先遇到哪一个取决于文件系统
+/// ——旧的"第一个不是 manifest.json 的文件"在 runner 上挑到了未列出的那个，世代照样验证通过
+/// （在 all-features 面实测）。
+fn manifested_file(generation: &Path) -> PathBuf {
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(generation.join("manifest.json")).unwrap())
+            .unwrap();
+    manifest["files"]
+        .as_array()
+        .expect("a manifest lists its files")
+        .iter()
+        .filter_map(|entry| entry["path"].as_str())
+        .map(|path| generation.join(path))
+        .find(|path| path.is_file())
+        .expect("the manifest covers an existing file")
 }
 
 #[test]
@@ -171,13 +174,7 @@ fn a_damaged_current_generation_names_the_rollback_that_restores_a_verified_one(
         serde_json::from_str(&std::fs::read_to_string(prefix.join("history.json")).unwrap())
             .unwrap();
     let current = history["current"].as_str().unwrap().to_owned();
-    let mut files = Vec::new();
-    visit_files(&prefix.join(&current), &mut files);
-    let damaged = files
-        .iter()
-        .find(|file| file.file_name().is_some_and(|name| name != "manifest.json"))
-        .expect("a generation holds files")
-        .clone();
+    let damaged = manifested_file(&prefix.join(&current));
     std::fs::write(&damaged, b"damaged").unwrap();
     let reported = invoke(&root, &["history", "--prefix", prefix.to_str().unwrap()]);
     assert!(!reported.status.success());
