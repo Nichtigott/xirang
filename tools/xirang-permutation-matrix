@@ -32,6 +32,7 @@ Two things here are premises rather than conveniences:
 """
 
 import hashlib
+import re
 import json
 import os
 import shutil
@@ -45,6 +46,9 @@ PACKAGE = "perm-host"
 # History, not state: the move's own record names the sequence it ran in, so two orders cannot agree on it.
 # 历史而不是状态：move 自己的记录写着它是第几次，因此两种次序不可能一致。
 HISTORY = ".xirang/moves/"
+# The partition backup is a snapshot of what a write replaced; its bytes record when the write happened.
+# 分区备份是某次写替换掉的东西的快照；它的字节记录的是那次写发生在什么时候。
+BACKUP = ".xirang/partition-backup/"
 
 
 def call(root, tool, arguments):
@@ -127,8 +131,15 @@ def grafts(root):
 
 def crates(root):
     interesting = ("package", "crate ", "generated", "declares", "belongs", "partition of")
-    return tuple(sorted(line.strip() for line in call(root, "crates", {"action": "plan"}).splitlines()
-                        if line.strip() and any(word in line for word in interesting)))
+    # Each order runs in its own directory, and the plan prints the workspace it belongs to. That
+    # machine path differs **because the fixture is a different directory**, not because the order
+    # changed the state, so it is folded to a placeholder before comparing.
+    # 每种次序在自己的目录里跑，而计划会印出它所属的 workspace。那条机器路径不同**是因为夹具换了目录**，
+    # 不是因为次序改变了状态，因此比较前折成占位符。
+    return tuple(sorted(
+        line.strip().replace(str(root), "<root>")
+        for line in call(root, "crates", {"action": "plan"}).splitlines()
+        if line.strip() and any(word in line for word in interesting)))
 
 
 def consumers(root):
@@ -167,11 +178,24 @@ def consumers(root):
 
 
 def files(root):
-    return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+    # Authored bytes can name the machine path they were written under (`.cargo/config.toml`, the
+    # generated manifests and the aliases file), and every generated file carries the crate
+    # generation that happened to be current when it was written. Both are **history**: the first is
+    # the fixture directory and the second is which step ran when. They are folded to placeholders
+    # before hashing; every other byte still has to agree.
+    # 写下的字节可能点名它们被写下时所在的机器路径（`.cargo/config.toml`、生成的清单与别名文件），
+    # 而每个生成文件都带着写下那一刻的 crate 代次。两者都是**历史**：前者是夹具目录、后者是哪一步先跑。
+    # 哈希前折成占位符；其余每个字节仍必须一致。
+    root_bytes = str(root).encode()
+    generation = re.compile(rb"xirang-generation: [0-9]+")
+    def digest(path):
+        data = path.read_bytes().replace(root_bytes, b"<root>")
+        return hashlib.sha256(generation.sub(b"xirang-generation: <generation>", data)).hexdigest()
+    return {str(path.relative_to(root)): digest(path)
             for path in sorted(root.rglob("*"))
             if path.is_file()
             and not set(path.relative_to(root).parts) & {"target", ".git"}
-            and not str(path.relative_to(root)).startswith(HISTORY)}
+            and not str(path.relative_to(root)).startswith((HISTORY, BACKUP))}
 
 
 def snapshot(root):
@@ -192,6 +216,16 @@ def run_order(workspace, order):
               f" ({headline[:96]})")
         if before == after:
             raise AssertionError(f"{order}: step {symbol} left the tree unchanged; a no-op is not a pass")
+    # The generated crates are a **projection** of the host tree, and the documented workflow
+    # regenerates them after a structural change. Without this epilogue the comparison would also
+    # measure *when* the last regeneration happened — an order that ends with `C` refreshes the
+    # projection, one that ends with `M` leaves it describing the tree before the move — while the
+    # host state itself is the thing this matrix asks about.
+    # 生成 crate 是宿主树的**投影**，而文档工作流在结构改动之后重新生成它。没有这一步收尾，比较还会量到
+    # "最后一次重新生成发生在什么时候"——以 `C` 结尾的次序刷新投影，以 `M` 结尾的次序让投影描述搬动之前的树——
+    # 而本矩阵问的是宿主状态本身。
+    call(root, "crates", {"action": "write", "apply": True})
+    print("  epilogue: regenerate the generated crates (the documented workflow)")
     return snapshot(root)
 
 
@@ -207,7 +241,7 @@ def main():
         shutil.rmtree(workspace)
     workspace.mkdir(parents=True)
     print(f"workspace {workspace}")
-    print(f"compared: registry · grafts · crates · consumer edges · authored bytes, excluding `{HISTORY}**` (history, not state); call-level calls= needs a build and is not covered")
+    print(f"compared: registry · grafts · crates · consumer edges · authored bytes, excluding `{HISTORY}**` and `{BACKUP}**` (history, not state); call-level calls= needs a build and is not covered")
     finals = {order: run_order(workspace, order) for order in orders}
     baseline = orders[0]
     failed = False

@@ -111,7 +111,13 @@ pub(crate) fn source_unit_fingerprint(path: &Path) -> String {
     input.extend_from_slice(b"xirang-unit\0");
     input.extend_from_slice(env!("CARGO_PKG_VERSION").as_bytes());
     input.push(0);
-    input.extend_from_slice(path.to_string_lossy().as_bytes());
+    // A record spelling is `/`-separated while a discovered path carries the native separator. On
+    // Windows the same file then spells two ways, the payload's freshness filter stops matching,
+    // and every row is dropped. Hash `/` as the separator in both cases; on Unix this is the path
+    // unchanged.
+    // 记录拼写用 `/` 分隔，而发现路径带本机分隔符。在 Windows 上同一个文件会有两种拼法，载荷的新鲜性过滤
+    // 就对不上、每一行都会被丢掉。两种情况下都按 `/` 分隔来哈希；在 Unix 上这就是原路径。
+    input.extend_from_slice(path.to_string_lossy().replace('\\', "/").as_bytes());
     input.push(0);
     input.extend_from_slice(&source);
     NodeId::from_bytes(&input).to_string()

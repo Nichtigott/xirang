@@ -1730,6 +1730,53 @@ fn java_jdk() -> Option<(String, String)> {
     Some((program, home))
 }
 
+/// The JDK's native include directories, so the C bridge can `#include <jni.h>`.
+/// JDK 的原生头目录，让 C 桥能 `#include <jni.h>`。
+///
+/// The compiler that builds the consumer does not search a JDK by itself, and the runner's `javac`
+/// is usually a symlink under `/usr/bin` (so its parent is not the JDK home). Ask the runtime that
+/// sits next to the compiler for `java.home`, then hand the include directories to the build through
+/// `CPATH`, which `cc`/`clang` append to their search path.
+/// 构建消费者用的编译器不会自己去搜 JDK，而 runner 的 `javac` 通常是 `/usr/bin` 下的符号链接（父目录不是
+/// JDK home）。向编译器旁边的运行时问 `java.home`，再经 `CPATH` 把头目录交给构建——`cc`/`clang` 会把它
+/// 追加进搜索路径。
+fn java_include_dirs(program: &str) -> Option<Vec<String>> {
+    let home = std::env::var_os("JAVA_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|home| home.join("include").join("jni.h").is_file())
+        .or_else(|| {
+            let java = std::path::Path::new(program).with_file_name("java");
+            let output = std::process::Command::new(java)
+                .args(["-XshowSettings:properties", "-version"])
+                .output()
+                .ok()?;
+            let text = String::from_utf8_lossy(&output.stderr).into_owned();
+            let line = text
+                .lines()
+                .find(|line| line.trim_start().starts_with("java.home ="))?;
+            let home = std::path::PathBuf::from(line.split_once('=')?.1.trim());
+            home.join("include").join("jni.h").is_file().then_some(home)
+        })?;
+    let platform = if cfg!(target_os = "windows") {
+        "win32"
+    } else if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "linux"
+    };
+    let mut directories = vec![home.join("include")];
+    let per_platform = home.join("include").join(platform);
+    if per_platform.is_dir() {
+        directories.push(per_platform);
+    }
+    Some(
+        directories
+            .iter()
+            .map(|directory| directory.display().to_string().replace('\\', "/"))
+            .collect(),
+    )
+}
+
 /// One Java consumer, one C++ producer: the JNI bridge is C, the runtime is a real `java`.
 /// 一个 Java 消费者、一个 C++ 生产者：JNI 桥是 C，运行时是真的 `java`。
 #[test]
@@ -1738,6 +1785,12 @@ fn a_java_consumer_calls_a_cpp_export_through_jni() {
         eprintln!("skipping: no JDK on PATH or XIRANG_JAVA");
         return;
     };
+    let Some(include_dirs) = java_include_dirs(&javac) else {
+        eprintln!("skipping: the JDK has no include/jni.h");
+        return;
+    };
+    let cpath = include_dirs.join(":");
+    let environment = [("XIRANG_JAVA", javac.as_str()), ("CPATH", cpath.as_str())];
     let scratch = scratch("java-consumer");
     let producer = scratch.join("mathlib");
     std::fs::create_dir_all(producer.join("src")).unwrap();
@@ -1784,7 +1837,7 @@ fn a_java_consumer_calls_a_cpp_export_through_jni() {
         )
     };
     std::fs::write(consumer.join("tests/consumer_test.java"), test_source(5)).unwrap();
-    let tested = invoke_with_env(&consumer, &["test"], &[("XIRANG_JAVA", &javac)]);
+    let tested = invoke_with_env(&consumer, &["test"], &environment);
     assert!(tested.status.success(), "{}", both(&tested));
     assert!(
         String::from_utf8_lossy(&tested.stdout).contains("test consumer_test ... ok"),
@@ -1794,7 +1847,7 @@ fn a_java_consumer_calls_a_cpp_export_through_jni() {
     // Red control: a wrong expectation must fail, so the test really ran.
     // 红控制：期望值写错必须失败，证明测试真的跑了。
     std::fs::write(consumer.join("tests/consumer_test.java"), test_source(6)).unwrap();
-    let failed = invoke_with_env(&consumer, &["test"], &[("XIRANG_JAVA", &javac)]);
+    let failed = invoke_with_env(&consumer, &["test"], &environment);
     assert!(!failed.status.success(), "{}", both(&failed));
 }
 
@@ -1823,6 +1876,11 @@ fn a_kotlin_consumer_calls_a_cpp_export_through_jni() {
         eprintln!("skipping: no kotlinc or JDK");
         return;
     };
+    let Some(include_dirs) = java_include_dirs(&javac) else {
+        eprintln!("skipping: the JDK has no include/jni.h");
+        return;
+    };
+    let cpath = include_dirs.join(":");
     let scratch = scratch("kotlin-consumer");
     let producer = scratch.join("mathlib");
     std::fs::create_dir_all(producer.join("src")).unwrap();
@@ -1871,6 +1929,7 @@ fn a_kotlin_consumer_calls_a_cpp_export_through_jni() {
     let environment = [
         ("XIRANG_KOTLIN", kotlinc.as_str()),
         ("XIRANG_JAVA", javac.as_str()),
+        ("CPATH", cpath.as_str()),
     ];
     let tested = invoke_with_env(&consumer, &["test"], &environment);
     assert!(tested.status.success(), "{}", both(&tested));
