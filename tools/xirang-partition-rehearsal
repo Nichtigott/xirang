@@ -271,7 +271,7 @@ cut_identity() {
 }
 
 # ============================================================ leg 1: the workspace shape
-step "leg 1/4: a host inside a workspace"
+step "leg 1/7: a host inside a workspace"
 
 WS="$WORK/ws"
 mkdir -p "$WS"
@@ -403,7 +403,7 @@ cmp "$WORK/ws-manifest-before" "$WS/Cargo.toml" ||
   fail "the workspace does not load after the revert"
 
 # ============================================================ leg 2: the standalone shape
-step "leg 2/4: a host with no enclosing workspace"
+step "leg 2/7: a host with no enclosing workspace"
 
 SOL="$WORK/sol"
 mkdir -p "$SOL"
@@ -427,7 +427,7 @@ step "leg 2: building the partitioned tree from the facade's own directory"
 [ ! -f "$SOL/app/.cargo/config.toml" ] || fail "the revert left the remap behind in the standalone shape"
 
 # ============================================================ leg 3: promote on a partitioned tree
-step "leg 3/4: promote landing into a partitioned tree"
+step "leg 3/7: promote landing into a partitioned tree"
 
 PR="$WORK/promote"
 mkdir -p "$PR"
@@ -524,7 +524,7 @@ after=$(cat "$(dirname "$(ls -t "$PR/app"/target/debug/build/app-widgets-*/out/d
   fail "the fragment did not re-read a face file below the host's src after it changed"
 
 # ============================================================ leg 4: the publishable shape
-step "leg 4/4: the release shape carries its own sources"
+step "leg 4/7: the release shape carries its own sources"
 
 REL="$WORK/release"
 mkdir -p "$REL"
@@ -565,7 +565,7 @@ step "leg 4: building the release shape, and packaging it"
 "$XIRANG" crates --revert "$REL/app" >/dev/null || fail "the release shape does not revert"
 [ ! -d "$REL/app/crates/app-widgets" ] || fail "the revert left the release ghost behind"
 
-step "leg 5: the committed example (examples/partitioned-button) still builds and still carries its graft"
+step "leg 5/7: the committed example (examples/partitioned-button) still builds and still carries its graft"
 
 # The four legs above build fixtures the script itself writes, so nothing in the repository *is* a
 # partitioned host. This leg is the one that keeps a real one alive: a committed example carrying
