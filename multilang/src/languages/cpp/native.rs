@@ -38,31 +38,8 @@ pub const SPEC: NativeSpec = NativeSpec {
     default_recipe,
     include_dirs,
     skip_directories: &["target", ".git", "crates", "node_modules", ".cargo"],
-    object_command,
+    object_command: crate::languages::kit::native::object_command,
 };
-
-/// How a cc-like compiler is invoked for one source: the shape this language has always used.
-/// 一份源码如何被 cc 风格编译器调用：这门语言一直以来的形状。
-fn object_command(
-    compile: &crate::languages::kit::native::ObjectCommand<'_>,
-) -> (String, Vec<String>) {
-    let mut arguments = compile.recipe.arguments.clone();
-    arguments.push("-c".to_owned());
-    arguments.push(compile.source.display().to_string());
-    arguments.push("-o".to_owned());
-    arguments.push(compile.object.display().to_string());
-    arguments.push(format!("-I{}", compile.out_dir.display()));
-    for include in compile.include_dirs {
-        arguments.push(format!("-I{}", include.display()));
-    }
-    for include in &compile.recipe.includes {
-        arguments.push(format!(
-            "-I{}",
-            compile.package_root.join(include).display()
-        ));
-    }
-    (compile.recipe.program.clone(), arguments)
-}
 
 /// Compiler and arguments when the manifest writes no `[native]` recipe.
 /// 清单没有写 `[native]` 配方时的编译器与参数。

@@ -10,6 +10,7 @@
 //! 第一次改回去。
 
 use super::DeclarationEdit;
+use crate::mcp::apply::apply_move::endpoint::normalized;
 
 /// Plan every declaration rewrite, grouped **per file**, so two entries in one host file compose.
 /// 按**文件**把每条声明改写规划好，使同一个宿主文件里的两条条目能够叠加。
@@ -128,17 +129,6 @@ fn apply_ranges(rewrite: &mut DeclarationRewrite) -> Result<(), String> {
             .replace_range(edit.range.0..edit.range.1, &edit.after);
     }
     Ok(())
-}
-
-/// An endpoint without `crate::`/`self::`, matching the parser's comparison.
-/// 去掉 `crate::`/`self::` 的端点，与解析器的比较一致。
-fn normalized(endpoint: &str) -> String {
-    endpoint
-        .trim()
-        .strip_prefix("crate::")
-        .or_else(|| endpoint.trim().strip_prefix("self::"))
-        .unwrap_or(endpoint.trim())
-        .to_owned()
 }
 
 /// Re-parse the rewritten entry and confirm the endpoints resolve to the expected identities.

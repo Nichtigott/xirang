@@ -12,13 +12,16 @@ use std::sync::OnceLock;
 
 use xirang_kernel::authoring::{
     AuthoringOperation, DiagnosticSeverity, FaceAuthoringPlan, FaceAuthoringRequest, FieldUpdate,
-    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedEdit, PlannedFile,
-    RegistrationField, RegistrationUpdate, ValidationObligation,
+    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedFile, RegistrationField,
+    RegistrationUpdate, ValidationObligation,
 };
 
 use super::CLanguage;
 use super::names;
-use crate::languages::kit::adapter::{AdapterSpec, capabilities as kit_capabilities};
+use crate::languages::kit::adapter::{
+    AdapterSpec, EditHooks, Editable, capabilities as kit_capabilities, destination_module,
+    modify as kit_modify,
+};
 use crate::languages::kit::grammar::{
     DeclaredFace, FaceGrammar, FieldSpec, Role, ValueStyle, obligations as stated_obligations,
 };
@@ -185,14 +188,6 @@ pub struct CDeclaration {
     pub block: std::ops::Range<usize>,
 }
 
-impl CDeclaration {
-    /// The face kind (the `.kind` value).
-    /// 面种类名（`.kind` 的取值）。
-    pub fn kind(&self) -> String {
-        self.face.kind()
-    }
-}
-
 /// Reads one C declaration from source text.
 /// 从源码文本读出一条 C 声明。
 pub fn read_declaration(source: &str) -> Result<CDeclaration, String> {
@@ -318,7 +313,7 @@ fn create(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
             request.destination
         ));
     }
-    let module = module_of(&request.destination)?;
+    let module = destination_module(&request.destination)?;
     if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
         && named != module
     {
@@ -368,97 +363,32 @@ fn create(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
         obligations: obligations(&kind, &registration),
     })
 }
+impl Editable for CDeclaration {
+    fn face(&self) -> &DeclaredFace {
+        &self.face
+    }
+
+    fn arguments(&self) -> std::ops::Range<usize> {
+        self.block.clone()
+    }
+
+    fn rendered(&self, parent: &str, registration: &RegistrationUpdate) -> String {
+        render_block(parent, registration, &self.face.extras)
+    }
+}
+
+const EDIT: EditHooks<CDeclaration> = EditHooks {
+    read: read_declaration,
+    parent: parent_reference,
+    obligations,
+    carrier: None,
+};
 
 /// Modify one existing declaration, preserving everything the request does not name.
 /// 按请求修改一条已有声明，保留请求没有点名的一切。
 fn modify(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
-    let source = request.source_context.source_text().ok_or_else(|| {
-        format!(
-            "{} does not exist; modify needs the file",
-            request.destination
-        )
-    })?;
-    let declaration = read_declaration(source)?;
-    let module = module_of(&request.destination)?;
-    if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
-        && named != module
-    {
-        return Err(format!(
-            "changing the module from `{module}` to `{named}` is a move, not a field edit; this \
-             adapter rewrites the declaration in place"
-        ));
-    }
-    let current_kind = declaration.kind();
-    let kind = match request.registration.find_field(RegistrationField::Kind) {
-        FieldUpdate::Keep => current_kind.clone(),
-        FieldUpdate::Set(kind) if kind == current_kind => current_kind.clone(),
-        FieldUpdate::Set(kind) => {
-            return Err(format!(
-                "changing `kind` from `{current_kind}` to `{kind}` renames the face's identity; \
-                 that is a rename, not a field edit"
-            ));
-        }
-        FieldUpdate::Clear => return Err("`kind` cannot be empty; it names the face".to_owned()),
-    };
-    let mut registration = declaration.face.registration.clone();
-    for (field, _) in request.registration.named() {
-        let update = match request.registration.find_field(field) {
-            FieldUpdate::Keep => FieldUpdate::Keep,
-            FieldUpdate::Clear => FieldUpdate::Clear,
-            FieldUpdate::Set(value) => FieldUpdate::Set(value.to_owned()),
-        };
-        registration.set_normalized(field, update);
-    }
-    registration.set_normalized(RegistrationField::Kind, FieldUpdate::Set(kind.clone()));
-    let parent = parent_reference(request)?;
-    let replacement = render_block(&parent, &registration, &declaration.face.extras);
-    let mut updated = String::with_capacity(source.len() + replacement.len());
-    updated.push_str(&source[..declaration.block.start]);
-    updated.push_str(&replacement);
-    updated.push_str(&source[declaration.block.end..]);
-    let mut diagnostics = Vec::new();
-    if updated == source {
-        diagnostics.push(PlanDiagnostic {
-            severity: DiagnosticSeverity::Note,
-            message: "the request changes nothing this declaration carries".to_owned(),
-        });
-    }
-    let edits = if updated == source {
-        Vec::new()
-    } else {
-        vec![PlannedEdit {
-            start: declaration.block.start,
-            end: declaration.block.end,
-            replacement,
-        }]
-    };
-    Ok(FaceAuthoringPlan {
-        language: capabilities().language.clone(),
-        operation: AuthoringOperation::Modify,
-        files: vec![PlannedFile {
-            path: request.destination.clone(),
-            original: Some(source.to_owned()),
-            updated,
-            edits,
-            remove: false,
-        }],
-        diagnostics,
-        obligations: obligations(&kind, &registration),
-    })
+    kit_modify(&capabilities().language, request, &EDIT)
 }
-
-/// The module a destination file names (its stem).
-/// 目的地文件点名的模块（文件名主干）。
-fn module_of(destination: &str) -> Result<String, String> {
-    std::path::Path::new(destination)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(|stem| stem.replace(['-', '.'], "_"))
-        .ok_or_else(|| {
-            format!("`{destination}` has no file stem this adapter can name a module after")
-        })
-}
-
 /// The parent expression a C declaration can name.
 /// C 声明可以点名的父表达式。
 fn parent_reference(request: &FaceAuthoringRequest) -> Result<String, String> {

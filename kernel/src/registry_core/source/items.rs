@@ -13,7 +13,7 @@
 //! 执行面调用 [`item_symbols`]，而不是自己拼一份前缀词表——Studio 曾有这样一份词表，它既漏掉带
 //! 可见性的声明（`pub(crate) struct`），又把 `let` 绑定提升成符号（审计 `STU-S-06`）。
 
-use super::{function_symbols, is_ident_continue, is_ident_start, mask_non_code};
+use super::{function_symbols, is_ident_continue, leading_identifier, mask_non_code};
 
 /// One Rust item (declaration) discovered in a source file.
 /// 在源码文件中发现的一个 Rust 条目（声明）。
@@ -116,21 +116,21 @@ fn declaration_on_line(masked_line: &str) -> Option<(String, bool)> {
             rest = after.trim_start();
         }
     }
-    let (keyword, after) = identifier(rest)?;
+    let (keyword, after) = leading_identifier(rest)?;
     let rest = after.trim_start();
     if keyword == "fn" {
-        return Some((identifier(rest)?.0, true));
+        return Some((leading_identifier(rest)?.0, true));
     }
     if keyword == "const"
-        && let Some((next, after_next)) = identifier(rest)
+        && let Some((next, after_next)) = leading_identifier(rest)
         && next == "fn"
     {
-        return Some((identifier(after_next.trim_start())?.0, true));
+        return Some((leading_identifier(after_next.trim_start())?.0, true));
     }
     if !INTRODUCERS.contains(&keyword.as_str()) {
         return None;
     }
-    Some((identifier(rest)?.0, false))
+    Some((leading_identifier(rest)?.0, false))
 }
 
 /// The text after `keyword`, when `text` starts with that whole word.
@@ -141,22 +141,4 @@ fn keyword_rest<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
         return None;
     }
     Some(after)
-}
-
-/// The leading identifier of `text` and the text after it.
-/// `text` 开头的标识符与它之后的文本。
-fn identifier(text: &str) -> Option<(String, &str)> {
-    let mut characters = text.char_indices();
-    let (_, first) = characters.next()?;
-    if !is_ident_start(first) {
-        return None;
-    }
-    let mut end = first.len_utf8();
-    for (index, character) in characters {
-        if !is_ident_continue(character) {
-            break;
-        }
-        end = index + character.len_utf8();
-    }
-    Some((text[..end].to_owned(), &text[end..]))
 }

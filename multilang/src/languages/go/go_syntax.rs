@@ -111,6 +111,14 @@ pub(super) fn entries(body: &str) -> Result<Vec<(String, String)>, String> {
 
 /// Split one entry at its first `:` outside a string and outside brackets.
 /// 在一个条目的第一个不在字符串里、也不在括号里的 `:` 处切开。
+///
+/// Go's element syntax is not the Java-family one the kit's splitter serves: a raw string is
+/// backtick-quoted (and takes no escapes), an interpreted one still does, and the key and the value
+/// are separated by `:` rather than `=`. Reading it with the shared splitter would quietly accept
+/// `"a\"b"` inside backticks, so this stays the one language with its own loop.
+/// Go 的元素语法不是 kit 那个切分器服务的 Java 族语法：原始字符串用反引号引号（不认转义），解释型字符串仍
+/// 认转义，键与值之间是 `:` 而不是 `=`。用共享切分器去读它，会悄悄接受反引号里的 `"a\"b"`，因此它是唯一
+/// 保留自己循环的语言。
 fn split_entry(entry: &str) -> Option<(&str, &str)> {
     let mut depth = 0usize;
     let mut quote: Option<char> = None;

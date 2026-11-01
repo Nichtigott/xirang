@@ -46,7 +46,7 @@ fn a_go_constants_file_names_the_root_and_every_module() {
     assert!(
         text.contains(&format!(
             "const rootNodeID = \"{}\"",
-            hex(xirang_kernel::identity::root_node_id("gauge").into_bytes())
+            xirang_kernel::identity::root_node_id("gauge")
         )),
         "{text}"
     );

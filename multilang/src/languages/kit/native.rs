@@ -47,6 +47,32 @@ pub struct ObjectCommand<'a> {
     pub recipe: &'a Recipe,
 }
 
+/// How a cc-like compiler is invoked for one source: `-c` into the object file, then the SDK's,
+/// the build's and the recipe's include directories.
+/// 一份源码如何被 cc 风格编译器调用：`-c` 写到目标文件，随后是 SDK、构建与配方的三个包含目录。
+///
+/// C and C++ wrote this invocation out verbatim; the flags are the compiler's, not the language's,
+/// so the shape lives next to the driver that starts the process.
+/// C 与 C++ 曾一字不差地写过这次调用；这些开关属于编译器而不属于语言，因此形状住在启动进程的驱动旁边。
+pub fn object_command(compile: &ObjectCommand<'_>) -> (String, Vec<String>) {
+    let mut arguments = compile.recipe.arguments.clone();
+    arguments.push("-c".to_owned());
+    arguments.push(compile.source.display().to_string());
+    arguments.push("-o".to_owned());
+    arguments.push(compile.object.display().to_string());
+    arguments.push(format!("-I{}", compile.out_dir.display()));
+    for include in compile.include_dirs {
+        arguments.push(format!("-I{}", include.display()));
+    }
+    for include in &compile.recipe.includes {
+        arguments.push(format!(
+            "-I{}",
+            compile.package_root.join(include).display()
+        ));
+    }
+    (compile.recipe.program.clone(), arguments)
+}
+
 /// What one language tells the shared native driver.
 /// 一门语言告诉共享原生驱动的东西。
 pub struct NativeSpec {

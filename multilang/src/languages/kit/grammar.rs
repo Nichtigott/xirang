@@ -278,6 +278,88 @@ pub fn pairs(list: &str) -> String {
     }
 }
 
+/// Split one `name = value` element at its first `=` outside a string and outside brackets.
+/// 在一个 `name = value` 元素里、第一个不在字符串里也不在括号里的 `=` 处切开。
+///
+/// Java's annotation elements, C#'s attribute arguments and JavaScript's object literal keys are
+/// one grammar here: a quoted string may contain `=`, and a nested `{…}`/`(…)`/`[…]` may too. Three
+/// adapters wrote this loop out verbatim, so it has one home beside the list spellings it feeds.
+/// Java 的注解元素、C# 的特性实参与 JavaScript 的对象字面量键在这里是同一种语法：带引号的字符串里可以有
+/// `=`，嵌套的 `{…}`/`(…)`/`[…]` 里也可以。三个适配器曾一字不差地写过这个循环，因此它住在它所服务的
+/// 列表拼法旁边。
+pub fn split_entry(entry: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (at, character) in entry.char_indices() {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '{' | '(' | '[' => depth += 1,
+            '}' | ')' | ']' => depth = depth.saturating_sub(1),
+            '=' if depth == 0 => return Some((&entry[..at], &entry[at + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Split on top-level commas, keeping brackets and strings intact.
+/// 在顶层逗号处切开，括号与字符串保持完整。
+pub fn split_commas(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut start = 0usize;
+    for (at, character) in text.char_indices() {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '{' | '(' | '[' => depth += 1,
+            '}' | ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&text[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
+}
+
+/// Whether `text` is a dotted identifier chain: the one constant expression a compile-time carrier
+/// can name (a Java annotation element, a C# attribute argument).
+/// `text` 是否点号连接的标识符链：编译期载体能点名的唯一常量表达式（Java 注解元素、C# 特性实参）。
+pub fn dotted_identifier(text: &str) -> bool {
+    text.split('.').all(|segment| {
+        let mut characters = segment.chars();
+        characters
+            .next()
+            .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+            && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
+    })
+}
+
 /// The language-neutral payload of one declaration: where it hangs, what it registers, and the
 /// fields no request vocabulary names.
 /// 一条声明的语言中立载荷：它挂在哪里、注册什么，以及请求词汇点不到的那些字段。

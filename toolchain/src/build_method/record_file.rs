@@ -170,10 +170,7 @@ fn run_producer(
         .current_dir(package_root)
         .env("XIRANG_RECORD_FILE", file)
         .env("XIRANG_PACKAGE_ROOT", package_root)
-        .env(
-            "XIRANG_ROOT_NODE_ID",
-            hex(root_node_id(namespace).into_bytes()),
-        )
+        .env("XIRANG_ROOT_NODE_ID", root_node_id(namespace).to_string())
         .env("XIRANG_JAVA_SDK", xirang_multilang::sdk::java_include_dir())
         .env("XIRANG_GO_SDK", xirang_multilang::sdk::go_include_dir())
         .env(
@@ -376,16 +373,6 @@ fn parse_command(value: &str) -> Result<Vec<String>, String> {
         return Err("`[record] command` is empty; name the program to run".to_owned());
     }
     Ok(arguments)
-}
-
-/// Sixteen bytes as the lowercase hex the generated headers also spell them.
-/// 十六字节，按生成头同样使用的小写十六进制拼写。
-fn hex(bytes: [u8; 16]) -> String {
-    let mut text = String::with_capacity(32);
-    for byte in bytes {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
 }
 
 #[cfg(all(test, feature = "native-record"))]

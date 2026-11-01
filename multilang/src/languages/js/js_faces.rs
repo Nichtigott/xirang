@@ -16,6 +16,7 @@ use std::path::Path;
 
 use xirang_kernel::authoring::{FieldUpdate, RegistrationField};
 
+use crate::languages::kit::grammar::split_commas;
 use crate::source_scope::SourceScope;
 
 /// One `soil.face({…})` declaration, as the build reads it.
@@ -366,40 +367,6 @@ pub(super) fn array(raw: &str) -> Result<Vec<String>, String> {
         entries.push(string(entry)?);
     }
     Ok(entries)
-}
-
-/// Split on top-level commas, keeping brackets and strings intact.
-/// 在顶层逗号处切开，括号与字符串保持完整。
-fn split_commas(text: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    let mut start = 0usize;
-    for (at, character) in text.char_indices() {
-        if let Some(active) = quote {
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == active {
-                quote = None;
-            }
-            continue;
-        }
-        match character {
-            '"' | '\'' => quote = Some(character),
-            '[' | '{' | '(' => depth += 1,
-            ']' | '}' | ')' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                parts.push(&text[start..at]);
-                start = at + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(&text[start..]);
-    parts
 }
 
 /// Undo the escapes the renderer writes.

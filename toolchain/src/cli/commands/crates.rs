@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use super::resolve_package;
+use crate::build_method::host_needs_fragment;
 
 /// Write one line, turning an I/O failure into the string this command returns.
 /// 写一行，把 I/O 失败转成本命令返回的字符串。
@@ -316,11 +317,11 @@ pub(crate) fn crates(
     // 引用的分区不许改动宿主清单（rehearsal 门禁会逐字节比较它）。
     let host_dependencies: Vec<(String, String)> = planned
         .iter()
-        .filter(|planned| host_needs_fragment(&package_root, planned))
+        .filter(|planned| host_needs_fragment(&package_root, &planned.subtrees))
         .map(|planned| {
             (
                 planned.package.clone(),
-                relative_from(&package_root, &planned.directory),
+                crate::manifest_path::relative(&package_root, &planned.directory),
             )
         })
         .collect();
@@ -467,90 +468,4 @@ fn declaration_edit(
             "wrote the removal: this host declares no crates again".to_owned(),
         ),
     }
-}
-
-/// Whether a host face outside `planned`'s subtrees still spells `crate::<subtree>::…`.
-/// 宿主在 `planned` 的子树之外，是否仍写 `crate::<子树>::…`。
-///
-/// The read is textual and conservative: any `.rs` the host compiles counts (including tests), while
-/// files under the claimed subtree are skipped because the fragment compiles those. A false positive
-/// merely adds an unused dependency edge; a false negative would leave host code unable to resolve.
-/// 读取是文本的、偏保守的：宿主编译的每个 `.rs` 都算（含测试），而被认领子树下的文件跳过，因为那些由
-/// 碎片编译。误报只多一条未用依赖边；漏报会让宿主代码解析不到。
-fn host_needs_fragment(
-    package_root: &Path,
-    planned: &super::super::build_method::crate_plan::PlannedCrate,
-) -> bool {
-    let mut files = Vec::new();
-    visit_rust_files(&package_root.join("src"), &mut files);
-    visit_rust_files(&package_root.join("tests"), &mut files);
-    for subtree in &planned.subtrees {
-        let needle = format!("crate::{subtree}");
-        let claimed = format!("/{}/", subtree.replace("::", "/"));
-        for file in &files {
-            let relative = file
-                .strip_prefix(package_root)
-                .unwrap_or(file)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if relative.contains(&claimed) {
-                continue;
-            }
-            // The host **entry** keeps the author's `static_graft_plan!` text, including cuts for
-            // faces it just handed away; that text is data for the generator, not a type the host
-            // compiles. Only faces outside the entry create a dependency need.
-            // 宿主**入口**保留作者的 `static_graft_plan!` 文本，其中包括刚交出去的面的切口；那是给生成器的
-            // 数据，不是宿主编译的类型。只有入口之外的面才会产生依赖需求。
-            if file
-                .file_name()
-                .is_some_and(|name| name == "lib.rs" || name == "main.rs")
-            {
-                continue;
-            }
-            if std::fs::read_to_string(file).is_ok_and(|text| text.contains(&needle)) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Every `.rs` below `directory`, skipping build outputs and generated packages.
-/// `directory` 下每个 `.rs`，跳过构建产物与生成包。
-fn visit_rust_files(directory: &Path, files: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        if name == "target" || name == "crates" || name == ".xirang" {
-            continue;
-        }
-        if path.is_dir() {
-            visit_rust_files(&path, files);
-        } else if path.extension().is_some_and(|extension| extension == "rs") {
-            files.push(path);
-        }
-    }
-}
-
-/// `to` relative to `from`, with `/` separators, for a manifest `path = "…"`.
-/// `to` 相对 `from` 的路径，使用 `/` 分隔符，供清单的 `path = "…"` 使用。
-fn relative_from(from: &Path, to: &Path) -> String {
-    let from: Vec<_> = from.components().collect();
-    let to: Vec<_> = to.components().collect();
-    let common = from
-        .iter()
-        .zip(&to)
-        .take_while(|(left, right)| left == right)
-        .count();
-    let mut parts: Vec<String> =
-        std::iter::repeat_n("..".to_owned(), from.len() - common).collect();
-    parts.extend(
-        to[common..]
-            .iter()
-            .map(|component| component.as_os_str().to_string_lossy().into_owned()),
-    );
-    parts.join("/")
 }

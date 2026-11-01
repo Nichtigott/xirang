@@ -257,7 +257,6 @@ pub(crate) use parallel::{parallel_map_with_threshold, worker_budget};
 // 而未使用的再导出是本工作区拒绝的告警。
 #[cfg(feature = "cli")]
 pub(crate) use crate_facade::plan_facade;
-#[cfg(any(feature = "cli", feature = "studio", feature = "mcp"))]
 #[cfg(feature = "cli")]
 pub(crate) use crate_plan::partition_roots;
 #[cfg(feature = "cli")]
@@ -270,6 +269,8 @@ pub(crate) use crate_release::plan_ghost as plan_release_ghost;
 pub(crate) use crate_write::{
     guard_shape, revert_partition, write_partition, write_partition_with_host, write_release,
 };
+#[cfg(feature = "cli")]
+pub(crate) use crate_write_host_edges::host_needs_fragment;
 pub(crate) use discovery_node::{Node, relative_display};
 pub(crate) use entry::{HostEntry, host_entry_from_environment};
 pub(crate) use entry_default::default_entry_source;

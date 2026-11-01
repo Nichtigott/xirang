@@ -40,6 +40,13 @@ mod cargo_metadata;
 #[path = "source_layout.rs"]
 pub(crate) mod source_layout;
 
+// How a manifest spells a path is one rule with two writers — the crate split and the host edge —
+// and both surfaces reach it from here.
+// 清单如何拼写路径是一条规则、有两个写入方——crate 拆分与宿主依赖边——两个执行面都从这里取。
+#[cfg(any(feature = "cli", feature = "studio", feature = "mcp"))]
+#[path = "manifest_path.rs"]
+pub(crate) mod manifest_path;
+
 // The bridge from a face view to the project's object ledger. It reads and renders the project file
 // and nothing else, so `authoring` alone is the gate: the structural migration that renames a module
 // must update the mapping **inside the same transaction**, and that path must also compile for a

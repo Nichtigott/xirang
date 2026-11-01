@@ -8,6 +8,8 @@
 //! 这是 Java 适配器的文本那一半，与语言的字段表和渲染器分开，使每个文件都留在工作区的尺寸预算内。
 //! 扫描器只读适配器自己的渲染器写出的一个注解（或同形状的手写注解），读不回的形态按名拒绝。
 
+use crate::languages::kit::grammar::{split_commas, split_entry};
+
 /// The byte offset of the `)` matching the `(` at `open`.
 /// `open` 处 `(` 的配对 `)` 的字节偏移。
 pub(super) fn matching_paren(source: &str, open: usize) -> Result<usize, String> {
@@ -110,34 +112,6 @@ pub(super) fn entries(body: &str) -> Result<Vec<(String, String)>, String> {
     Ok(parsed)
 }
 
-/// Split one entry at its first `=` outside a string and outside brackets.
-/// 在一个条目的第一个不在字符串里、也不在括号里的 `=` 处切开。
-fn split_entry(entry: &str) -> Option<(&str, &str)> {
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    for (at, character) in entry.char_indices() {
-        if let Some(active) = quote {
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == active {
-                quote = None;
-            }
-            continue;
-        }
-        match character {
-            '"' | '\'' => quote = Some(character),
-            '{' | '(' | '[' => depth += 1,
-            '}' | ')' | ']' => depth = depth.saturating_sub(1),
-            '=' if depth == 0 => return Some((&entry[..at], &entry[at + 1..])),
-            _ => {}
-        }
-    }
-    None
-}
-
 /// One Java string literal, refusing anything else.
 /// 一个 Java 字符串字面量，其它一律拒绝。
 pub(super) fn string(raw: &str) -> Result<String, String> {
@@ -186,38 +160,4 @@ pub(super) fn array(raw: &str) -> Result<Vec<String>, String> {
         values.push(string(entry)?);
     }
     Ok(values)
-}
-
-/// Split on top-level commas, keeping braces and strings intact.
-/// 在顶层逗号处切开，花括号与字符串保持完整。
-fn split_commas(text: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    let mut start = 0usize;
-    for (at, character) in text.char_indices() {
-        if let Some(active) = quote {
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == active {
-                quote = None;
-            }
-            continue;
-        }
-        match character {
-            '"' | '\'' => quote = Some(character),
-            '{' | '(' | '[' => depth += 1,
-            '}' | ')' | ']' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                parts.push(&text[start..at]);
-                start = at + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(&text[start..]);
-    parts
 }

@@ -31,6 +31,7 @@
 //! 就是构建已经从"原始文件集合 + 每个记录文件的字节"算出来的那一个。`record.tsv` **最后**写，携带每份载荷的名字、
 //! 字节数与 sha256——读取方自己重算，因此被截断、损坏或只发布了一半的记录会被重建而不是被信任。
 
+use super::discovery_cache::{escape_field, unescape_field};
 use std::path::{Path, PathBuf};
 
 use super::write_if_changed;
@@ -167,21 +168,21 @@ pub(crate) fn write_faces_manifest(
             "face\t{}\t{}\t{parent}\t{owns}\t{}\t{line}\t{}\t{}\t{}\t{}",
             facts.relative,
             facts.id,
-            escape_column(cfg),
+            escape_field(cfg),
             if facts.written_as_literal {
                 "literal"
             } else {
                 "macro"
             },
-            escape_column(&facts.kind),
-            escape_column(
+            escape_field(&facts.kind),
+            escape_field(
                 facts
                     .fields
                     .get("preset")
                     .map(|(_, raw)| raw.as_str())
                     .unwrap_or("")
             ),
-            escape_column(
+            escape_field(
                 facts
                     .fields
                     .get("parts")
@@ -255,31 +256,15 @@ pub(crate) fn read_face_rows(out_dir: &std::path::Path) -> Result<Vec<FaceRow>, 
             id: columns[1].to_owned(),
             parent: columns[2].to_owned(),
             owns_registry: columns[3] == "true",
-            cfg: (!columns[4].is_empty()).then(|| unescape_column(columns[4])),
+            cfg: (!columns[4].is_empty()).then(|| unescape_field(columns[4])),
             line: columns[5].parse().unwrap_or_default(),
             written_as_literal: columns[6] == "literal",
-            kind: unescape_column(columns[7]),
-            preset: unescape_column(columns[8]),
-            parts: unescape_column(columns[9]),
+            kind: unescape_field(columns[7]),
+            preset: unescape_field(columns[8]),
+            parts: unescape_field(columns[9]),
         });
     }
     Ok(rows)
-}
-
-/// The inverse of [`escape_column`].
-/// [`escape_column`] 的逆。
-fn unescape_column(text: &str) -> String {
-    text.replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace("\\\\", "\\")
-}
-
-/// A tab or newline inside a column would move the columns, so both are escaped.
-/// 列里的制表符或换行会挪动列，因此两者都转义。
-fn escape_column(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('\t', "\\t")
-        .replace('\n', "\\n")
 }
 
 /// Where a tree's record lives: `<target>/xirang/records/<tree-fingerprint>/<namespace>/`.

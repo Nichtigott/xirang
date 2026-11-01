@@ -22,10 +22,13 @@ use std::sync::OnceLock;
 
 use xirang_kernel::authoring::{
     AuthoringOperation, DiagnosticSeverity, FaceAuthoringPlan, FaceAuthoringRequest, FieldUpdate,
-    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedEdit, PlannedFile,
-    RegistrationField, RegistrationUpdate, ValidationObligation,
+    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedFile, RegistrationField,
+    RegistrationUpdate, ValidationObligation,
 };
 
+use crate::languages::kit::adapter::{
+    EditHooks, Editable, destination_module, modify as kit_modify,
+};
 use crate::languages::kit::grammar::{
     FaceGrammar, FieldSpec, Role, ValueStyle, obligations as stated_obligations, quote, text_field,
 };
@@ -395,7 +398,7 @@ fn create(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
             request.destination
         ));
     }
-    let module = module_of(&request.destination)?;
+    let module = destination_module(&request.destination)?;
     if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
         && named != module
     {
@@ -450,115 +453,37 @@ fn create(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
         obligations: obligations(&kind, &registration),
     })
 }
+impl Editable for CppDeclaration {
+    fn face(&self) -> &crate::languages::kit::grammar::DeclaredFace {
+        &self.face
+    }
+
+    fn arguments(&self) -> std::ops::Range<usize> {
+        self.expression.clone()
+    }
+
+    fn rendered(&self, parent: &str, registration: &RegistrationUpdate) -> String {
+        let expression =
+            render_expression(&self.business_type, parent, registration, &self.face.extras);
+        match self.spelling {
+            Spelling::Marked => expression,
+            Spelling::Compat => format!("({expression})"),
+        }
+    }
+}
+
+const EDIT: EditHooks<CppDeclaration> = EditHooks {
+    read: read_declaration,
+    parent: parent_constant,
+    obligations,
+    carrier: Some("business type"),
+};
 
 /// Modify one existing declaration from a request, preserving everything the request does not name.
 /// 按请求修改一条已有声明，保留请求没有点名的一切。
 fn modify(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
-    let source = request.source_context.source_text().ok_or_else(|| {
-        format!(
-            "{} does not exist; modify needs the file",
-            request.destination
-        )
-    })?;
-    let declaration = read_declaration(source)?;
-    let module = module_of(&request.destination)?;
-    if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
-        && named != module
-    {
-        return Err(format!(
-            "changing the module from `{module}` to `{named}` is a move, not a field edit; this \
-             adapter rewrites the declaration in place"
-        ));
-    }
-    let current_kind = declaration.kind();
-    let kind = match request.registration.find_field(RegistrationField::Kind) {
-        FieldUpdate::Keep => current_kind.clone(),
-        FieldUpdate::Set(kind) if kind == current_kind => current_kind.clone(),
-        FieldUpdate::Set(kind) => {
-            return Err(format!(
-                "changing `kind` from `{current_kind}` to `{kind}` renames the business type and \
-                 the face's identity; that is a rename, not a field edit"
-            ));
-        }
-        FieldUpdate::Clear => {
-            return Err("`kind` cannot be empty; it names the face".to_owned());
-        }
-    };
-    // Start from what the source says, then apply only the fields the request names: a field it
-    // omits keeps its current value, which is the difference between `Keep` and `Clear`.
-    // 从源码读到的内容开始，只应用请求点名的字段：请求省略的字段保留当前值，这就是 `Keep` 与 `Clear`
-    // 的区别。
-    let mut registration = declaration.face.registration.clone();
-    for (field, _) in request.registration.named() {
-        let update = match request.registration.find_field(field) {
-            FieldUpdate::Keep => FieldUpdate::Keep,
-            FieldUpdate::Clear => FieldUpdate::Clear,
-            FieldUpdate::Set(value) => FieldUpdate::Set(value.to_owned()),
-        };
-        registration.set_normalized(field, update);
-    }
-    registration.set_normalized(RegistrationField::Kind, FieldUpdate::Set(kind.clone()));
-    // The parent travels on the request, not in the sparse field map: a modify request that does
-    // not move the face still has to name the parent constant for the re-rendered expression.
-    // 父随请求传递，不在稀疏字段表里：不移动面的修改请求仍须为重新渲染的表达式点名父常量。
-    let parent = parent_constant(request)?;
-    let replacement = render_expression(
-        &declaration.business_type,
-        &parent,
-        &registration,
-        &declaration.face.extras,
-    );
-    let replacement = match declaration.spelling {
-        Spelling::Marked => replacement,
-        Spelling::Compat => format!("({replacement})"),
-    };
-    let mut updated = String::with_capacity(source.len() + replacement.len());
-    updated.push_str(&source[..declaration.expression.start]);
-    updated.push_str(&replacement);
-    updated.push_str(&source[declaration.expression.end..]);
-    let mut diagnostics = Vec::new();
-    if updated == source {
-        diagnostics.push(PlanDiagnostic {
-            severity: DiagnosticSeverity::Note,
-            message: "the request changes nothing this declaration carries".to_owned(),
-        });
-    }
-    let edits = if updated == source {
-        Vec::new()
-    } else {
-        vec![PlannedEdit {
-            start: declaration.expression.start,
-            end: declaration.expression.end,
-            replacement,
-        }]
-    };
-    Ok(FaceAuthoringPlan {
-        language: capabilities().language.clone(),
-        operation: AuthoringOperation::Modify,
-        files: vec![PlannedFile {
-            path: request.destination.clone(),
-            original: Some(source.to_owned()),
-            updated,
-            edits,
-            remove: false,
-        }],
-        diagnostics,
-        obligations: obligations(&kind, &registration),
-    })
+    kit_modify(&capabilities().language, request, &EDIT)
 }
-
-/// The module a destination file names: its stem, with `-` and `.` folded to `_`.
-/// 目的地文件点名的模块：文件 stem，`-` 与 `.` 折成 `_`。
-fn module_of(destination: &str) -> Result<String, String> {
-    std::path::Path::new(destination)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(|stem| stem.replace(['-', '.'], "_"))
-        .ok_or_else(|| {
-            format!("`{destination}` has no file stem this adapter can name a module after")
-        })
-}
-
 /// The parent constant a C++ declaration can name.
 /// C++ 声明可以点名的父常量。
 fn parent_constant(request: &FaceAuthoringRequest) -> Result<String, String> {

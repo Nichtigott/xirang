@@ -6,6 +6,10 @@
 //! 这些钉子需要真实的 C++ 声明，因此把混合语言示例复制到检出之外；与 `apply_move_tests` 分开，
 //! 让每个文件都守住自己的尺寸预算。
 
+// The JSON literals live in the C++-gated pins below; an ungated import is an unused one in a
+// build without that language.
+// JSON 字面量住下面那些门控在 C++ 后的钉子里；不加门控的导入在不带该语言的构建里是未使用导入。
+#[cfg(feature = "lang-cpp")]
 use serde_json::json;
 
 /// Copy a fixture tree so an external move can be exercised outside the checkout.

@@ -233,7 +233,7 @@ pub(crate) fn usages(root: &Path, arguments: &Value) -> Result<String, String> {
 
 /// The identifier-ish tokens of a manifest text field.
 /// 一个清单文本字段里的标识符式记号。
-fn tokens(text: &str) -> BTreeSet<String> {
+pub(super) fn tokens(text: &str) -> BTreeSet<String> {
     text.split(|character: char| {
         !(character.is_alphanumeric() || character == '_' || character == '.' || character == ':')
     })

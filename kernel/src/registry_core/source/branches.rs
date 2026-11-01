@@ -28,7 +28,7 @@
 //! 本模块报的是**事实**而不是裁定：它说哪些臂被判定、本树拼出了哪些路径，而跨文件的连接由调用方做。
 //! 那份连接（以及它陈述的边界）是执行面的事，与可达性那一栏完全相同。
 
-use super::{SourceFunction, is_ident_continue, is_ident_start};
+use super::{SourceFunction, is_ident_continue, is_ident_start, leading_identifier};
 
 /// The derives that cannot build a value out of nothing.
 /// 无法凭空造出值的派生。
@@ -202,24 +202,6 @@ fn strip_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
         return None;
     }
     Some(after)
-}
-
-/// The leading identifier of `text` and the text after it.
-/// `text` 开头的标识符与它之后的文本。
-fn leading_identifier(text: &str) -> Option<(String, &str)> {
-    let mut characters = text.char_indices();
-    let (_, first) = characters.next()?;
-    if !is_ident_start(first) {
-        return None;
-    }
-    let mut end = first.len_utf8();
-    for (index, character) in characters {
-        if !is_ident_continue(character) {
-            break;
-        }
-        end = index + character.len_utf8();
-    }
-    Some((text[..end].to_owned(), &text[end..]))
 }
 
 /// What one open brace region is.

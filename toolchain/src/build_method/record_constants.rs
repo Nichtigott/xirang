@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 
 #[cfg(any(feature = "lang-go", feature = "lang-java", feature = "lang-csharp"))]
-use xirang_kernel::identity::root_node_id;
+use xirang_kernel::identity::{NodeId, root_node_id};
 
 /// What one package's `[record]` table asks the build to generate.
 /// 一个包的 `[record]` 表让构建生成的东西。
@@ -101,7 +101,7 @@ fn render_go(
     text.push_str(&format!("package {package}\n\n"));
     text.push_str(&format!(
         "const rootNodeID = \"{}\"\n",
-        hex(root_node_id(namespace).into_bytes())
+        root_node_id(namespace)
     ));
     for (module, id) in &entries {
         if module.is_empty() {
@@ -110,7 +110,7 @@ fn render_go(
         text.push_str(&format!(
             "\n// {module}\nconst {} = \"{}\"\n",
             xirang_multilang::languages::go::names::face_constant(module),
-            hex(*id)
+            NodeId::from_raw(*id)
         ));
     }
     Ok(text)
@@ -177,12 +177,12 @@ fn render_java(
     text.push_str("public final class Faces {\n");
     text.push_str(&format!(
         "    /** The registry root. */\n    public static final String ROOT_NODE_ID = \"{}\";\n",
-        hex(root_node_id(namespace).into_bytes())
+        root_node_id(namespace)
     ));
     for (name, id) in &entries {
         text.push_str(&format!(
             "\n    public static final String {name} = \"{}\";\n",
-            hex(*id)
+            NodeId::from_raw(*id)
         ));
     }
     text.push_str("\n    private Faces() {}\n}\n");
@@ -233,12 +233,12 @@ fn render_csharp(
     text.push_str("internal static class XirangFaces\n{\n");
     text.push_str(&format!(
         "    internal const string RootNodeId = \"{}\";\n",
-        hex(root_node_id(namespace).into_bytes())
+        root_node_id(namespace)
     ));
     for (name, id) in &entries {
         text.push_str(&format!(
             "\n    internal const string {name} = \"{}\";\n",
-            hex(*id)
+            NodeId::from_raw(*id)
         ));
     }
     text.push_str("}\n");
@@ -311,14 +311,6 @@ fn go_package(target: &Path) -> Result<String, String> {
 /// Sixteen bytes as lowercase hex, the spelling the record files and headers also use.
 /// 十六字节的小写十六进制，记录文件与头文件同样使用的拼写。
 #[cfg(any(feature = "lang-go", feature = "lang-java", feature = "lang-csharp"))]
-fn hex(bytes: [u8; 16]) -> String {
-    let mut text = String::with_capacity(32);
-    for byte in bytes {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
-}
-
 #[cfg(test)]
 #[path = "record_constants_tests.rs"]
 mod record_constants_tests;

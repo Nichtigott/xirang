@@ -17,6 +17,7 @@
 //!
 //! online: impact is a transitive property of the call graph, and the build publishes no call edges.
 
+use super::usages::tokens;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 
@@ -290,17 +291,6 @@ fn number(arguments: &Value, key: &str, fallback: usize, ceiling: usize) -> usiz
         .get(key)
         .and_then(Value::as_u64)
         .map_or(fallback, |value| (value as usize).clamp(1, ceiling))
-}
-
-/// The identifier-ish tokens of a manifest text field.
-/// 一个清单文本字段里的标识符式记号。
-fn tokens(text: &str) -> BTreeSet<String> {
-    text.split(|character: char| {
-        !(character.is_alphanumeric() || character == '_' || character == '.' || character == ':')
-    })
-    .filter(|token| token.len() > 1 && token.chars().any(|c| c.is_alphanumeric()))
-    .map(str::to_owned)
-    .collect()
 }
 
 #[cfg(test)]

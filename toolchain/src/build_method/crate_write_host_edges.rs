@@ -73,23 +73,3 @@ pub(super) fn relative(root: &Path, path: &Path) -> String {
         .to_string_lossy()
         .replace('\\', "/")
 }
-
-/// `to` relative to `from`, with `/` separators (for a manifest `path`).
-/// `to` 相对 `from` 的路径，使用 `/` 分隔符（供清单 `path` 用）。
-pub(super) fn relative_from_path(from: &Path, to: &Path) -> String {
-    let from: Vec<_> = from.components().collect();
-    let to: Vec<_> = to.components().collect();
-    let common = from
-        .iter()
-        .zip(&to)
-        .take_while(|(left, right)| left == right)
-        .count();
-    let mut parts: Vec<String> =
-        std::iter::repeat_n("..".to_owned(), from.len() - common).collect();
-    parts.extend(
-        to[common..]
-            .iter()
-            .map(|component| component.as_os_str().to_string_lossy().into_owned()),
-    );
-    parts.join("/")
-}

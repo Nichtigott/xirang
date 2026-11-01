@@ -25,7 +25,7 @@ use super::crate_members;
 use super::crate_plan::{GENERATED_MARKER, PlannedCrate};
 use super::crate_release::ReleasePackage;
 use super::crate_write_backup::Backup;
-use super::crate_write_host_edges::{relative, relative_from_path};
+use super::crate_write_host_edges::relative;
 use super::discovery_cache::write_if_changed_at;
 
 /// What one write pass changed, for the reply the caller renders.
@@ -377,7 +377,7 @@ pub(crate) fn write_release(
         .map(|package| {
             (
                 package.package.clone(),
-                relative_from_path(host_root, &package.directory),
+                crate::manifest_path::relative(host_root, &package.directory),
             )
         })
         .collect();

@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::external_faces::Recipe;
-use crate::languages::kit::native::{NativeSpec, ObjectCommand};
+use crate::languages::kit::native::NativeSpec;
 
 pub mod names;
 
@@ -48,7 +48,7 @@ pub const SPEC: NativeSpec = NativeSpec {
     default_recipe,
     include_dirs,
     skip_directories: &["target", ".git", "crates", "node_modules", ".cargo"],
-    object_command,
+    object_command: crate::languages::kit::native::object_command,
 };
 
 fn default_recipe(_sources: &[String]) -> (String, Vec<String>) {
@@ -57,25 +57,6 @@ fn default_recipe(_sources: &[String]) -> (String, Vec<String>) {
 
 fn include_dirs() -> Vec<PathBuf> {
     vec![crate::sdk::c_include_dir()]
-}
-
-fn object_command(compile: &ObjectCommand<'_>) -> (String, Vec<String>) {
-    let mut arguments = compile.recipe.arguments.clone();
-    arguments.push("-c".to_owned());
-    arguments.push(compile.source.display().to_string());
-    arguments.push("-o".to_owned());
-    arguments.push(compile.object.display().to_string());
-    arguments.push(format!("-I{}", compile.out_dir.display()));
-    for include in compile.include_dirs {
-        arguments.push(format!("-I{}", include.display()));
-    }
-    for include in &compile.recipe.includes {
-        arguments.push(format!(
-            "-I{}",
-            compile.package_root.join(include).display()
-        ));
-    }
-    (compile.recipe.program.clone(), arguments)
 }
 
 /// Does this source declare a face?

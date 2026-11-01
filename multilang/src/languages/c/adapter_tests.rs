@@ -82,7 +82,7 @@ fn a_generated_declaration_reads_back_to_the_same_fields() {
         .expect("the plan");
     let declaration =
         read_declaration(&plan.files[0].updated).expect("the generated source reads back");
-    assert_eq!(declaration.kind(), "Gauge");
+    assert_eq!(declaration.face.kind(), "Gauge");
     assert!(
         registration.agrees_with(&declaration.face.registration),
         "the round trip changed a field:\n{}\n{:?}",
@@ -189,7 +189,7 @@ fn the_committed_example_reads_back_to_the_same_declaration() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/c-gauge/gauge");
     let source = std::fs::read_to_string(root.join("native/gauge/gauge.c")).expect("the example");
     let declaration = read_declaration(&source).expect("the example's declaration");
-    assert_eq!(declaration.kind(), "Gauge");
+    assert_eq!(declaration.face.kind(), "Gauge");
     assert_eq!(declaration.face.parent, "XIRANG_FACES_PANEL");
 }
 

@@ -299,6 +299,29 @@ fn functions_from_masked(source: &str, masked: &str) -> Vec<SourceFunction> {
     }
     result
 }
+/// The leading identifier of `text` and the text after it.
+/// `text` 开头的标识符与它之后的文本。
+///
+/// `items` and `branches` both read one identifier off a masked line before deciding what it means;
+/// the lexing rule belongs beside the character tests it uses, so the two cannot disagree about what
+/// counts as an identifier.
+/// `items` 与 `branches` 都要在判定含义之前先从掩码行上读出一个标识符；词法规则住在它所用的字符判定旁边，
+/// 这样两者对"什么算标识符"不会给出不同答案。
+fn leading_identifier(text: &str) -> Option<(String, &str)> {
+    let mut characters = text.char_indices();
+    let (_, first) = characters.next()?;
+    if !is_ident_start(first) {
+        return None;
+    }
+    let mut end = first.len_utf8();
+    for (index, character) in characters {
+        if !is_ident_continue(character) {
+            break;
+        }
+        end = index + character.len_utf8();
+    }
+    Some((text[..end].to_owned(), &text[end..]))
+}
 
 fn is_ident_start(character: char) -> bool {
     character.is_alphabetic() || character == '_'

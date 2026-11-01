@@ -18,11 +18,14 @@ use std::sync::OnceLock;
 
 use xirang_kernel::authoring::{
     AuthoringOperation, DiagnosticSeverity, FaceAuthoringPlan, FaceAuthoringRequest, FieldUpdate,
-    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedEdit, PlannedFile,
-    RegistrationField, RegistrationUpdate, ValidationObligation,
+    LanguageCapabilities, ParentReference, PlanDiagnostic, PlannedFile, RegistrationField,
+    RegistrationUpdate, ValidationObligation,
 };
 
-use crate::languages::kit::adapter::{AdapterSpec, capabilities as kit_capabilities};
+use crate::languages::kit::adapter::{
+    AdapterSpec, EditHooks, Editable, capabilities as kit_capabilities, destination_module,
+    modify as kit_modify,
+};
 use crate::languages::kit::grammar::{
     DeclaredFace, FaceGrammar, FieldSpec, Role, ValueStyle, obligations as stated_obligations,
 };
@@ -346,7 +349,7 @@ pub(crate) fn create_for(
             request.destination
         ));
     }
-    let module = module_of(&request.destination)?;
+    let module = destination_module(&request.destination)?;
     if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
         && named != module
     {
@@ -400,100 +403,35 @@ pub(crate) fn create_for(
 fn modify(request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
     modify_for(&capabilities().language, request)
 }
+impl Editable for JsDeclaration {
+    fn face(&self) -> &DeclaredFace {
+        &self.face
+    }
 
-/// Modify one existing declaration for a language that shares this carrier.
-/// 为共用本载体的语言修改一条已有声明。
+    fn arguments(&self) -> std::ops::Range<usize> {
+        self.object.clone()
+    }
+
+    fn rendered(&self, parent: &str, registration: &RegistrationUpdate) -> String {
+        render_object(parent, registration, &self.face.extras)
+    }
+}
+
+const EDIT: EditHooks<JsDeclaration> = EditHooks {
+    read: read_declaration,
+    parent: parent_reference,
+    obligations,
+    carrier: Some("class"),
+};
+
+/// Modify one existing declaration for `language`, preserving everything the request does not name.
+/// 按 `language` 修改一条已有声明，保留请求没有点名的一切。
 pub(crate) fn modify_for(
     language: &xirang_kernel::interchange::LanguageId,
     request: &FaceAuthoringRequest,
 ) -> Result<FaceAuthoringPlan, String> {
-    let source = request.source_context.source_text().ok_or_else(|| {
-        format!(
-            "{} does not exist; modify needs the file",
-            request.destination
-        )
-    })?;
-    let declaration = read_declaration(source)?;
-    let module = module_of(&request.destination)?;
-    if let FieldUpdate::Set(named) = request.registration.find_field(RegistrationField::Module)
-        && named != module
-    {
-        return Err(format!(
-            "changing the module from `{module}` to `{named}` is a move, not a field edit; this \
-             adapter rewrites the declaration in place"
-        ));
-    }
-    let current_kind = declaration.kind();
-    let kind = match request.registration.find_field(RegistrationField::Kind) {
-        FieldUpdate::Keep => current_kind.clone(),
-        FieldUpdate::Set(kind) if kind == current_kind => current_kind.clone(),
-        FieldUpdate::Set(kind) => {
-            return Err(format!(
-                "changing `kind` from `{current_kind}` to `{kind}` renames the class and the face's \
-                 identity; that is a rename, not a field edit"
-            ));
-        }
-        FieldUpdate::Clear => return Err("`kind` cannot be empty; it names the face".to_owned()),
-    };
-    let mut registration = declaration.face.registration.clone();
-    for (field, _) in request.registration.named() {
-        let update = match request.registration.find_field(field) {
-            FieldUpdate::Keep => FieldUpdate::Keep,
-            FieldUpdate::Clear => FieldUpdate::Clear,
-            FieldUpdate::Set(value) => FieldUpdate::Set(value.to_owned()),
-        };
-        registration.set_normalized(field, update);
-    }
-    registration.set_normalized(RegistrationField::Kind, FieldUpdate::Set(kind.clone()));
-    let parent = parent_reference(request)?;
-    let replacement = render_object(&parent, &registration, &declaration.face.extras);
-    let mut updated = String::with_capacity(source.len() + replacement.len());
-    updated.push_str(&source[..declaration.object.start]);
-    updated.push_str(&replacement);
-    updated.push_str(&source[declaration.object.end..]);
-    let mut diagnostics = Vec::new();
-    if updated == source {
-        diagnostics.push(PlanDiagnostic {
-            severity: DiagnosticSeverity::Note,
-            message: "the request changes nothing this declaration carries".to_owned(),
-        });
-    }
-    let edits = if updated == source {
-        Vec::new()
-    } else {
-        vec![PlannedEdit {
-            start: declaration.object.start,
-            end: declaration.object.end,
-            replacement,
-        }]
-    };
-    Ok(FaceAuthoringPlan {
-        language: language.clone(),
-        operation: AuthoringOperation::Modify,
-        files: vec![PlannedFile {
-            path: request.destination.clone(),
-            original: Some(source.to_owned()),
-            updated,
-            edits,
-            remove: false,
-        }],
-        diagnostics,
-        obligations: obligations(&kind, &registration),
-    })
+    kit_modify(language, request, &EDIT)
 }
-
-/// The module a destination file names.
-/// 目的地文件点名的模块。
-fn module_of(destination: &str) -> Result<String, String> {
-    std::path::Path::new(destination)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(|stem| stem.replace(['-', '.'], "_"))
-        .ok_or_else(|| {
-            format!("`{destination}` has no file stem this adapter can name a module after")
-        })
-}
-
 /// The parent expression a JavaScript declaration can name.
 /// JavaScript 声明可以点名的父表达式。
 fn parent_reference(request: &FaceAuthoringRequest) -> Result<String, String> {

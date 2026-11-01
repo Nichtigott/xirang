@@ -43,6 +43,9 @@ mod grafts;
 #[path = "apply_move_rebind.rs"]
 mod rebind;
 
+#[path = "apply_move_endpoint.rs"]
+mod endpoint;
+
 #[path = "apply_move_references.rs"]
 mod references;
 

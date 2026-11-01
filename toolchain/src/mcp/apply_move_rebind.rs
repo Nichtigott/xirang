@@ -12,6 +12,7 @@
 //! 文字：必须用解析器报告的**跨度**，从那几个字节判断形式，再把新身份按同一形式写回。改完重新解析
 //! 文件并核对端点解析到预期身份，因此写出构建解析不了的路径会在落盘前被拒绝。
 
+use super::endpoint::normalized;
 use std::path::Path;
 
 use xirang_kernel::syntax::{GraftEndpointSpan, GraftSpans, SyntaxLocation};
@@ -320,15 +321,4 @@ fn offset(text: &str, location: &SyntaxLocation) -> Option<usize> {
 fn names(view: &FaceView, endpoint: &str) -> bool {
     let wanted = format!("{}::NODE_ID", view.module);
     normalized(endpoint) == wanted
-}
-
-/// An endpoint without `crate::`/`self::`, matching the parser's comparison.
-/// 去掉 `crate::`/`self::` 的端点，与解析器的比较一致。
-fn normalized(endpoint: &str) -> String {
-    endpoint
-        .trim()
-        .strip_prefix("crate::")
-        .or_else(|| endpoint.trim().strip_prefix("self::"))
-        .unwrap_or(endpoint.trim())
-        .to_owned()
 }
