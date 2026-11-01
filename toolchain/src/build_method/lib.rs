@@ -25,6 +25,13 @@ mod build_input;
 #[path = "contracts.rs"]
 mod contracts;
 
+// Fixtures the test modules share. It is a support module, not a test module: it carries no test
+// of its own, so the test-shape gate does not judge it.
+// 各测试模块共享的夹具。它是支撑模块而不是测试模块：自身不含测试，因此测试形状门禁不判它。
+#[cfg(test)]
+#[path = "test_support.rs"]
+mod test_support;
+
 #[path = "partition_roots.rs"]
 pub(crate) mod partition_roots;
 

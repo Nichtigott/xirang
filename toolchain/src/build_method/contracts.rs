@@ -433,8 +433,7 @@ fn unescaped(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::build_method::test_support::temporary_directory;
 
     /// Every `require_*` call is read, and neither a comment nor a nested call can
     /// invent or hide a requirement.
@@ -553,19 +552,5 @@ mod tests {
         fs::create_dir_all(path.parent().expect("fixture parent"))
             .expect("temporary fixture directory");
         fs::write(path, source).expect("temporary fixture source");
-    }
-
-    fn temporary_directory(label: &str) -> PathBuf {
-        crate::build_method::registry_identity::freeze_test_namespace();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after Unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "xirang-build-{label}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("temporary fixture root");
-        path
     }
 }

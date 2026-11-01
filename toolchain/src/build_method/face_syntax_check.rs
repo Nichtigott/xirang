@@ -477,10 +477,9 @@ pub(crate) fn unplaced_face_errors(unplaced: &[UnplacedFace]) -> BuildDiagnostic
 #[cfg(test)]
 mod tests {
     use super::{aggregate_parent_macro_errors, aggregate_registry_rule_errors};
+    use crate::build_method::test_support::temporary_directory;
     use crate::build_method::{Node, SourceScope};
     use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     /// A face that owns a registry and names no rule reads the rule module the generated tree mounts
     /// beside it (`super::registry_rule`). When that folder is gone the face cannot be compiled by
@@ -726,19 +725,5 @@ mod tests {
         fs::create_dir_all(path.parent().expect("fixture parent"))
             .expect("temporary fixture directory");
         fs::write(path, source).expect("temporary registration face");
-    }
-
-    fn temporary_directory(label: &str) -> PathBuf {
-        crate::build_method::registry_identity::freeze_test_namespace();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after Unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "xirang-build-{label}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("temporary fixture root");
-        path
     }
 }

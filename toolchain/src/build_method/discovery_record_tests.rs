@@ -15,7 +15,7 @@ fn layout_of(root: &std::path::Path, src: &std::path::Path) -> crate::source_lay
 }
 use std::path::{Path, PathBuf};
 
-use crate::build_method::renderer::test_support::temporary_directory;
+use crate::build_method::test_support::temporary_directory;
 
 use super::{
     PAYLOADS, PUBLISH_PAUSED, SCHEMA, copy_products, directory, load, publish, read_file_rows,

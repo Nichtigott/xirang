@@ -37,38 +37,3 @@ pub(crate) use tree::ShapeRender;
 
 #[path = "renderer/owners.rs"]
 pub(super) mod owners;
-
-/// Fixtures shared by the renderer's child test modules.
-/// 渲染器各子模块测试共享的夹具。
-#[cfg(test)]
-pub(crate) mod test_support {
-    use std::fs;
-    use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    pub(crate) fn write_registry(path: &Path, macro_name: &str, kind: &str, parent: &str) {
-        fs::create_dir_all(path.parent().expect("fixture parent"))
-            .expect("temporary fixture directory");
-        fs::write(
-            path,
-            format!(
-                "crate::{macro_name}! {{ kind: {kind}, needs_registry: true, parent: {parent}, }}"
-            ),
-        )
-        .expect("temporary registry face");
-    }
-
-    pub(crate) fn temporary_directory(label: &str) -> PathBuf {
-        crate::build_method::registry_identity::freeze_test_namespace();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after Unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "xirang-build-{label}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("temporary fixture root");
-        path
-    }
-}

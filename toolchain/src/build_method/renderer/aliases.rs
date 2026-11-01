@@ -98,7 +98,7 @@ fn visit_object_aliases(src: &Path, nodes: &[Node], names: &mut BTreeSet<String>
 mod tests {
     use super::{render_object_aliases, run_method_path};
     use crate::build_method::Node;
-    use crate::build_method::renderer::test_support::{temporary_directory, write_registry};
+    use crate::build_method::test_support::{temporary_directory, write_registry};
     use std::fs;
 
     #[test]

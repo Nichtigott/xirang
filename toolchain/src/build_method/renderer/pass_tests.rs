@@ -12,7 +12,7 @@ use crate::build_method::Node;
 use crate::build_method::SourceScope;
 use crate::build_method::diagnostics::BuildDiagnostics;
 use crate::build_method::registry_syntax::GraftSyntax;
-use crate::build_method::renderer::test_support::{temporary_directory, write_registry};
+use crate::build_method::test_support::{temporary_directory, write_registry};
 use std::fs;
 use std::path::Path;
 use xirang_kernel::registry_core::syntax::SyntaxLocation;
