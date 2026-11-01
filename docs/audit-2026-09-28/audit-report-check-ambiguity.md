@@ -41,7 +41,7 @@
 ## 3. 与合并方案一致 —— **通过**
 
 - **七个模块名逐名一致**：报告 §7.8 与 `audit-publish-surface-merge-plan.md` §2 表（`:17-20`）都是 `build`→**`build_time`**、`run`→**`runtime`**、`plugins`→**`plugin_host`**，`call_evidence`/`studio`/`mcp`/`cli` **保留**；`:62-65` 的并入表把四个源 crate 的模块名一一对上（`build_method`→`build_time`、`run_method`→`runtime`、`debug_method`→`call_evidence`、`plugin-host`→`plugin_host`）✓。
-- **`call_evidence` 与 mcp 侧 `build_evidence.rs` 不混用**：报告 `:1345`/`:1351`/`:1406`/`:1468` 与方案 `:569` 都写明 `debug_method` 的模块名 = `call_evidence`（feature 仍叫 `evidence`），而 `build_evidence` 只指 `mcp/src/build_evidence.rs`（NAM-05 的修法）✓。
+- **`call_evidence` 与 mcp 侧 `build_evidence.rs` 不混用**：报告 `:1345`/`:1351`/`:1406`/`:1468` 与方案 `:569` 都写明 `debug_method` 的模块名 = `call_evidence`（feature 仍叫 `evidence`），而 `build_evidence` 只指 `mcp/build_evidence.rs`（NAM-05 的修法）✓。
 - **同步抽查（≥3 处）**：
   1. `§2.1 :196` 与 `§2.2` 的"消失/仍存在"表（`:209-211`、`:215`、`:218`）：E0428 记为**已消失**（模块名不再是 `run`），而**三个 `run` 函数仍在**（`build_time::run()` / `mcp::run()` / `cli::run(argv)`）——与改名后的事实自洽 ✓；
   2. `:178` 起的撞名表 + `:267-270` 的依赖替换表：根 glob 改为 `runtime`、其余按模块路径寻址（`xirang_toolchain::build_time::` 等）✓；
@@ -55,7 +55,7 @@
 ## 5. 两条非阻塞 —— **都已修**
 
 - `NAM-43` 的 `verifier` = **`t31`** ✓（不再是 `t27,t31`）。
-- §1.5 排除项③ 已从"空集"改为**带真实例子的声明**：写明「§7 条目里的文件级定位（`path:1`）……例如 `NAM-01` 的 `studio/src/studio/app/support.rs:1`，全文共 21 条」。我独立数了：§7（§7.1–§7.10）里以 `:1` 结尾的锚点共 **22 处 / 21 个不同路径**，其中带「（文件级定位）」标注的**正好 21 条**（第 22 处是同一路径的重复出现；唯一未标注的是 §7.9 干净清单里的 `core/src/registry_core/mir/mir.rs:1`，它按后缀唯一解析、且不是命名条目）→ 声明与正文**一致**，且该排除项**不掩盖真缺陷**（K-NAM1 就是在排除项之外被我抓到并已修的）。
+- §1.5 排除项③ 已从"空集"改为**带真实例子的声明**：写明「§7 条目里的文件级定位（`path:1`）……例如 `NAM-01` 的 `studio/studio/app/support.rs:1`，全文共 21 条」。我独立数了：§7（§7.1–§7.10）里以 `:1` 结尾的锚点共 **22 处 / 21 个不同路径**，其中带「（文件级定位）」标注的**正好 21 条**（第 22 处是同一路径的重复出现；唯一未标注的是 §7.9 干净清单里的 `core/src/registry_core/mir/mir.rs:1`，它按后缀唯一解析、且不是命名条目）→ 声明与正文**一致**，且该排除项**不掩盖真缺陷**（K-NAM1 就是在排除项之外被我抓到并已修的）。
 
 ## 6. 回归 —— **全部一致**
 
@@ -65,7 +65,7 @@
 - **模板残留 0**（排除 ``` 与行内代码后的 `{…}` 形状里无 `(`/`[`、无纯标识符形状）。
 - **正文全量锚点**：我扫出 **555 条**（源文件口径，见开头说明）：文件不存在 **0**、行号越界 **0**、**配对 token 不符 0**；唯二被标 `AMBIGUOUS` 的是同一个已声明排除项① 里的探针包路径（`control/control.rs` +43，两处出现；两个工作树候选 39/32 行不含第 43 行的结论沿用 t24）→ 门禁规则（多候选→跳过）下 **0 violation**，且排除项与 §1.5 的三类声明逐条对应、未掩盖缺陷。
 - **HTML**：`https?://` **0**、无外部 `<script src>`/`<link>`；新增第 6 页签 **`amb`（20 条）** 的 id 集合与 severity 与 JSON **逐条一致**；`nam`(30) 与 JSON 一致；12 个 crate × `files/lines/fn/pubfn` 与 `audit-inventory.json` **0 mismatch**；`nam_d3_note` 仍在。
-- **随机 10 条 `file`/`line`**（seed=20260928）：`NAM-19`→`studio/src/studio/app/tests/project.rs:1`、`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`NAM-20`→`mcp/src/index.rs:1`、`AMB-13`→`core/src/registry_core/release/release.rs:9`、`AMB-05`→`core/src/registry_core/tree/registry.rs:18`、`LGC-LG-09`→`build_method/src/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/src/studio/app/writers.rs:1`：**10/10 命中且行号在界内**。
+- **随机 10 条 `file`/`line`**（seed=20260928）：`NAM-19`→`studio/studio/app/tests/project.rs:1`、`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`NAM-20`→`mcp/index.rs:1`、`AMB-13`→`core/src/registry_core/release/release.rs:9`、`AMB-05`→`core/src/registry_core/tree/registry.rs:18`、`LGC-LG-09`→`build_method/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/studio/app/writers.rs:1`：**10/10 命中且行号在界内**。
 - **作者闸门**：`check_report.py` 在真实产物上 **exit 0**（`claims checked: 43`、`recomputed: 212 {3,66,143} {164,31,17}`、`OK`）。
 - 顺带：`docs/audit-2026-09-28/` 无非法前缀文件；中文比 0.34（与前几轮同口径）。
 

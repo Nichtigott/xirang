@@ -18,13 +18,11 @@ pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 /// assertion can tell "forwarded" from "silently replaced".
 /// 一对自定义 preset/parts，刻意不同于宽松默认值，断言才能区分"被转发"与"被静默替换"。
 struct ProbePreset;
-
+struct ProbeParts;
 impl xirang_toolchain::run_method::PresetContract for ProbePreset {
     type Output = ();
     const REQUIRED_PARTS: &'static [&'static str] = &["probe"];
 }
-
-struct ProbeParts;
 
 impl xirang_toolchain::run_method::PartsContract for ProbeParts {
     type Output = ();
@@ -34,6 +32,7 @@ impl xirang_toolchain::run_method::PartsContract for ProbeParts {
 /// No `handle:` field: this is the arm that defaults the handle to `kind`.
 /// 没有 `handle:` 字段：这正是把 handle 默认为 `kind` 的那个 arm。
 mod probe {
+
     use crate::{ProbeParts, ProbePreset};
 
     xirang_toolchain::__control_object! {

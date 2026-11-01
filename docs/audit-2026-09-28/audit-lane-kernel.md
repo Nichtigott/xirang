@@ -10,7 +10,7 @@
 
 ### K-01 CRITICAL — D 大逻辑（作者侧写回静默丢弃 deny 列表，安全门禁被放宽）
 
-- 位置：`core/src/registry_core/authoring/parse/admission.rs:40-44`（读入口 `run_method/src/authoring/manifest/parse/parse.rs:134`，写回 `run_method/src/authoring/manifest/face/render.rs:79`）
+- 位置：`core/src/registry_core/authoring/parse/admission.rs:40-44`（读入口 `run_method/authoring/manifest/parse/parse.rs:134`，写回 `run_method/authoring/manifest/face/render.rs:79`）
 - 现象：`parse_admission_expression` 读构造形式时，若 allow 与 deny **同时**非空，只返回 allow：
 
   ```text
@@ -29,7 +29,7 @@
 ### K-02 MAJOR — D 大逻辑（热重载静默忽略作者改过的 `runtime_checks`）
 
 - 位置：`core/src/registry_core/declaration/owned.rs:280-315`（`RegistrationSnapshot::merge_authored`）
-- 现象：`merge_authored(mut self, authored: Self)` 逐字段应用作者侧值，唯独不碰 `runtime_checks`、`contract`、`plugin`。而作者侧快照**确实**解析了 `runtime_checks`（`core/src/registry_core/authoring/snapshot/snapshot.rs:127`；run_method 的字段读入见 `run_method/src/authoring/manifest/parse/parse.rs:179-180`）。唯一调用点是 `run_method/src/authoring/operations/operations.rs:352`（`existing.clone().merge_authored(authored)`，即“编译期快照 + 文件快照”）。
+- 现象：`merge_authored(mut self, authored: Self)` 逐字段应用作者侧值，唯独不碰 `runtime_checks`、`contract`、`plugin`。而作者侧快照**确实**解析了 `runtime_checks`（`core/src/registry_core/authoring/snapshot/snapshot.rs:127`；run_method 的字段读入见 `run_method/authoring/manifest/parse/parse.rs:179-180`）。唯一调用点是 `run_method/authoring/operations/operations.rs:352`（`existing.clone().merge_authored(authored)`，即“编译期快照 + 文件快照”）。
 - 判据：`flow` 给出同文件内的对照：作者侧已声明 flow 时会 `self.flow = authored.flow`（`owned.rs:305-310`），并有注释解释为何 part 列表必须保留编译期证据。`runtime_checks` 与 `flow` 一样已被解析成纯数据（`RuntimeCheckSpec` 枚举），并非只能来自编译期常量，却被整条丢弃且无注释说明这是有意的。结果是：作者改 `runtime_checks` 后热重载行为不变——编辑被静默忽略，而文件里写着新值。
 - 最小修复方向：对 `runtime_checks` 采用与 `flow` 相同的“作者侧非空即应用”规则（`if !authored.runtime_checks.is_empty() { self.runtime_checks = authored.runtime_checks; }`），或在函数文档里明确“运行期校验以编译期为准，文件编辑只在新编译后生效”，并让编辑入口据此拒绝该字段，避免“看起来能改、其实不改”。
 - 复核手段：单测探针：`self.runtime_checks = vec![FINITE_NUMBER]`、`authored.runtime_checks = vec![NON_EMPTY_TEXT]`，`merge_authored` 后断言结果（当前仍是 `[FINITE_NUMBER]`）。
@@ -69,7 +69,7 @@
 ### K-05 MAJOR — D 大逻辑（兄弟同名 `registry_name` 无人拒绝，路径这一“事实键”会静默碰撞）
 
 - 位置：`core/src/registry_core/tree/transaction/transaction.rs:98-179`（唯一查重处）、`tree/index/index.rs:14-18,85-110`、`tree/query/query.rs:86-96`、`tree/graft_ops/resolution.rs:22-28`
-- 现象：`plan_batch` 只检查三类冲突：`NodeId` 与基树/批内重复（:116-128）、显式 `stable_name` 重复（:129-147）、父链环与缺父（:149-177）。**没有任何地方检查同一父级下 `registry_name` 是否重复**。而 `registry_name` 是可被作者编辑的字段（`run_method/src/authoring/manifest/face/face.rs:100,116-118`，只按 `validate_name` 要求 snake_case），默认取模块名。于是两个 `id` 不同、路径相同的兄弟可以同时注册。后果是三处“谁赢”的静默选择：
+- 现象：`plan_batch` 只检查三类冲突：`NodeId` 与基树/批内重复（:116-128）、显式 `stable_name` 重复（:129-147）、父链环与缺父（:149-177）。**没有任何地方检查同一父级下 `registry_name` 是否重复**。而 `registry_name` 是可被作者编辑的字段（`run_method/authoring/manifest/face/face.rs:100,116-118`，只按 `validate_name` 要求 snake_case），默认取模块名。于是两个 `id` 不同、路径相同的兄弟可以同时注册。后果是三处“谁赢”的静默选择：
   - `RegistryIndex` 的 `by_path` 索引（`core/src/registry_core/tree/index/index.rs:88-93`）：`insert` 覆盖，后插入者赢，查询结果取决于 `BTreeMap<NodeId>` 遍历顺序；
   - `path_for`（`core/src/registry_core/tree/query/query.rs:86-96`）：两个节点的路径字符串完全相同，下游任何按路径记账的判断都无法区分；
   - `resolve_path`（`resolution.rs:22-28`）：`find_map` 返回**第一个**匹配，嫁接切口选择器静默落在其中一个上——而同模块的 `resolve_node`（`:146-175`）对同名/同 kind/同路径明确返回 `Resolution::Ambiguous`。
@@ -81,7 +81,7 @@
 
 - 位置：`core/src/registry_core/authoring/parse/rules.rs:108-119`（静默版）对比 `:123-136`（严格版），调用点 `core/src/registry_core/authoring/snapshot/snapshot.rs:116`
 - 现象：`parse_requirements_owned` 用 `filter_map(|item| { let (capability, provider) = item.split_once("=>")?; ... })`：缺 `=>` 的条目被直接丢弃且无报告；而 `parse_requirements` 对同一文本返回 `Err("requires entries must use capability=>provider syntax")`。快照构建 `snapshot_from_values` 调用的是**静默版**，没有先跑严格版。
-- 判据：`requires` 是连接器准入的输入（`connector.rs:230-360` 逐条检查提供者与 admission）。丢一条 `requires` 等于该输入不存在：连接器不再检查它，注册静默通过，而作者以为已经声明了依赖。严格校验器只挂在编辑入口（`run_method/src/authoring/manifest/face/face.rs:131-133`），手写或旧版本写下的文件不经过它。
+- 判据：`requires` 是连接器准入的输入（`connector.rs:230-360` 逐条检查提供者与 admission）。丢一条 `requires` 等于该输入不存在：连接器不再检查它，注册静默通过，而作者以为已经声明了依赖。严格校验器只挂在编辑入口（`run_method/authoring/manifest/face/face.rs:131-133`），手写或旧版本写下的文件不经过它。
 - 最小修复方向：删掉 `parse_requirements_owned` 的 `filter_map`，改为 `collect::<Result<Vec<_>, _>>()` 复用 `parse_requirements` 的判据（或先调用 `parse_requirements(value)?`）；`render_requirements`（`rules.rs:91-104`）同样应拒绝而不是丢弃。
 - 复核手段：单测探针：`snapshot_from_values` 传入 `requires = "cap"`（无 `=>`）期望 `Err`，当前得到空 `requires`；等价探针 `parse_requirements_owned("cap") == []`。
 
@@ -122,7 +122,7 @@
 
 - 位置：`core/src/registry_core/syntax/fields.rs:104-131`（`string_list`/`trait_labels`）、`:147-155`（`path_list` 经 `split_top_level`）、`syntax/tokens.rs:139-155`
 - 现象：`string_list("handle_traits")` 会先取 `path_list("handle_contracts")`，再把这些路径 `join(",")` 交给 `authoring::parse::trait_names_from_paths` 派生标签。两处都按**裸逗号**切分：`split_top_level`（`core/src/registry_core/syntax/tokens.rs:139-155`）不看尖括号深度，`trait_names_from_paths`（`core/src/registry_core/authoring/parse/parse.rs:205-227`）也按 `,` 切。于是 `handle_contracts: [crate::ControlHandle<u8, u16>]` 被切成 `crate::ControlHandle<u8` 与 `u16>` 两段，`syn::parse2::<syn::Path>` 失败 → `path_list` 返回 `None` → `unwrap_or_default()` 变空 → `trait_labels` 退回 `written_string_list("handle_traits")`（未写标签时为空）。
-- 判据：`trait_names_from_paths` 的注释明确设想“A trait path is a *type path*, so it can carry generic arguments — `Trait<A<B<…>>>`”（`core/src/registry_core/authoring/parse/parse.rs:211-217`），只覆盖了无逗号的嵌套形态；两个 `split(',')` 是这段注释与实现之间的裂缝。下游 `build_method/src/contracts.rs:146-165` 用 `unwrap_or_default()` 消费它，因此标签为空时构建会报“required handle trait is missing”——对一个合法声明报结构错误（false reject），而 `run_method/src/authoring/manifest/parse/parse.rs:141-146` 会把该可编辑字段读成空、写回时把标签列表抹掉。
+- 判据：`trait_names_from_paths` 的注释明确设想“A trait path is a *type path*, so it can carry generic arguments — `Trait<A<B<…>>>`”（`core/src/registry_core/authoring/parse/parse.rs:211-217`），只覆盖了无逗号的嵌套形态；两个 `split(',')` 是这段注释与实现之间的裂缝。下游 `build_method/contracts.rs:146-165` 用 `unwrap_or_default()` 消费它，因此标签为空时构建会报“required handle trait is missing”——对一个合法声明报结构错误（false reject），而 `run_method/authoring/manifest/parse/parse.rs:141-146` 会把该可编辑字段读成空、写回时把标签列表抹掉。
 - 最小修复方向：`split_top_level` 增加尖括号深度（`<` 增、`>` 减）后再按顶层逗号切；`trait_names_from_paths` 改为接收 `&[String]`（或先按同一规则切分）而不是吃一个 `join(",")` 的字符串。
 - 复核手段：单测探针：`FaceSyntax::string_list("handle_traits")`（面里写 `handle_contracts: [crate::ControlHandle<u8, u16>]`）期望 `["ControlHandle"]`，当前 `None`；`path_list("handle_contracts")` 期望 1 条，当前 `None`。
 
@@ -137,7 +137,7 @@
   ```
 
   读出 `exports:wrong`。若第一个 `=` 落在真正初始器之后的位置，`quoted_value_field` 取不到 `preset` 时会静默降级。
-- 判据：该函数是规则文件读入的唯一入口（`run_method/src/authoring/parse/parse.rs:44-53` 直接把文件文本喂进来），输出又会被 `render_registration_rule` 写回文件：读错即写错，把结构规则换成另一条（或降级成 `ANY`＝无结构要求），是静默弱化。工具自己写出的形状不受影响，但手写/旧版本文件不设防——这类输入正是解析器存在的理由。
+- 判据：该函数是规则文件读入的唯一入口（`run_method/authoring/parse/parse.rs:44-53` 直接把文件文本喂进来），输出又会被 `render_registration_rule` 写回文件：读错即写错，把结构规则换成另一条（或降级成 `ANY`＝无结构要求），是静默弱化。工具自己写出的形状不受影响，但手写/旧版本文件不设防——这类输入正是解析器存在的理由。
 - 最小修复方向：用 `syn::parse_file` 定位 `REGISTRATION_RULE` 这个 `const` 项的初始化表达式，再在其 AST 上取 `.require_*` 调用；返回 `Result<_, FaceParseError>`，无法识别时拒绝而不是当成 `ANY`。
 - 复核手段：探针：把上面那段带注释的规则文本喂给 `rule_syntax_from_text`，期望 `Err` 或 `exports:control.render`，当前得到 `exports:wrong`。
 
@@ -213,7 +213,7 @@
 
 - 位置：`core/src/registry_core/source/source.rs:434-466`
 - 现象：对掩码后的文本逐行 `trimmed.split_once("kind:")`，再取随后的第一个 token 作为 kind。它无法区分注册声明与普通代码：`let kind: String = value;` 会贡献一个 kind `String`（`String` 全是字母，通过过滤器）；反之 `kind:` 与其值分行书写时该行取到空值而被跳过。函数文档写的是“Collect the deduplicated `kind:` values used in registration declarations”（`:432-433`）。
-- 判据：调用方是 MCP 的源码查询（`mcp/src/tools.rs:344`），产物被当作“这个文件里的注册 kind”呈现；过收会让不存在的 kind 出现在结果里，漏收会让存在的 kind 消失，两者都无法从输出看出来。
+- 判据：调用方是 MCP 的源码查询（`mcp/tools.rs:344`），产物被当作“这个文件里的注册 kind”呈现；过收会让不存在的 kind 出现在结果里，漏收会让存在的 kind 消失，两者都无法从输出看出来。
 - 最小修复方向：复用已有的注册面解析（`syntax::parse_face` → `FaceSyntax::path("kind")`）来取 kind，或至少要求该行同时出现注册宏名；把“只扫文本”的收益（不依赖 `syntax` 特性）用文档写明。
 - 复核手段：单测探针：`registration_kinds("fn f() { let kind: String = x; }")` 期望 `[]`，当前 `["String"]`。
 
@@ -228,7 +228,7 @@
 ### K-19 MINOR — A 命名（公开 API 的失败模式与命名不符：`is_face_source` 会在非注册面上返回 true；`*_matches` 需要未强制的小写前提）
 
 - 位置：`core/src/registry_core/syntax/face.rs:169-171`（`is_face_source`）、`core/src/registry_core/declaration/source_location.rs:61-67`（`source_file_matches`）
-- 现象：①`is_face_source(source, marker)` 对“任意一行等于 marker 的文件”返回 `true`，即使文件里没有任何注册宏；调用方 `run_method/src/authoring/operations/operations.rs:293` 据此把文件当注册面处理。②`source_file_matches(file, needle)` 的文档要求 `needle` 已小写（`:56-60`），但没有任何断言或类型承担它：调用方传混合大小写时会静默搜不到（`file` 被小写化，`needle` 没有）。
+- 现象：①`is_face_source(source, marker)` 对“任意一行等于 marker 的文件”返回 `true`，即使文件里没有任何注册宏；调用方 `run_method/authoring/operations/operations.rs:293` 据此把文件当注册面处理。②`source_file_matches(file, needle)` 的文档要求 `needle` 已小写（`:56-60`），但没有任何断言或类型承担它：调用方传混合大小写时会静默搜不到（`file` 被小写化，`needle` 没有）。
 - 判据：①名字读作“这是不是一个注册面源码”，实现的语义是“有标记行，或解析出了一个面”，前者的肯定分支会在解析失败时仍然成立（标记行本身不保证有面）。②用一个 `bool` 返回表达“可能匹配”而把前提留在调用方脑中是命名/契约问题（交底在注释里）。
 - 最小修复方向：①`is_face_source` 改名 `has_generated_marker_or_parses_as_face`（或让标记行只作短路、解析失败时返回 false）；②`source_file_matches` 在 `debug_assert!(needle == needle.to_ascii_lowercase())`，或直接改为在函数内对 `needle` 做一次性小写（当前对每个候选分配两次字符串，顺手也少了这个前提）。
 - 复核手段：探针：`source_file_matches("Control/Button.rs", "Control/Button")` 期望 `true`，当前 `false`（`needle` 未小写）。
@@ -260,8 +260,8 @@
 ### K-23 MINOR — D 大逻辑（任何以 `_object` 结尾的用户宏都被当作注册面，非注册宏会得到错误的构建诊断）
 
 - 位置：`core/src/registry_core/syntax/face.rs:250-258`（`is_face_macro = … || macro_name.ends_with("_object")`）
-- 现象：`widget_object! { name: "x", size: 3 }` 这类与 XiRang 无关的宏，只要 token 形状是 `ident: value`，`parse_faces` 就会把它当作注册面（`name` 是词表字段，`size` 不是词表字段但 `parse_fields` 不校验字段名，只要求 `ident :`）。下游 `build_method/src/validation.rs:52-70` 把 `*_object` 面按父级宏处理，要求显式 `parent:`，于是会为这个无关宏报 `parent-macro` 构建错误。
-- 判据：`_object` 后缀规则是有意的（`core/src/registry_core/syntax/face.rs:254-255` 与生成别名有关），但没有任何一处把“宏名是否属于本次构建的注册机制”作为准入条件；代价是误报构建错误与误收注册面（`FaceSyntax` 会被当作面数据使用，`run_method/src/authoring/manifest/parse/parse.rs:39` 直接读 `macro_name`）。
+- 现象：`widget_object! { name: "x", size: 3 }` 这类与 XiRang 无关的宏，只要 token 形状是 `ident: value`，`parse_faces` 就会把它当作注册面（`name` 是词表字段，`size` 不是词表字段但 `parse_fields` 不校验字段名，只要求 `ident :`）。下游 `build_method/validation.rs:52-70` 把 `*_object` 面按父级宏处理，要求显式 `parent:`，于是会为这个无关宏报 `parent-macro` 构建错误。
+- 判据：`_object` 后缀规则是有意的（`core/src/registry_core/syntax/face.rs:254-255` 与生成别名有关），但没有任何一处把“宏名是否属于本次构建的注册机制”作为准入条件；代价是误报构建错误与误收注册面（`FaceSyntax` 会被当作面数据使用，`run_method/authoring/manifest/parse/parse.rs:39` 直接读 `macro_name`）。
 - 最小修复方向：要求宏路径的段数与来源符合注册机制（例如末段必须是 `control_object`/`external_object`/`<crate>_object` 且该 crate 等于本次构建的宿主 crate），或在 `parse_fields` 拒绝不在 `FACE_FIELD_ORDER` 中的字段名。
 - 复核手段：单测探针：`parse_face("fn f() { widget_object! { name: \"x\", size: 3 } }")` 期望 `Ok(None)`，当前 `Ok(Some(…))`。
 
@@ -361,9 +361,9 @@
 
 ## 跨片提示（非本片区源码，但会改变本片区结论的正确性）
 
-- `run_method/src/authoring/manifest/face/face.rs:140-143`：`flow_provider` 编辑路径直接用 `syn::parse_str::<syn::Path>(value)`，**没有** `guard_nesting`；而内核侧同名渲染入口（`authoring/parse/flow.rs:107`）是有的。同一份不可信值（清单/编辑器）在两条入口上一条有守卫一条没有——`flow_tests.rs:19-26` 记的“542 字节类型路径爆栈 abort”在该入口仍然成立。建议归入执行面片区或作为一条交叉发现处理。
-- `build_method/src/contracts.rs:146-165`、`run_method/src/authoring/manifest/parse/parse.rs:141-146` 用 `unwrap_or_default()` 消费 `FaceSyntax::string_list`，因此 K-09 的 `None` 会退化为“空标签列表”；修 K-09 时这两处无需改动，但值得在提交信息里点出这条链路。
-- `mcp/src/tools.rs:344` 是 K-17（`registration_kinds` 启发式）的唯一调用方。
+- `run_method/authoring/manifest/face/face.rs:140-143`：`flow_provider` 编辑路径直接用 `syn::parse_str::<syn::Path>(value)`，**没有** `guard_nesting`；而内核侧同名渲染入口（`authoring/parse/flow.rs:107`）是有的。同一份不可信值（清单/编辑器）在两条入口上一条有守卫一条没有——`flow_tests.rs:19-26` 记的“542 字节类型路径爆栈 abort”在该入口仍然成立。建议归入执行面片区或作为一条交叉发现处理。
+- `build_method/contracts.rs:146-165`、`run_method/authoring/manifest/parse/parse.rs:141-146` 用 `unwrap_or_default()` 消费 `FaceSyntax::string_list`，因此 K-09 的 `None` 会退化为“空标签列表”；修 K-09 时这两处无需改动，但值得在提交信息里点出这条链路。
+- `mcp/tools.rs:344` 是 K-17（`registration_kinds` 启发式）的唯一调用方。
 
 ## 查了、干净
 

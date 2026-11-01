@@ -1,0 +1,5 @@
+# 本包的原生语言是 C。构建按这个声明选读取器与编译器（C 与 C++ 共用 cc 路径）。
+# This package's native language is C. The build picks its reader and compiler from this line
+# (C shares the cc path with C++).
+[native]
+language = "c"

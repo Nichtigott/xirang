@@ -13,6 +13,7 @@
 pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 
 mod canonical {
+
     xirang_toolchain::__xirang_object! {
         kind: Ordered,
         name: { zh: "有序", en: "Ordered" },
@@ -23,6 +24,7 @@ mod canonical {
 }
 
 mod shuffled {
+
     xirang_toolchain::__xirang_object! {
         registry_rule: xirang_toolchain::run_method::registry_core::RegistrationRule::ANY;
         kind: Ordered;
@@ -107,6 +109,7 @@ fn a_reordered_face_reports_the_authors_lines() {
 /// 分隔时才算 item，所以 `name!(…)` 与 `name![…]` 后面必须跟 `;`。别名匹配器本身
 /// 接受任何分隔符。
 mod parens {
+
     xirang_toolchain::__xirang_object!(
         kind: Ordered;
         registry_rule: xirang_toolchain::run_method::registry_core::RegistrationRule::ANY;
@@ -164,6 +167,7 @@ mod registry_rule {
 /// 拥有注册机的目录面可以直接省略 `registry_rule:`：此时取同目录的规范规则，
 /// 而不是宽松默认值。
 mod omitted_rule {
+
     xirang_toolchain::__xirang_object! {
         kind: RuleOmitted,
         name: { zh: "省略规则", en: "Rule omitted" },
@@ -176,6 +180,7 @@ mod omitted_rule {
 /// field, because the rule that governs it belongs to its parent.
 /// 不拥有注册机的面省略该字段时保留宽松默认值：管它的规则属于它的父级。
 mod leaf_no_rule {
+
     xirang_toolchain::__xirang_object! {
         kind: LeafNoRule,
     }
@@ -207,12 +212,10 @@ fn a_face_without_a_registry_keeps_the_permissive_default() {
 }
 
 mod external_shuffled {
+
     use xirang_toolchain::run_method::registry_core::{
         ContractId, FlowContract, NoParts, NoPreset, RegistrationRule, root_node_id,
     };
-
-    #[allow(dead_code)]
-    pub struct ExternalFast;
 
     // Same field set as any external face, but `;`-separated and in a different
     // order: the front end must sort it and send it to `__external_object!`.

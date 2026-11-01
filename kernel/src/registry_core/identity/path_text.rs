@@ -109,6 +109,57 @@ pub const fn last_path_segment(path: &str) -> &str {
     path
 }
 
+/// Whether `file!()` came back absolute: a leading separator, or a drive prefix on Windows.
+/// `file!()` 是否是绝对路径：前导分隔符，或 Windows 上的盘符前缀。
+const fn is_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    match bytes.first() {
+        Some(b'/') | Some(b'\\') => true,
+        Some(byte) if byte.is_ascii_alphabetic() => bytes.len() > 1 && bytes[1] == b':',
+        _ => false,
+    }
+}
+
+/// The tail of an absolute path below the **last** `src/` component — the owning package's rule.
+/// Returns the input unchanged when there is no such component (a `tests/` target, a differently
+/// laid out crate), which is what the strict `manifest_dir` arm already produced for those.
+/// 绝对路径中**最后一个** `src/` 分量之后的那一段——属主包的规则。没有该分量时原样返回（`tests/` 目标、
+/// 别的布局的 crate），这也正是严格 `manifest_dir` 那一支过去对它们给出的结果。
+const fn after_owning_src(path: &str) -> &str {
+    let bytes = path.as_bytes();
+    let mut index = 0;
+    let mut found: Option<usize> = None;
+    while index + 5 <= bytes.len() {
+        let slash = bytes[index] == b'/' || bytes[index] == b'\\';
+        if slash
+            && bytes[index + 1] == b's'
+            && bytes[index + 2] == b'r'
+            && bytes[index + 3] == b'c'
+            && (bytes[index + 4] == b'/' || bytes[index + 4] == b'\\')
+        {
+            found = Some(index + 5);
+        }
+        index += 1;
+    }
+    match found {
+        // The **last** `src/`, not the first: a host may itself live under a directory named `src`
+        // (`/home/me/src/proj/src/panel/…`), and the owning package's `src/` is the one nearest the
+        // file. Both real mounts — `/tmp/…/app/src/panel/…` and the nested one — land on the right
+        // tail with this rule.
+        // 取**最后一个** `src/` 而不是第一个：宿主自己就可能住在叫 `src` 的目录下
+        // （`/home/me/src/proj/src/panel/…`），而属主包的 `src/` 是**离文件最近**的那个。两种真实挂载
+        // ——`/tmp/…/app/src/panel/…` 与上面那种嵌套——在这条规则下都取到正确的尾巴。
+        Some(start) => {
+            let (_, rest) = bytes.split_at(start);
+            match core::str::from_utf8(rest) {
+                Ok(text) => text,
+                Err(_) => path,
+            }
+        }
+        None => path,
+    }
+}
+
 /// Derive a declaration's `source` identity input from `file!()`.
 /// 从 `file!()` 推导声明的 `source` 身份输入。
 ///
@@ -123,6 +174,21 @@ pub const fn last_path_segment(path: &str) -> &str {
 pub const fn manifest_relative_source<'a>(manifest_dir: &str, file: &'a str) -> &'a str {
     let after_manifest = match strip_path_prefix(file, manifest_dir) {
         Some(rest) => rest,
+        // A face compiled by **another** package (a partition fragment, a facade) is mounted by
+        // absolute path, so `file!()` is not under this crate's manifest dir. The owning package is
+        // what the build derived the plan from, and the build's rule is "the path below the owning
+        // package's `src/`" — so this derives the same value from the tail instead of returning an
+        // absolute path, which used to make the identity depend on where the checkout sits on disk
+        // (measured: a fragment's face hashed `/tmp/…/app/src/…` and disagreed with the plan's id).
+        // 由**另一个**包编译的面（分区碎片、facade）是按绝对路径挂进来的，因此 `file!()` 不在本 crate 的
+        // manifest 目录下。计划是构建按**属主包**推导的，而构建那条规则是"属主包 `src/` 之下那一段"——
+        // 所以这里从尾部推出同一个值，而不是返回绝对路径：后者曾让身份取决于检出在磁盘上的位置
+        // （实测：碎片的某个面把 `/tmp/…/app/src/…` 揉进了哈希，与计划里的 id 不一致）。
+        // Only an **absolute** path can be a mount from another package; a relative one is the
+        // spelling rustc was given inside this workspace, and it is returned as it always was.
+        // 只有**绝对**路径才可能是"另一个包挂进来的"；相对路径是 rustc 在这个工作区里被给到的拼法，
+        // 因此像过去一样原样返回。
+        None if is_absolute_path(file) => return after_owning_src(file),
         None => return file,
     };
     let after_separator = strip_leading_separator(after_manifest);

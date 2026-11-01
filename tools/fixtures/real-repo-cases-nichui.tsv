@@ -1,0 +1,10 @@
+# Real-repository probe cases for /home/nich/Moirai_N3/NichUI (1773 .rs, 384,435 lines).
+# 真实仓库探针用例：每个调用者集合都由 grep 找调用点、再按所在函数手工归并后核对过。
+#
+# function<TAB>caller,caller   (empty right side = the function has no callers)
+# 函数<TAB>调用者,调用者（右侧为空＝没有调用者）
+aabb_from_bounds	mixed_contact
+accumulate_segment	detects_shake
+accept_matches	press
+shape_aabb	body_aabb,circle_aabb,capsule_aabb,mixed_contact,separation_vs
+with_contract	

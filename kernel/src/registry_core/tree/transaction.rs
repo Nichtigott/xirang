@@ -97,6 +97,12 @@ impl Registry {
     /// 在创建事务副本前检查批次图，避免无意义的重复扫描。
     fn plan_batch(&self, submissions: &[RegistrationSnapshot]) -> RegistryResult<()> {
         let mut parents = BTreeMap::new();
+        // A parent that lives in this batch answers children only when it owns a registry; the map of
+        // batch entries is what lets the walk below tell `the parent is missing` from `the parent is
+        // here and cannot own anything`.
+        // 批次里的父只有自持注册机时才能挂住子面；批次条目表让下面的遍历能区分"父不在"与"父在、但什么也拥有不了"。
+        let mut batch_registries = BTreeSet::new();
+        let mut batch_by_id = BTreeMap::new();
         let mut stable_names = BTreeMap::<StableFaceId, (NodeId, String)>::new();
         let mut existing_ids = BTreeSet::new();
         self.collect_stable_names(&mut stable_names);
@@ -147,6 +153,12 @@ impl Registry {
             }
         }
         for snapshot in submissions {
+            if snapshot.needs_registry {
+                batch_registries.insert(snapshot.id);
+            }
+            batch_by_id.insert(snapshot.id, snapshot);
+        }
+        for snapshot in submissions {
             let mut current = snapshot.parent;
             let mut seen = BTreeSet::new();
             while let Some(parent) = parents.get(&current).copied() {
@@ -156,6 +168,31 @@ impl Registry {
                         snapshot.registry_name.clone(),
                         snapshot.source.clone(),
                         format!("registration parent cycle reaches `{current}`"),
+                    )));
+                }
+                // A parent in this batch attaches children only when it owns a registry. This walk
+                // used to step straight past that fact, and the staging loop then had nowhere to put
+                // the child: the batch committed with fewer faces than it was given and reported
+                // success (measured 2026-10-22 — a face declared in C++, under a parent declared in
+                // C++ that never asked to own a registry, was dropped in silence). A node the caller
+                // handed over is never dropped in silence.
+                // 批次里的父只有自持注册机时才能挂住子面。这个遍历过去直接绕过那个事实，暂存循环于是无处
+                // 安放子面：批次带着比交给它更少的面提交，还报成功（2026-10-22 实测——一个在 C++ 里声明的
+                // 面，挂在同样由 C++ 声明、却从未要求自持注册机的父面下，被静默丢弃）。调用方交来的节点
+                // 绝不能被静默丢掉。
+                if !batch_registries.contains(&current) {
+                    let owner = batch_by_id.get(&current).copied();
+                    return Err(Box::new(RegistryError::new(
+                        snapshot.id,
+                        snapshot.registry_name.clone(),
+                        snapshot.source.clone(),
+                        format!(
+                            "`{}` owns no registry, so `{}` has no parent registry to register into; a face owns children only when it declares `needs_registry`",
+                            owner
+                                .map(|owner| owner.kind.as_str())
+                                .unwrap_or("<unknown>"),
+                            snapshot.kind
+                        ),
                     )));
                 }
                 current = parent;

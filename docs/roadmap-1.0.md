@@ -113,8 +113,8 @@ what blocks 1.0, not by when they were found.
 
 | # | 项 | 证据 | 验收 |
 | --- | --- | --- | --- |
-| 1 | ✅ `face_objects` arm 绑定 `$preset`/`$parts` 却展开成 `NoPreset`/`NoParts`（已复核机制，已修） | `toolchain/src/run_method/src/macros/face_objects.rs:92-95` | 已落地：`__face_ty_or!`/`__face_ty_name_or!` 按每个绑定分别判有无，省略者保持默认、写下的原样转发；钉子 `toolchain/run_method/tests/face_preset_parts.rs`、`toolchain/run_method/tests/face_arm_defaults.rs` |
-| 2 | ✅ arm 5 不可达（已修：该 arm 已删除） | `toolchain/src/run_method/src/macros/face_objects.rs`（无行号：被删的 arm 不再有位置） | 删除后既有宏测试全绿 |
+| 1 | ✅ `face_objects` arm 绑定 `$preset`/`$parts` 却展开成 `NoPreset`/`NoParts`（已复核机制，已修） | `toolchain/src/run_method/macros/face_objects.rs:92-95` | 已落地：`__face_ty_or!`/`__face_ty_name_or!` 按每个绑定分别判有无，省略者保持默认、写下的原样转发；钉子 `toolchain/run_method/tests/face_preset_parts.rs`、`toolchain/run_method/tests/face_arm_defaults.rs` |
+| 2 | ✅ arm 5 不可达（已修：该 arm 已删除） | `toolchain/src/run_method/macros/face_objects.rs`（无行号：被删的 arm 不再有位置） | 删除后既有宏测试全绿 |
 | 3 | `register_snapshot_batch` 尾部缺父循环不可达，且重复构造同一错误 | `declaration/../../tree/transaction.rs:58-71` | 删除；transaction 全部测试绿 |
 | 4 | `UnknownReplacement`/`UnknownTarget` 用原树根 id 报错，丢掉选择器 | `tree/graft_ops/overlay.rs:151-156`、`resolution.rs:43-51` | 错误携带选择器字符串；新增测试断错文案含 selector |
 | 5 | `same_symbol` 每次比较两次堆分配且在双重循环内 | `mir/merge.rs:53-55` | 改 `strip_suffix` 零分配；既有 merge 测试绿 |
@@ -122,7 +122,7 @@ what blocks 1.0, not by when they were found.
 | 7 | Studio "live trace" 是硬编码样例，README 却声称权威 | `app/lifecycle.rs:46`、`app/sample.rs`（硬编码样例所在文件，已在本项收口时删除，职责移到 `app/trace.rs`）、`README.md:714` | 面板与图例标注为示例，README 同步；真实 ingest 留到 B4 |
 | 8 | `tools/xirang-package-audit` 引用不存在的包且不在 CI | `tools/xirang-package-audit:8` | 改 `xirang-toolchain`，接入 CI；脚本能跑通（core 已发前仍会因版本依赖失败，脚本里注明） |
 | 9 | `README.zh-CN.md` 把 `StaticPlan::find`（现名 `find_face`，旧名保留为一行转发器）写成 O(log n)，实际线性 | `README.zh-CN.md:569` vs `release.rs:203-217` | 更正为 O(n)，与英文 README 一致 |
-| 10 | MCP 宣称能查合同，5 个工具只读源码 | `toolchain/Cargo.toml:7`、`toolchain/README.md:13`、`toolchain/src/mcp/src/tools.rs:10-38` | 已按"补工具"收口（2026-09-26）：`xirang.registry` 报告构建推导出的注册树（`face_views`）。contract/admission 数据仍缺——它们在已构建的 `RegistrationSnapshot` 里，不在源码里；宣称已按此收紧 |
+| 10 | MCP 宣称能查合同，5 个工具只读源码 | `toolchain/Cargo.toml:7`、`toolchain/README.md:13`、`toolchain/src/mcp/tools.rs:10-38` | 已按"补工具"收口（2026-09-26）：`xirang.registry` 报告构建推导出的注册树（`face_views`）。contract/admission 数据仍缺——它们在已构建的 `RegistrationSnapshot` 里，不在源码里；宣称已按此收紧 |
 
 ### B1 完成情况（已收口，附两条新增存疑）
 
@@ -259,7 +259,7 @@ kind-only 注册面(写了 `collector` 与 `kind`、没写 `handle`)的 `registr
 
 **NodeId 不随之改变(已核到代码,不再是存疑)。** 声明宏发射的常量是
 `NodeId::from_namespaced_path(env!("CARGO_PKG_NAME"), $source, stringify!($kind))`
-(`toolchain/src/run_method/src/macros/face_registration.rs:45-49`),第三个参数是 **kind**,而
+(`toolchain/src/run_method/macros/face_registration.rs:45-49`),第三个参数是 **kind**,而
 `from_namespaced_path` 只把 namespace + 相对路径 + 该名字卷进哈希
 (`kernel/src/registry_core/identity/node_id.rs:47-58`);构建侧同理用
 `package_node_id(&relative, &kind)`。因此这次变化只影响**逻辑路径**(它由槽位/注册名拼出)、
@@ -513,7 +513,7 @@ plus three read-only sub-audits and a focused adversarial read of the process ba
 
 - ~~`external_object!` 链上 `file!()` 落到哪。~~ 已收口并**修正了我的推断**：默认值是
   `manifest_relative_source(env!("CARGO_MANIFEST_DIR"), file!())`
-  （`toolchain/src/run_method/src/macros/face_external.rs:102-104`），两个部分都在**声明它的** crate 里
+  （`toolchain/src/run_method/macros/face_external.rs:102-104`），两个部分都在**声明它的** crate 里
   展开，因此项目外面报告自己的文件——但**拼写方式取决于 Cargo 怎么把它交给 rustc**：
   `manifest_relative_source` 先剥 manifest 前缀、再剥开头的 `src/`，而不以 manifest 目录开头
   的路径原样保留。因此发布包里 `src/control/control.rs` 记录为 `control/control.rs`（注册布局

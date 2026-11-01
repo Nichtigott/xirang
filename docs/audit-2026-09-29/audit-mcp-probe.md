@@ -45,7 +45,7 @@
 | 17 | `xirang.verify` | `verify.rs` | 可用；但它与 6/15/16 会在同一棵树上给出相反结论（X1） |
 
 **注册了没实现 / 实现了没注册：0 处。** 实测：`tools()` 与 `DISPATCH` 均 17 项、顺序一致；
-`grep '^pub(crate) fn ' toolchain/src/mcp/src/*.rs` 里的全部入口都是助手
+`grep '^pub(crate) fn ' toolchain/src/mcp/*.rs` 里的全部入口都是助手
 （`load_registry`/`source_layout`/`read_verified`/`namespace`/`entries` 等）或已被 `explain_tool`
 路由的 `overlay`，没有游离的 handler。这条也被测试钉住并实测通过：
 
@@ -152,7 +152,7 @@ xirang.grafts → control_fast: target=root/control graft=control_fast full=fals
 xirang.diff records=true → ok 1  undeclared 1  stale 0  re-identified 0  unreadable 0
 
 # M6 搜不到符号级事实
-xirang.search query=DISPATCH → fn dispatch -> toolchain/src/mcp/src/protocol.rs:246   （常数 DISPATCH 不在索引里）
+xirang.search query=DISPATCH → fn dispatch -> toolchain/src/mcp/protocol.rs:246   （常数 DISPATCH 不在索引里）
 xirang.search query=control.render → no matches        （4 个面都声明了 exports: ["control.render"]）
 
 # 其它失败原文（都是可行动的，记录用）

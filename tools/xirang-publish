@@ -90,6 +90,7 @@ wait_seconds=${XIRANG_PUBLISH_WAIT:-300}
 levels='
 xirang-kernel
 xirang-macro
+xirang-multilang
 xirang-toolchain
 '
 
@@ -348,7 +349,8 @@ resolved_version() {
 dependencies='
 xirang-kernel:
 xirang-macro:xirang-kernel
-xirang-toolchain:xirang-kernel xirang-macro
+xirang-multilang:xirang-kernel
+xirang-toolchain:xirang-kernel xirang-macro xirang-multilang
 '
 
 # The internal dependencies of one crate, read from the table above.

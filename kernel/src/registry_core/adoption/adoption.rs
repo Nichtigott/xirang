@@ -175,6 +175,68 @@ pub fn render_adoption_prints(anchor: &str, at: &str, files: &[(String, String)]
     format!("# prints {anchor} | {at} | {pairs}\n")
 }
 
+/// The **object** a decision was about, when the anchor named one, carried beside its entry.
+/// 一次决定所针对的**对象**（当锚点点名了一个时），跟在它的条目旁边。
+///
+/// The same additive shape as [`AdoptionPrints`]: a `#` comment line, so an older kernel reads the
+/// ledger exactly as before while a newer one can tell that the anchor's object changed instead of
+/// silently letting a lease about one object back a commitment about another.
+/// 与 [`AdoptionPrints`] 同一种加法形状：一条 `#` 注释行，因此更旧的内核读这份台账与从前完全一样，而更新
+/// 的内核能看出锚点的对象变了，而不是让"关于某个对象的租约"悄悄为"关于另一个对象的承诺"背书。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdoptionObject {
+    /// The route's anchor, as the entry spells it.
+    /// 路线的锚点，按条目的写法。
+    pub anchor: String,
+    /// The entry's `at`, which is what pairs this binding with that one entry.
+    /// 条目的 `at`——正是它把这层绑定与那一条条目配上。
+    pub at: String,
+    /// The persistent object identity the anchor named when the decision was taken.
+    /// 做出决定时锚点点名的持续对象身份。
+    pub stable: String,
+}
+
+/// Read the object bindings a ledger carries, as `render_adoption_object` writes them.
+/// 读取台账携带的对象绑定，按 `render_adoption_object` 写它的样子。
+pub fn parse_adoption_objects(ledger: &str) -> Result<Vec<AdoptionObject>, AdoptionError> {
+    let mut objects = Vec::new();
+    for (index, line) in ledger.lines().enumerate() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("# object ") else {
+            continue;
+        };
+        let parts = rest.split('|').map(str::trim).collect::<Vec<_>>();
+        if parts.len() != 3 || parts.iter().any(|part| part.is_empty()) {
+            return Err(AdoptionError {
+                line: index + 1,
+                message: "a `# object` line must read `# object <anchor> | <at> | <stable>`"
+                    .to_owned(),
+            });
+        }
+        if parts[2].len() != 32 || !parts[2].bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(AdoptionError {
+                line: index + 1,
+                message: format!(
+                    "`{}` is not a 32-hex object identity; write the identity the ledger uses",
+                    parts[2]
+                ),
+            });
+        }
+        objects.push(AdoptionObject {
+            anchor: parts[0].to_owned(),
+            at: parts[1].to_owned(),
+            stable: parts[2].to_ascii_lowercase(),
+        });
+    }
+    Ok(objects)
+}
+
+/// The line that carries an object binding, as `parse_adoption_objects` reads it.
+/// 携带对象绑定的那一行，按 `parse_adoption_objects` 读它的样子。
+pub fn render_adoption_object(anchor: &str, at: &str, stable: &str) -> String {
+    format!("# object {anchor} | {at} | {stable}\n")
+}
+
 /// Per-file prints carried beside one entry, keyed by the entry's own `(anchor, at)`.
 /// 一条条目旁边携带的逐文件指纹，按条目自己的 `(anchor, at)` 对应。
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,0 +1,139 @@
+#!/bin/sh
+# Gate: a Java-declared face really lands in the runtime registration tree, produced by a real javac
+# run and the annotation processor — no committed record file, the build runs the producer.
+# 门禁：Java 声明的面真的落进运行期注册树，由一次真实 javac 与注解处理器产出——没有入库的记录文件，
+# 构建自己运行生产者。
+#
+#   XIRANG_JAVA=/path/to/javac tools/xirang-java-host
+#
+# Why it exists: the record-file gate proves the carrier with a producer stand-in. This one replaces
+# the stand-in with the real Java toolchain: the build runs `[record] command`, javac compiles the
+# SDK, the processor reads the source path from the compiler's own trees and writes version-3
+# records, and the Rust build reads them. The negative control proves the processor's refusal has
+# teeth: a parent that is not 32 hex characters must fail the compile.
+# 为什么需要它：记录文件门禁用生产者替身证明载体。这一条用真实 Java 工具链替换替身：构建运行
+# `[record] command`，javac 编译 SDK，处理器从编译器自己的树里读源码路径并写出版本 3 记录，Rust 构建读它们。
+# 反控证明处理器的拒绝有牙：不是 32 个十六进制字符的父级必须让编译失败。
+#
+# A machine without a JDK reports "not run" (exit 2) instead of failing a face it cannot build.
+# 没有 JDK 的机器报"未跑"（exit 2），而不是让一个它构建不了的面失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+javac=${XIRANG_JAVA:-}
+if [ -z "$javac" ]; then
+    javac=$(command -v javac || true)
+fi
+if [ -z "$javac" ]; then
+    echo "xirang-java-host: no javac; set XIRANG_JAVA or install a JDK" >&2
+    exit 2
+fi
+echo "javac  $javac ($("$javac" -version 2>&1 | head -1))"
+
+sdk="$root/multilang/sdk/java"
+if [ ! -f "$sdk/xirang/Soil.java" ]; then
+    echo "xirang-java-host: the Java SDK is not at $sdk; the crate's SDK location and this gate disagree" >&2
+    exit 2
+fi
+example="$root/examples/java-gauge/gauge"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/xirang-java-host-XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# 1. Build from scratch: no committed record file, so the build has to run the producer.
+# 1. 从零构建：没有入库的记录文件，因此构建必须运行生产者。
+rm -rf "$example/java/classes" "$example/java/gen" "$example/native/gauge.faces"
+cd "$root/examples/java-gauge"
+XIRANG_JAVA="$javac" CARGO_NET_OFFLINE=true cargo clean -p gauge >/dev/null
+XIRANG_JAVA="$javac" CARGO_NET_OFFLINE=true cargo test --offline
+
+# 2. The producer really ran and wrote one version-3 record.
+# 2. 生产者真的运行了，并写出一条版本 3 记录。
+record="$example/native/gauge.faces"
+if [ ! -f "$record" ]; then
+    echo "xirang-java-host: the build succeeded but produced no record file; the run did not prove a producer" >&2
+    exit 1
+fi
+bytes=$(wc -c <"$record")
+if [ "$bytes" -ne 1228 ]; then
+    echo "xirang-java-host: the record file is $bytes bytes; a version-3 record is 1228" >&2
+    exit 1
+fi
+
+# 2b. The build also wrote the constants class the annotation names its parent through.
+# 2b. 构建还写出了注解点名父级所用的常量类。
+constants="$example/java/gen/xirang/Faces.java"
+if [ ! -f "$constants" ]; then
+    echo "xirang-java-host: the build produced no Faces.java; a non-root parent cannot be named" >&2
+    exit 1
+fi
+if ! grep -q "PANEL_NODE_ID" "$constants"; then
+    echo "xirang-java-host: the generated Faces class does not name the Rust parent module:" >&2
+    cat "$constants" >&2
+    exit 1
+fi
+
+# 3. Negative control: a parent that is not 32 hex characters must fail the compile.
+# 3. 反控：不是 32 个十六进制字符的父级必须让编译失败。
+mkdir -p "$tmp/classes" "$tmp/src/bad"
+"$javac" -d "$tmp/classes" "$sdk"/xirang/*.java
+cat >"$tmp/src/bad/Bad.java" <<'BAD'
+package bad;
+
+import xirang.Soil;
+
+@Soil(parent = "not-hex", named = "Bad")
+public final class Bad {
+    private Bad() {}
+}
+BAD
+if "$javac" -cp "$tmp/classes" -processorpath "$tmp/classes" -processor xirang.SoilProcessor \
+    -Axirang.faces="$tmp/bad.faces" -Axirang.packageRoot="$tmp" \
+    -d "$tmp/classes" "$tmp/src/bad/Bad.java" >"$tmp/bad.out" 2>&1; then
+    echo "xirang-java-host: the processor accepted a parent that is not hex; its refusal has no teeth" >&2
+    exit 1
+fi
+if ! grep -q "hexadecimal\|cannot be written" "$tmp/bad.out"; then
+    echo "xirang-java-host: the compile failed, but not by the processor's parent check:" >&2
+    cat "$tmp/bad.out" >&2
+    exit 1
+fi
+
+# 3b. Negative control: a constant the generated Faces class does not declare must fail the compile.
+# 3b. 反控：生成的 Faces 类没有声明的常量必须让编译失败。
+mkdir -p "$tmp/classes-const" "$tmp/src/badconst"
+"$javac" -d "$tmp/classes-const" "$sdk"/xirang/*.java "$constants"
+cat >"$tmp/src/badconst/BadConst.java" <<'BADCONST'
+package badconst;
+
+import xirang.Faces;
+import xirang.Soil;
+
+@Soil(parent = Faces.NOPE, named = "Bad")
+public final class BadConst {
+    private BadConst() {}
+}
+BADCONST
+if "$javac" -cp "$tmp/classes-const" -d "$tmp/classes-const" "$tmp/src/badconst/BadConst.java" \
+    >"$tmp/badconst.out" 2>&1; then
+    echo "xirang-java-host: javac accepted a constant the generated Faces class does not declare" >&2
+    exit 1
+fi
+if ! grep -q "NOPE" "$tmp/badconst.out"; then
+    echo "xirang-java-host: the compile failed, but not by the missing-constant check:" >&2
+    cat "$tmp/badconst.out" >&2
+    exit 1
+fi
+
+# 4. The authoring adapter plans the same declaration the build reads (create reads back, modify
+#    preserves the class body, and the generated source really compiles with javac).
+# 4. 创作适配器规划出构建读取的同一种声明（create 能读回、modify 保留类体、生成的源码真的能在 javac 下编译）。
+cd "$root"
+XIRANG_JAVA="$javac" CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-java --offline \
+    --lib -- languages::java
+
+# 5. The producer refusals keep their teeth (failing command, zero-with-no-output, table shape).
+# 4. 生产者的拒绝保住牙（失败命令、退出 0 但无输出、表的形状）。
+cd "$root"
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,native-record --offline --lib \
+    -- record_file
+
+echo "xirang-java-host: ok (javac + processor produce the record and constants, and bad parents/missing constants are refused)"

@@ -61,7 +61,7 @@
   ⇒ 身份逐次运行重算，行为无影响；记为"偏差 + 证据"，不写成"没有偏差"。
 - **复核的 MAJOR 发现（F-13-1 / F-14-1）已收口**：该 fixture 住在 `src/` 下时两件事同时坏 ✗ ——
   ① `tools/xirang-package-audit` 的**内容半段红**（内容判据要求 `src/**/*.rs` 都在包里，而 `cargo package`
-  不收嵌套包）；② `toolchain/src/studio/src/studio/app/tests.rs` 找的是
+  不收嵌套包）；② `toolchain/src/studio/studio/app/tests.rs` 找的是
   `CARGO_MANIFEST_DIR + "tests/fixtures/node-editor"` ⇒ 夹具**从未被找到**，测试走 `Option` 分支**静默跳过** ✗。
   现已把它移到**代码本来就期望的** `toolchain/tests/fixtures/` 下 ⇒ 内容半段转绿、夹具真正可用 ✓
   （AGENTS.md 的路径措辞与夹具自己的注释同步更正）。

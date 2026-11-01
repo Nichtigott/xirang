@@ -1,0 +1,49 @@
+#!/bin/sh
+# Gate: `xirang lang new` still produces a language the toolkit compiles and registers.
+# 门禁：`xirang lang new` 仍产出一门工具链能编译、能注册的语言。
+#
+#   tools/xirang-lang-new-check
+#
+# Why it exists: the scaffold writes a module against the kit's current API, two Cargo features and
+# five registration edits. When the kit renames a hook, the template keeps compiling nowhere until
+# somebody runs the scaffold — and the person who runs it is usually someone adding a language, who
+# cannot tell a broken template from their own mistake. This gate runs the whole path in a copy of
+# the checkout: generate, register, compile, and throw the copy away. A template that drifted fails
+# here, by name, instead of in a stranger's tree.
+# 为什么需要它：脚手架按 kit 当前的 API 写一个模块、两个 Cargo 特性与五处注册。kit 改了钩子名之后，
+# 模板在有人运行脚手架之前哪儿都编译不过——而运行它的人通常是在加一门语言的人，他分不清"模板坏了"与
+# "自己写错了"。本门禁在检出的一份副本里跑完整条路：生成、注册、编译、再把副本扔掉。漂移的模板会在这里
+# 按名字失败，而不是在陌生人的树里。
+#
+# One leg / 一条腿: a copy of the checkout, `lang new prcheck --apply --register`, then
+# `cargo check -p xirang-multilang --features lang-prcheck`. The copy keeps the gate from touching
+# the real tree; `--offline` because this checkout develops offline.
+
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+work=$(mktemp -d "${TMPDIR:-/tmp}/xirang-lang-new-XXXXXX")
+trap 'rm -rf "$work"' EXIT INT TERM
+
+echo "copy   $root -> $work"
+rsync -a --delete \
+    --exclude 'target' --exclude '.git' --exclude '.codegraph' \
+    --exclude '.agent-teams' --exclude '.aws' --exclude '.dsh-meow' --exclude 'dsh-home' \
+    "$root/" "$work/"
+
+# Always build: a binary left over from an earlier template would compile the old scaffold and
+# hide exactly the drift this gate exists to catch.
+# 总是重新构建：上一次模板留下的二进制会编译旧脚手架，正好藏掉本门禁要找的漂移。
+echo "build  the checkout's CLI"
+CARGO_NET_OFFLINE=true cargo build -p xirang-toolchain --features cli --bin xirang \
+    --manifest-path "$root/Cargo.toml" --offline
+
+echo "scaffold prcheck (a language id no build carries)"
+"$root/target/debug/xirang" lang new prcheck --extension prcheck \
+    --checkout "$work" --apply --register
+
+echo "compile the generated language in the copy"
+CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$work/target" \
+    cargo check --manifest-path "$work/Cargo.toml" \
+        -p xirang-multilang --features lang-prcheck --offline
+
+echo "xirang-lang-new-check: ok (generated, registered and compiled in $work; removed)"

@@ -47,7 +47,7 @@ PY
 
 ### K3 全文 `163` —— **已关闭**
 - `audit-report.md:132` 现写「这两份产物里的全部 **162** 条都跑过脚本自检」；
-- **全文扫描只剩一处 `163`**：`audit-report.md:571`，它是引文里的行号 `studio/src/studio/ui/search/detail.rs:15/163`（锚点行号，不是条数）✓；
+- **全文扫描只剩一处 `163`**：`audit-report.md:571`，它是引文里的行号 `studio/studio/ui/search/detail.rs:15/163`（锚点行号，不是条数）✓；
 - 但见 §5 K4：同一行为的渲染在 `:4` 留了一个未展开的表达式。
 
 ---
@@ -106,7 +106,7 @@ PY
 
 - **六组聚合**（我从逐条字段重算 vs `counts`）：`total` 162 ✓、`by_severity` 3/56/103 ✓、`by_verify_status` 131/21/10 ✓、`by_batch` 3/23/14/50/21/51 ✓、`by_evidence_kind` 41/18/93/10 ✓、`by_severity_source` 44/110/5/3 ✓；`mechanism_falsified.ids` = 逐条 3 条 ✓；`unverified_ids` = 逐条 10 条 ✓；`major_by_status` = 48/8 ✓。
 - **§2 ↔ JSON id 集合**：三类双向相等、无重复（见 §1 K1）。
-- **随机 10 条 `file`/`line`**（seed=20260928）：`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`LGC-LG-09`→`build_method/src/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/src/studio/app/writers.rs:1`、`STU-S-06`→`studio/src/studio/app/search_queries.rs:74`、`GTE-N-1`→`.github/workflows/release.yml:66`、`LGC-LG-52`→`plugin-host/src/process.rs:392`、`SUR-C9`→`build_method/src/pipeline.rs:105`：**10/10 命中且行号在界内**。
+- **随机 10 条 `file`/`line`**（seed=20260928）：`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`LGC-LG-09`→`build_method/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/studio/app/writers.rs:1`、`STU-S-06`→`studio/studio/app/search_queries.rs:74`、`GTE-N-1`→`.github/workflows/release.yml:66`、`LGC-LG-52`→`plugin-host/src/process.rs:392`、`SUR-C9`→`build_method/pipeline.rs:105`：**10/10 命中且行号在界内**。
 - **正文锚点全量**（不止随机 10 条）：444 条 `.rs:<line>` 我全扫了一遍——文件不存在 0、行号越界 0；**但配对 token 规则下有 1 处不符、另有 1 处同名歧义**，见 §5 K5 与 §6 N1。
 - **HTML**：`https?://` 计数 **0**（无外链、无外部 `<script src>`/`<link>`）；内嵌 12 个 crate 的 `files/lines/fn/pubfn` 与 `audit-inventory.json` **0 mismatch**。
 - **目录命名**：`docs/audit-2026-09-28/` 内全部 `audit-` 前缀（含本文件），无残留。
@@ -121,8 +121,8 @@ PY
 - 最小修法：把 `{len(F)}` 写成 `162`（或让它与 §0 的合计同源渲染）。
 
 ### K5 `audit-report.md:572` 的配对 token 与所引行不符，且与 §1.5 的自检声明冲突
-- 现象：`…它和 `CallTreeMemo`（`studio/src/studio/app/call_tree_queries.rs:74` 注释明确写了…）是同一类问题…`——按 `conventions/src/doc_anchors.rs` 的配对规则（token 必须出现在所引行区间内），`CallTreeMemo` 出现在该文件 **第 93 行**，而引用点的是 **74**；74 行附近是关于备忘的注释、没有这个标识符。
-- 冲突点：`audit-report.md:133`（§1.5）自称「全文扫描锚点时请排除这 21 个 token 与上述两个引文行」，§9.3（`audit-report.md:1286`）与 t21 的交付说明写「逐条自检 0 violation」。我全量扫 444 条后，按同一条规则有 **1 条**不符（就是这一条）。原始片区报告写的是 `studio/src/studio/app/call_tree_queries.rs:74-101`（`audit-lane-studio.md:57`），区间内确实含第 93 行；是汇总时把区间收窄成单行造成的。
+- 现象：`…它和 `CallTreeMemo`（`studio/studio/app/call_tree_queries.rs:74` 注释明确写了…）是同一类问题…`——按 `conventions/src/doc_anchors.rs` 的配对规则（token 必须出现在所引行区间内），`CallTreeMemo` 出现在该文件 **第 93 行**，而引用点的是 **74**；74 行附近是关于备忘的注释、没有这个标识符。
+- 冲突点：`audit-report.md:133`（§1.5）自称「全文扫描锚点时请排除这 21 个 token 与上述两个引文行」，§9.3（`audit-report.md:1286`）与 t21 的交付说明写「逐条自检 0 violation」。我全量扫 444 条后，按同一条规则有 **1 条**不符（就是这一条）。原始片区报告写的是 `studio/studio/app/call_tree_queries.rs:74-101`（`audit-lane-studio.md:57`），区间内确实含第 93 行；是汇总时把区间收窄成单行造成的。
 - 最小修法：把该引用改回 `:74-101`（或 `:93`），或在 §1.5/§9.3 的声明里写明这一条例外；改完「0 违规」才成立。
 
 ### K6 `inline-heading` 仍作为一个 `severity_source` 类别被声明，而数据里已没有这种取值
@@ -144,7 +144,7 @@ PY
 **不可交付 —— 3 项阻塞**：
 
 1. **K4** `audit-report.md:4` 留着未展开的 `{len(F)}`（渲染残留，读者看到的是表达式）。
-2. **K5** `audit-report.md:572` 的配对写法 `` `CallTreeMemo`（`studio/src/studio/app/call_tree_queries.rs:74`） `` 里的 token 不在所引行上（token 在第 93 行），与报告 §1.5/§9.3 的「正文编号锚点 0 违规」声明冲突（我全量 444 条扫出这 1 条）。
+2. **K5** `audit-report.md:572` 的配对写法 `` `CallTreeMemo`（`studio/studio/app/call_tree_queries.rs:74`） `` 里的 token 不在所引行上（token 在第 93 行），与报告 §1.5/§9.3 的「正文编号锚点 0 违规」声明冲突（我全量 444 条扫出这 1 条）。
 3. **K6** `severity_source` 的类别清单在 `audit-report.md:113` 与 `audit-findings.json:156` 里仍含 `inline-heading`（数据里 0 条），且漏了实际的 `max-of-sources`（3 条）。
 
 **其余全部通过**：K1 三条已为 MAJOR/B4、连带记账（162 = 3/56/103、批次 3/23/14/50/21/51、§0/§1.4/§2.2/§2.3/§8.2）逐项重算一致；K2 的 `meta.note` 取值集与逐条字段一致（`falsified` 已不存在、`mechanism_falsified` 是独立标记）；K3 全文 `163` 只剩一处锚点行号；六组计数与 `counts` 全等；§2 ↔ JSON 三类 id 集合双向相等无重复；§3.2 映射 162/162、详情 59 = 3+56；机械不变量**实测修前为红**（我的违规副本 exit 1、11 条失败、点名 id 与来源）、真实产物 exit 0 且非恒真；我自己的严重度重取覆盖 162/162、0 违规；随机 10 条 `file`/`line` 全过；HTML 无外链且与 inventory 0 mismatch；目录命名合规；中文为主。

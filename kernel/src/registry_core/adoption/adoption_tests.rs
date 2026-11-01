@@ -193,3 +193,41 @@ fn a_malformed_prints_line_is_refused_rather_than_skipped() {
     assert!(error.message.contains("`<path>=<print>`"), "{error:?}");
     assert_eq!(error.line, 1);
 }
+
+/// **An object binding rides beside an entry without changing how that entry is read.**
+/// **对象绑定跟在条目旁边，不改变那条条目被读的方式。**
+///
+/// Same additive comment-line shape as the per-file prints: an older reader sees the entry it
+/// always saw, a newer one can ask whether the anchor still names the same object.
+/// 与逐文件指纹同一种加法注释行形状：旧读者看到的仍是它一直看到的那条条目，新读者能问锚点是否仍点名
+/// 同一个对象。
+#[test]
+fn an_object_binding_is_additive_and_validated() {
+    use super::{parse_adoption_objects, render_adoption_object};
+    let fingerprint = "0".repeat(64);
+    let ledger = format!(
+        "policy|certifies|evidence|person|12:00|policy.txt|{fingerprint}|why\n\
+         # prints policy | 12:00 | policy.txt=abc\n\
+         # object policy | 12:00 | 0123456789abcdef0123456789abcdef\n"
+    );
+    let entries = super::parse_adoption(&ledger).expect("the entry line is unchanged");
+    assert_eq!(entries.len(), 1, "a comment line is not an entry");
+    assert_eq!(entries[0].anchor, "policy");
+    let objects = parse_adoption_objects(&ledger).expect("the binding parses");
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].stable, "0123456789abcdef0123456789abcdef");
+    let none = format!("policy|certifies|evidence|person|12:00|policy.txt|{fingerprint}|why\n");
+    assert!(
+        parse_adoption_objects(&none)
+            .expect("no binding is lawful")
+            .is_empty(),
+        "an older ledger carries no binding and still parses"
+    );
+    assert_eq!(
+        render_adoption_object("policy", "12:00", "0123456789abcdef0123456789abcdef"),
+        "# object policy | 12:00 | 0123456789abcdef0123456789abcdef\n"
+    );
+    let short = "# object policy | 12:00 | deadbeef\n";
+    let error = parse_adoption_objects(short).expect_err("a short identity is refused");
+    assert!(error.message.contains("32-hex"), "{error:?}");
+}

@@ -1,10 +1,10 @@
 # Source-only Studio fixture package. It is intentionally NOT a member of the
 # XiRang workspace: it exists so the `prototype-fixtures` tests in
-# `toolchain/src/studio/src/studio/app/tests/` have a real host source tree to index. Studio
+# `toolchain/src/studio/studio/app/tests/` have a real host source tree to index. Studio
 # reads `src/` as plain text, so this package is never compiled and has no
 # `target/` directory.
 # 仅源码的 Studio 夹具包。它刻意不是 XiRang 工作区成员：它的存在只是为了让
-# `toolchain/src/studio/src/studio/app/tests/` 里的 `prototype-fixtures` 测试有一棵真实的宿主源码树
+# `toolchain/src/studio/studio/app/tests/` 里的 `prototype-fixtures` 测试有一棵真实的宿主源码树
 # 可索引。Studio 只把 `src/` 当文本读取，因此本包从不编译，也没有 `target/` 目录。
 #
 # The inner `[workspace]` table makes this manifest its own workspace root, so
@@ -25,7 +25,7 @@ name = "node_editor_fixture"
 path = "src/lib.rs"
 
 [dependencies]
-xirang-run-method = { path = "../../../../run_method", version = "0.1.0", features = ["authoring"] }
-xirang-build-method = { path = "../../../../build_method", version = "0.1.0" }
+xirang-run-method = { path = "../../../../run_method", version = "0.2.0", features = ["authoring"] }
+xirang-build-method = { path = "../../../../build_method", version = "0.2.0" }
 
 [build-dependencies]

@@ -14,6 +14,8 @@
 #      the cuts name and `full` only decides how deep the runtime replacement goes.
 #   6. **two identical string cuts** for one slot — named as an overlap with a winner, and **not** fatal: the
 #      hand-off list recorded this as a defect and it measured false, so this leg asserts the opposite.
+#   7. **moving a face a graft names** — the move must refuse with a `determined` repair map before writing
+#      anything; after unmounting that entry the same move applies, and the host still `check`s and builds.
 #   1. 切口落在**根面**上并带 `full`——整棵树从顶被替换；
 #   2. **重叠**的两条切口（一条在另一条里面）——必须**点名拒绝**，不许静默生效；
 #   3. 把宿主**重新划分**（装着两条切口的那棵子树交给新 crate）——计划不得改变，各 crate 仍要能构建；
@@ -23,6 +25,29 @@
 #      **同一批**面，因为一次构建发布哪些面由切口点名的**子树**决定，而 `full` 只决定运行期替换覆盖多深。
 #   6. 同一槽位的**两条相同字符串切口**——被点名为重叠并给出赢家，而且**不致命**：交接清单把它记成缺陷，
 #      实测不成立，因此这条腿断言的是它的反面。
+#   7. **移动一个被 graft 点名的面**——移动必须在写盘前拒绝并给出 `determined` 修复映射；卸下那条条目之后
+#      同一次移动可以落地，宿主仍然 `check` 通过并能构建。
+#
+# **Repaired 2026-10-18 — this gate runs green again, and the repair found a product defect.**
+# What was wrong: the legs rewrote the host's `GRAFTS` with regexes against the **old** `cut(...) graft(...)` spelling;
+# the example migrated to the `graft(...).with(...)` builder, so every rewrite silently matched nothing and the shape
+# under test was the unmodified host. On top of that, `host()` copied only `host/` + `graft/` while the example is
+# partitioned into `crates/` ghosts, so the host's generated tree lacked the catalog faces the legs graft.
+# Now: `host()` copies the whole example, `set_grafts` rewrites the declaration wholesale (and **fails** when it
+# cannot), legs 2/4/5/6 use **string** selectors (a typed cut on a delegated subtree stops the host publishing that
+# subtree's catalog constants), and leg 3/6 run on `host_unpartitioned` because their premise is a host that has not
+# been split. **The repair also found a real defect**: two cuts naming one slot left the plan with **no row** (the drop
+# was keyed by subtree, so the winner went with the loser) — fixed in `pipeline.rs` with the pin
+# `two_cuts_for_one_slot_leave_exactly_the_winners_row`.
+# **2026-10-18 已修复——这道门禁重新变绿，而这次修复抓到了一个产品缺陷。**
+# 原来错在两处：各腿用正则改宿主的 `GRAFTS`，改的是**旧**拼法 `cut(...) graft(...)`；示例已迁到
+# `graft(...).with(...)` 构建器，于是每次改写都静默不匹配，被测形状其实是没被改过的宿主。此外 `host()` 只复制
+# `host/` + `graft/`，而示例已被划分进 `crates/` 幽灵，所以宿主的生成树缺少各腿要 graft 的 catalog 面。
+# 现在：`host()` 复制整个示例；`set_grafts` 整块改写声明（改不了就**失败**）；leg 2/4/5/6 用**字符串**选择器
+# （类型化切口落在被交出的子树上会让宿主不再发布那棵子树的 catalog 常量）；leg 3/6 跑在 `host_unpartitioned` 上，
+# 因为它们的前提是还没被拆分过的宿主。**这次修复还抓到一个真缺陷**：两条切口点名同一个槽位会让计划**一行都不剩**
+# （丢弃按子树作键，赢家跟着输家一起没了）——已在 `pipeline.rs` 修掉，钉子是
+# `two_cuts_for_one_slot_leave_exactly_the_winners_row`。
 #
 # Usage: tools/xirang-graft-matrix        (XIRANG_GRAFT_MATRIX_CARGO_FLAGS to override)
 # 用法：tools/xirang-graft-matrix        （用 XIRANG_GRAFT_MATRIX_CARGO_FLAGS 覆盖 cargo 旗标）
@@ -52,26 +77,77 @@ build -p xirang-toolchain --features cli --bin xirang >/dev/null 2>&1 ||
 host() {
   area="$WORK/$1"
   mkdir -p "$area"
+  # The **whole** example, not two of its three parts. `crates/` holds the ghosts the shipped host was partitioned
+  # into, and the host's build script reads that shape: with the ghosts missing it generates a different tree whose
+  # catalog no longer carries the faces these legs graft. Measured 2026-10-18 — copying only `host/` + `graft/` made
+  # leg 2 die with `error[E0425]: cannot find value BUTTON in module crate::catalog::control::object`, which read
+  # like a product defect for two rounds.
+  # **整个**示例，而不是它的三分之二。`crates/` 装着出厂宿主被划分出来的幽灵，而宿主的构建脚本读的就是那个形状：
+  # 缺了幽灵它会生成另一棵 catalog 不再携带这些面要 graft 的东西的树。2026-10-18 实测——只复制 `host/` 与
+  # `graft/` 会让 leg 2 死在 `error[E0425]: cannot find value BUTTON in module crate::catalog::control::object`，
+  # 而那读起来像产品缺陷，骗了两轮。
   cp -a "$ROOT/examples/partitioned-button/host" "$area/app"
   cp -a "$ROOT/examples/partitioned-button/graft" "$area/ext"
+  cp -a "$ROOT/examples/partitioned-button/crates" "$area/crates"
+  printf '[workspace]\nresolver = "3"\nmembers = ["app", "ext", "crates/partitioned-button-objects", "crates/partitioned-button-facade"]\n' >"$area/Cargo.toml"
+  for manifest in "$area/app/Cargo.toml" "$area/ext/Cargo.toml" \
+    "$area/crates/partitioned-button-objects/Cargo.toml" "$area/crates/partitioned-button-facade/Cargo.toml"; do
+    [ -f "$manifest" ] || continue
+    sed -i "s#path = \"../../../../toolchain\"#path = \"$ROOT/toolchain\"#g; s#path = \"../../../toolchain\"#path = \"$ROOT/toolchain\"#g" "$manifest"
+    sed -i 's#path = "\.\./\.\./graft"#path = "../../ext"#g; s#path = "\.\./graft"#path = "../ext"#g' "$manifest"
+    sed -i 's#path = "\.\./\.\./host"#path = "../../app"#g; s#path = "\.\./host"#path = "../app"#g' "$manifest"
+  done
+  echo "$area"
+}
+
+# A host **before** the split: the example's own sources and its graft provider, without the ghosts and without the
+# declaration that already partitioned it. Leg 3 asks "does re-partitioning change the plan", so it needs the tree on
+# the near side of a partition; every other leg runs on the shipped (partitioned) copy.
+# **划分之前**的宿主：示例自己的源码与它的 graft 提供方，不带幽灵、也不带那条已经把它划分掉的声明。leg 3 问的是
+# "重新划分会不会改变计划"，所以它需要划分**之前**那一边的树；其余各腿跑在出厂（已划分）副本上。
+host_unpartitioned() {
+  area="$WORK/$1"
+  mkdir -p "$area"
+  cp -a "$ROOT/examples/partitioned-button/host" "$area/app"
+  cp -a "$ROOT/examples/partitioned-button/graft" "$area/ext"
+  rm -f "$area/app/add_crates.rs"
   printf '[workspace]\nresolver = "3"\nmembers = ["app", "ext"]\n' >"$area/Cargo.toml"
   sed -i "s#path = \"../../../toolchain\"#path = \"$ROOT/toolchain\"#g" "$area/app/Cargo.toml" "$area/ext/Cargo.toml"
   sed -i 's#path = "\.\./graft"#path = "../ext"#' "$area/app/Cargo.toml"
   echo "$area"
 }
 
+# Rewrite the host's `GRAFTS` declaration wholesale, from a list of expressions.
+# 按一份表达式清单整块重写宿主的 `GRAFTS` 声明。
+#
+# The legs below used to substitute the *old* `cut(...) graft(...)` spelling with regexes, and when the example
+# migrated to the `graft(...).with(...)` builder every one of those regexes silently stopped matching: the shape
+# under test was then the **unmodified** host, and the failure read as "the root-face cut does not check" (measured
+# 2026-10-18 on a clean HEAD copy). An edit that must happen has to **fail** when it cannot.
+# 下面几条腿过去用正则替换**旧的** `cut(...) graft(...)` 拼法；示例迁到 `graft(...).with(...)` 之后，那些正则
+# 全部静默失配：被测形状其实是**没被改过**的宿主，失败读起来像"根面切口 check 不过"（2026-10-18 在干净的 HEAD
+# 副本上实测）。**必须发生的**编辑，做不了就得**失败**。
+set_grafts() {
+  python3 - "$@" <<'REWRITE'
+import pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+entries = sys.argv[2:]
+text = path.read_text()
+marker = "pub const GRAFTS: &[Graft] = &["
+start = text.index(marker)
+end = text.index("];", start)
+body = "\n".join(f"    {entry}," for entry in entries)
+path.write_text(text[:start] + marker + "\n" + body + "\n" + text[end:])
+print(f"grafts: {len(entries)}")
+REWRITE
+}
+
 step 'leg 1/3: a cut on the root face with full'
 AREA=$(host root-cut)
-python3 - "$AREA/app/src/lib.rs" <<'PY'
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text()
-s = re.sub(
-    r"cut\(crate::control::object::button::NODE_ID\)\s*\n\s*graft\(control_button_graft::button_fast::NODE_ID\),",
-    "cut(crate::ROOT_NODE_ID) full\n        graft(control_button_graft::control_fast::NODE_ID),", s, count=1)
-s = re.sub(r"\s*cut\(crate::control::object::slider::NODE_ID\)\s*\n\s*graft\(control_button_graft::slider_fast::NODE_ID\),",
-           "", s, count=1)
-p.write_text(s)
-PY
+set_grafts "$AREA/app/src/lib.rs" \
+  'graft(subtree(crate::ROOT_NODE_ID)).with(control_button_graft::control_fast::NODE_ID)' ||
+  fail "the host's graft declaration could not be rewritten"
 (cd "$AREA/app" && "$XIRANG" check . >/dev/null 2>&1) || fail "the root-face cut does not check"
 [ "$(sed -n '2p' "$AREA/app/target/xirang/out/graft_plan.tsv" | cut -f1)" = "crate::ROOT_NODE_ID" ] ||
   fail "the plan does not record the root-face cut"
@@ -79,14 +155,19 @@ PY
 
 step "leg 2/3: overlapping cuts keep the later entry and say which one answers"
 AREA=$(host overlap)
-python3 - "$AREA/app/src/lib.rs" <<'PY'
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text()
-s = re.sub(
-    r"cut\(crate::control::object::button::NODE_ID\)\s*\n\s*graft\(control_button_graft::button_fast::NODE_ID\),",
-    "cut(crate::control::object::button::NODE_ID)\n        graft(control_button_graft::button_fast::NODE_ID),\n    cut(crate::control::NODE_ID) full\n        graft(control_button_graft::control_fast::NODE_ID),", s, count=1)
-p.write_text(s)
-PY
+# **String** selectors, and that is not a shortcut: this example is partitioned, so `control` and everything under it
+# belongs to a ghost crate, and a declaration that takes `control` as a cut target stops publishing its catalog
+# constants from the host — the typed spelling then does not compile (`error[E0425]: cannot find value BUTTON`, measured
+# 2026-10-18). Strings are addressed by logical path instead, which survives the partition, and they exercise the same
+# overlap rule.
+# **字符串**选择器，而不是走捷径：这个示例已被划分，`control` 及其下的一切属于幽灵 crate，而一条把 `control` 当
+# 切口目标的声明会让宿主不再发布它的 catalog 常量——类型化拼法于是编译不过（2026-10-18 实测
+# `error[E0425]: cannot find value BUTTON`）。字符串按逻辑路径寻址，能穿过划分，而且走的是同一条重叠规则。
+set_grafts "$AREA/app/src/lib.rs" \
+  'graft("root/control/button").with("button_fast")' \
+  'graft(subtree("root/control")).with("control_fast")' \
+  'graft("root/control/slider").with("slider_fast")' ||
+  fail "the host's graft declaration could not be rewritten"
 (cd "$AREA/app" && "$XIRANG" check . >"$WORK/overlap.out" 2>&1) ||
   fail "overlapping cuts no longer check: $(head -3 "$WORK/overlap.out")"
 # The decision is spoken: both entries named, and which one answers.
@@ -115,18 +196,36 @@ PLAN="$AREA/app/target/xirang/out/graft_plan.tsv"
 # `button`. Both earlier entries must be gone from the plan, and the last one must be in it.
 # 夹具声明了三条切口——`button`、`control`(full)、`slider`。逐对"后者赢"因此只留下**最后**一条：
 # `slider` 盖住 `control`，`control` 又盖住 `button`。前两条都必须从计划里消失，最后一条必须在。
-grep -q "crate::control::object::slider::NODE_ID" "$PLAN" ||
-  fail "the last cut is not in the plan: $(cat "$PLAN" | tr '\n' ' ')"
-if grep -q "crate::control::object::button::NODE_ID" "$PLAN"; then
+# The plan prints each selector in the **module-path** spelling, whatever the declaration wrote: a declaration
+# may name `crate::catalog::control::object::SLIDER`, and the plan then says
+# `crate::control::object::slider::NODE_ID` (measured 2026-10-18). Both spellings name the same face; the plan's
+# own normalisation is what these lines read.
+# 计划把每个选择器印成**模块路径**拼法，与声明里怎么写无关：声明可以写
+# `crate::catalog::control::object::SLIDER`，而计划说 `crate::control::object::slider::NODE_ID`（2026-10-18 实测）。
+# 两种拼法指的是同一个面；这几行读的是计划自己的归一化。
+# The plan prints a string selector as the **logical path** it names (`root/control/slider`), so the rows are compared
+# field by field rather than by substring: `root/control` is a prefix of every path under it, and a substring test would
+# read the winner as three rows.
+# 计划把字符串选择器印成它点名的**逻辑路径**（`root/control/slider`），因此逐字段比较而不是子串比较：`root/control`
+# 是它下面每条路径的前缀，用子串会把这个赢家读成三行。
+cut_rows=$(awk -F'\t' 'NR > 1 && NF { print $1 }' "$PLAN")
+printf '%s\n' "$cut_rows" | grep -qx "root/control/slider" ||
+  fail "the last cut is not in the plan: $(printf '%s ' $cut_rows)"
+if printf '%s\n' "$cut_rows" | grep -qx "root/control/button"; then
   fail "a superseded cut is still in the plan"
 fi
-if grep -q "crate::control::NODE_ID" "$PLAN"; then
+if printf '%s\n' "$cut_rows" | grep -qx "root/control"; then
   fail "the intermediate cut is still in the plan"
 fi
 (cd "$AREA/app" && build >/dev/null 2>&1) || fail "the overlapping host does not build"
 
 step "leg 3/3: re-partitioning the host keeps the plan and every crate"
-AREA=$(host repartition)
+# The **unpartitioned** copy: this leg's premise is a host that has not been split yet, and the shipped example has
+# already been. Running it on the shipped copy would overwrite a declaration whose ghosts are still workspace members
+# and then build two partitions of one host at once — measured 2026-10-18: `a crate of the split does not build`.
+# **未划分**的副本：这条腿的前提是一棵还没被拆分过的宿主，而出厂示例已经拆过了。跑在出厂副本上会覆盖一条声明、
+# 而它的幽灵仍是工作区成员，于是一次构建一个宿主的两份划分——2026-10-18 实测：`a crate of the split does not build`。
+AREA=$(host_unpartitioned repartition)
 cat >"$AREA/app/add_crates.rs" <<'RS'
 use xirang_toolchain::run_method::{Crate, Shape};
 
@@ -183,16 +282,9 @@ cuts=$(find "$AREA/target" "$AREA/crates" -path "*app-objects-*/out/generated_li
 
 step 'leg 4/5: the replacement never brings its own subtree in'
 AREA=$(host replacement-subtree)
-python3 - "$AREA/app/src/lib.rs" <<'PY'
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text()
-s = re.sub(
-    r"cut\(crate::control::object::button::NODE_ID\)\s*\n\s*graft\(control_button_graft::button_fast::NODE_ID\),",
-    "cut(crate::control::NODE_ID) full\n        graft(control_button_graft::control_fast::NODE_ID),", s, count=1)
-s = re.sub(r"\s*cut\(crate::control::object::slider::NODE_ID\)\s*\n\s*graft\(control_button_graft::slider_fast::NODE_ID\),",
-           "", s, count=1)
-p.write_text(s)
-PY
+set_grafts "$AREA/app/src/lib.rs" \
+  'graft(subtree(crate::catalog::control::NODE_ID)).with(control_button_graft::control_fast::NODE_ID)' ||
+  fail "the host's graft declaration could not be rewritten"
 (cd "$AREA/app" && "$XIRANG" check . >/dev/null 2>&1) || fail "the replacing cut does not check"
 (cd "$AREA/app" && build >/dev/null 2>&1) || fail "the replacing cut does not build"
 TREE=$(ls -t "$AREA"/target/debug/build/*/out/generated_lib.rs 2>/dev/null | head -1)
@@ -220,25 +312,21 @@ for shape in middle-nonfull range-with-children middle-full; do
   AREA=$(host "$shape")
   case "$shape" in
     middle-nonfull)
-      CUT='cut(crate::control::NODE_ID)\n        graft(control_button_graft::control_fast::NODE_ID),'
+      set_grafts "$AREA/app/src/lib.rs" \
+        'graft(crate::catalog::control::NODE_ID).with(control_button_graft::control_fast::NODE_ID)' ||
+        fail "the $shape declaration could not be rewritten"
       ;;
     range-with-children)
-      CUT='cut(crate::control::object::button::NODE_ID to crate::control::object::slider::NODE_ID)\n        graft(control_button_graft::button_fast::NODE_ID),'
+      set_grafts "$AREA/app/src/lib.rs" \
+        'graft(range(crate::catalog::control::object::BUTTON, crate::catalog::control::object::SLIDER)).with(control_button_graft::button_fast::NODE_ID)' ||
+        fail "the $shape declaration could not be rewritten"
       ;;
     middle-full)
-      CUT='cut(crate::control::NODE_ID) full\n        graft(control_button_graft::control_fast::NODE_ID),'
+      set_grafts "$AREA/app/src/lib.rs" \
+        'graft(subtree(crate::catalog::control::NODE_ID)).with(control_button_graft::control_fast::NODE_ID)' ||
+        fail "the $shape declaration could not be rewritten"
       ;;
   esac
-  python3 - "$AREA/app/src/lib.rs" "$CUT" <<'PY'
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text(); cut = sys.argv[2]
-s = re.sub(
-    r"cut\(crate::control::object::button::NODE_ID\)\s*\n\s*graft\(control_button_graft::button_fast::NODE_ID\),",
-    cut, s, count=1)
-s = re.sub(r"\s*cut\(crate::control::object::slider::NODE_ID\)\s*\n\s*graft\(control_button_graft::slider_fast::NODE_ID\),",
-           "", s, count=1)
-p.write_text(s)
-PY
   (cd "$AREA/app" && "$XIRANG" check . >/dev/null 2>&1) || fail "the $shape shape does not check"
   SLOTS=$("$XIRANG" explain --overlay --path "$AREA/app" 2>/dev/null)
   # Logical paths, not module paths: a face at `control/object/button/button.rs` has the module path
@@ -255,16 +343,16 @@ PY
 done
 
 step 'leg 6/6: two identical string cuts for one slot'
-AREA=$(host identical-cuts)
-python3 - "$AREA/app/src/lib.rs" <<'PY'
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1]); s = p.read_text()
-s = re.sub(
-    r"cut\(crate::control::object::button::NODE_ID\)\s*\n\s*graft\(control_button_graft::button_fast::NODE_ID\),",
-    'cut "root/control/button" graft "button_fast",\n    cut "root/control/button" graft "button_fast",',
-    s, count=1)
-p.write_text(s)
-PY
+# The unpartitioned copy, because this leg reads the plan of the **host** and a string cut on `root/control/button`
+# is only the host's to emit while it still publishes that subtree: in the shipped copy `control` belongs to a ghost,
+# and the host's plan legitimately carries no row for it (measured 2026-10-18: `0 row(s)`).
+# **未划分**的副本，因为这条腿读的是**宿主**的计划，而 `root/control/button` 的字符串切口只有在宿主还发布那棵子树时
+# 才由它发射：在出厂副本里 `control` 属于幽灵，宿主的计划合法地不带这一行（2026-10-18 实测：`0 row(s)`）。
+AREA=$(host_unpartitioned identical-cuts)
+set_grafts "$AREA/app/src/lib.rs" \
+  'graft("root/control/button").with("button_fast")' \
+  'graft("root/control/button").with("button_fast")' ||
+  fail "the host's graft declaration could not be rewritten"
 # The hand-off list recorded this shape as a defect — "two identical string cuts make the build fail with a
 # reason that contradicts the file" — and it measured false. This leg is what keeps that answer honest: it
 # asserts the **opposite** of the claim, so a change that ever makes the claim true fails here.
@@ -276,12 +364,63 @@ grep -q "two graft cuts overlap" "$WORK/identical.out" ||
   fail "the overlap went unmentioned: $(head -3 "$WORK/identical.out")"
 grep -q "later, wins" "$WORK/identical.out" ||
   fail "the hint does not say which entry answers"
-ROWS=$(printf '%s' "$(facade_plan)" | tail -n +2 | grep -c . || true)
+ROWS=$(printf '%s' "$(cat "$AREA/app/target/xirang/out/graft_plan.tsv")" | tail -n +2 | grep -c . || true)
 [ "$ROWS" = "1" ] ||
   fail "the plan does not carry exactly the winning cut ($ROWS row(s)): $(facade_plan | tr '\n' ' ')"
 (cd "$AREA/app" && build >/dev/null 2>&1) ||
   fail "the build fails on two identical string cuts (the hand-off list said it would; it does not)"
 printf '   identical cuts: check ok, the overlap is named, one row survives, and the build succeeds\n'
 
-printf '\nOK — six shapes: the root-face cut builds; overlapping cuts keep the later entry with a hint; a re-partitioned host keeps its plan; the replacement subtree stays out; the three middle-node shapes publish the same faces; and two identical string cuts are named rather than fatal\n'
+
+step 'leg 7/7: moving a face a graft names, then repairing and moving it'
+# The plan-level pins already cover the four graft/move interactions this leg exercises with a **real build**:
+# `an_ancestor_move_checks_typed_and_string_grafts_on_descendants`, `moving_out_of_a_full_graft_cannot_silently_restore_the_base_object`,
+# `recorded_grafts_on_only_some_moved_objects_are_named_before_writing`, `rebinding_only_the_moved_record_restores_both_external_implementations`
+# and `cross_crate_moves_report_ownership_without_changing_claims_or_unrelated_grafts`. What none of them proves is
+# that the **product path** refuses, the repair is possible, and the host still builds — this leg asks exactly that.
+# 计划层已经有四条 graft/move 交互的钉子；它们都不证明**产品路径**会拒绝、修复可完成、宿主仍能构建，这条腿问的就是这三件事。
+MCP="$ROOT/target/debug/xirang-mcp"
+if [ ! -x "$MCP" ]; then
+  (cd "$ROOT" && cargo build $CARGO_FLAGS -p xirang-toolchain --features mcp --bin xirang-mcp >/dev/null 2>&1) ||
+    fail "could not build $MCP, so the move path cannot be exercised"
+fi
+AREA=$(host move-repair)
+(cd "$AREA/app" && "$XIRANG" check . >/dev/null 2>&1 && build >/dev/null 2>&1) ||
+  fail "the move-repair host does not build before anything moves"
+FACE="$AREA/app/src/control/object/button/button.rs"
+BEFORE=$(md5sum "$FACE" | cut -d' ' -f1)
+if (cd "$AREA/app" && "$MCP" --call xirang.apply --root . --json '{"action":"move","node":"root/control/button","to":"root","apply":true}' >"$WORK/move-target.out" 2>&1); then
+  fail "moving a face a graft names was applied without the repair the declaration needs"
+fi
+grep -q "\[determined\]" "$WORK/move-target.out" ||
+  fail "the refusal does not tag the impact as determined: $(head -3 "$WORK/move-target.out")"
+grep -q "No automatic repair has been applied" "$WORK/move-target.out" ||
+  fail "the refusal does not say that nothing was repaired automatically"
+grep -q "root/control/button -> root/button" "$WORK/move-target.out" ||
+  fail "the repair map does not name the destination the move would produce"
+AFTER=$(md5sum "$FACE" | cut -d' ' -f1)
+[ "$BEFORE" = "$AFTER" ] ||
+  fail "the refused move changed the face's bytes ($BEFORE -> $AFTER)"
+# The repair the refusal asks for is possible: unmount that one entry, then move. Leaving `slider` typed is exactly
+# how the shipped declaration spells the remaining entry, so the rewrite is the same shape the host already uses.
+# 拒绝要求的那步修复是可行的：卸下这一条，再移动。`slider` 保留类型化拼法——出厂声明就是这么写的，所以改写后的形状与宿主现有的一致。
+set_grafts "$AREA/app/src/lib.rs" \
+  'graft(crate::catalog::control::object::SLIDER).with(control_button_graft::slider_fast::NODE_ID)' ||
+  fail "the host's graft declaration could not be reduced to the entry that is not moving"
+(cd "$AREA/app" && "$XIRANG" check . >"$WORK/move-repaired-check.out" 2>&1) ||
+  fail "the host does not check after the entry naming the moving face is unmounted: $(head -3 "$WORK/move-repaired-check.out")"
+if ! (cd "$AREA/app" && "$MCP" --call xirang.apply --root . --json '{"action":"move","node":"root/control/button","to":"root","apply":true}' >"$WORK/move-applied.out" 2>&1); then
+  fail "the same move still refuses after the repair: $(head -5 "$WORK/move-applied.out")"
+fi
+[ -f "$AREA/app/src/button/button.rs" ] ||
+  fail "the moved face is not at src/button/button.rs after the move"
+[ ! -f "$FACE" ] ||
+  fail "the face is still at its old path after the move"
+(cd "$AREA/app" && "$XIRANG" check . >/dev/null 2>&1) ||
+  fail "the host does not check after the repaired move"
+(cd "$AREA/app" && build >/dev/null 2>&1) ||
+  fail "the host does not build after the repaired move"
+printf '   move-repair: refused with a determined map, bytes untouched, then applied after the repair, and the host still builds\n'
+
+printf '\nOK — seven shapes: the root-face cut builds; overlapping cuts keep the later entry with a hint; a re-partitioned host keeps its plan; the replacement subtree stays out; the three middle-node shapes publish the same faces; two identical string cuts are named rather than fatal; and a move of a graft-named face refuses with a determined map, then applies after the repair and still builds\n'
 rm -rf "$WORK"

@@ -6,9 +6,20 @@
 //! 这里有两种语法：位于 [`face`] 的注册面解析器，以及位于 [`entries`] 的宿主入口声明。
 //! 模块树与这一分工一致。
 
+mod literal_value;
+#[path = "native_face.rs"]
+mod native_face;
+pub use native_face::{
+    catalog_reference, contract_paths, has_face_attribute, native_face_fields, render_native_face,
+};
+
 #[path = "face.rs"]
 pub mod face;
 pub use face::*;
+
+#[path = "face_region.rs"]
+pub mod face_region;
+pub use face_region::replace_face_region;
 #[path = "entries.rs"]
 pub mod entries;
 pub use entries::*;
@@ -25,3 +36,22 @@ pub use nesting::guard_nesting;
 #[cfg(test)]
 #[path = "deep_input_tests.rs"]
 mod deep_input_tests;
+
+#[path = "imports.rs"]
+mod imports;
+
+#[path = "text_edit.rs"]
+pub(crate) mod text_edit;
+pub use text_edit::{
+    ReferencePlan, TextEdit, apply_text_edits, apply_text_edits_checked, check_text_edits,
+};
+
+#[path = "reference_rewrite.rs"]
+mod reference_rewrite;
+pub use reference_rewrite::{
+    ModuleMove, PathContext, plan_reference_rewrites, plan_reference_rewrites_in,
+};
+
+#[path = "include_rewrite.rs"]
+mod include_rewrite;
+pub use include_rewrite::plan_include_rewrites;

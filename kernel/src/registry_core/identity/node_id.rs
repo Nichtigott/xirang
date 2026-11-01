@@ -124,6 +124,28 @@ impl StableFaceId {
         Self(sha256_prefix(name.as_bytes(), &[], false))
     }
 
+    /// Hash a name inside the package namespace that owns it, so two packages that both derive the
+    /// same logical path do not produce one object identity.
+    /// 在拥有它的包命名空间里散列一个名字，使两个推导出同一逻辑路径的包不会产生同一个对象身份。
+    ///
+    /// This is the **derived** object key: it is what a face gets when the author declared no
+    /// `stable_name`, and its pre-image is the logical registration path (the registry position), not
+    /// the source path — that is why a physical move keeps it. An explicit `stable_name` keeps using
+    /// [`Self::from_name`], exactly the value the tree already computes, so the two derivations never
+    /// disagree about the same declaration.
+    /// 这是**推导出的**对象键：作者没有声明 `stable_name` 时一个面得到的就是它，而它的原像是逻辑注册路径
+    /// （注册位置），不是源码路径——这正是物理搬动保持它的原因。显式 `stable_name` 仍用
+    /// [`Self::from_name`]，也就是树本来就算出的那个值，因此两种推导对同一条声明不会给出不同答案。
+    pub const fn from_namespaced_name(namespace: &str, name: &str) -> Self {
+        // Same domain-separation shape as `NodeId::from_namespaced_path`: the namespace is folded
+        // into an inner digest that becomes the outer input, so the namespace is part of the domain
+        // and not a prefix an author could collide with.
+        // 与 `NodeId::from_namespaced_path` 同一个域分离形状：命名空间先折进一个内层摘要，再作为外层
+        // 输入，因此命名空间是域的一部分，而不是作者能撞上的前缀。
+        let scoped = sha256_path_prefix(namespace.as_bytes(), name.as_bytes(), false);
+        Self(sha256_prefix(&scoped, &[], false))
+    }
+
     /// The raw 128-bit identity behind this author-owned stable name.
     /// 该作者拥有的稳定名称背后的原始 128 位身份。
     pub const fn into_bytes(self) -> [u8; 16] {
@@ -179,18 +201,36 @@ impl FromStr for NodeId {
     type Err = ParseNodeIdError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        if value.len() != 32 {
-            return Err(ParseNodeIdError);
-        }
-        let bytes = value.as_bytes();
-        let mut id = [0_u8; 16];
-        for index in 0..16 {
-            let high = hex_nibble(bytes[index * 2]).ok_or(ParseNodeIdError)?;
-            let low = hex_nibble(bytes[index * 2 + 1]).ok_or(ParseNodeIdError)?;
-            id[index] = (high << 4) | low;
-        }
-        Ok(Self(id))
+        decode_id(value).map(Self)
     }
+}
+
+impl FromStr for StableFaceId {
+    type Err = ParseNodeIdError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        decode_id(value).map(Self)
+    }
+}
+
+/// Decode exactly 32 hexadecimal digits into one 128-bit identity.
+/// 把恰好 32 个十六进制数字解码成一个 128 位身份。
+///
+/// Both identity types persist as the same spelling, so the reader is one reader: a second copy
+/// would be a second answer to "is this string an identity".
+/// 两种身份都以同一种拼写持久化，因此读取方只有一个：第二份拷贝就是"这个字符串是不是身份"的第二个答案。
+fn decode_id(value: &str) -> Result<[u8; 16], ParseNodeIdError> {
+    if value.len() != 32 {
+        return Err(ParseNodeIdError);
+    }
+    let bytes = value.as_bytes();
+    let mut id = [0_u8; 16];
+    for index in 0..16 {
+        let high = hex_nibble(bytes[index * 2]).ok_or(ParseNodeIdError)?;
+        let low = hex_nibble(bytes[index * 2 + 1]).ok_or(ParseNodeIdError)?;
+        id[index] = (high << 4) | low;
+    }
+    Ok(id)
 }
 
 /// Decode one hexadecimal digit (0-9, a-f, A-F).

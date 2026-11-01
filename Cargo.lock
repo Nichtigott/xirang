@@ -1523,7 +1523,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "xirang-conventions"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "syn 2.0.119",
  "tempfile",
@@ -1547,25 +1547,37 @@ dependencies = [
 
 [[package]]
 name = "xirang-kernel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
+ "quote",
  "sha2",
  "syn 2.0.119",
 ]
 
 [[package]]
 name = "xirang-macro"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "xirang-kernel",
+]
+
+[[package]]
+name = "xirang-multilang"
+version = "0.2.0"
+dependencies = [
+ "proc-macro2",
+ "serde_json",
  "syn 2.0.119",
  "xirang-kernel",
 ]
 
 [[package]]
 name = "xirang-toolchain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arc-swap",
  "crossterm",
@@ -1584,6 +1596,7 @@ dependencies = [
  "wat",
  "xirang-kernel",
  "xirang-macro",
+ "xirang-multilang",
 ]
 
 [[package]]

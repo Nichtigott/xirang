@@ -8,6 +8,10 @@
 //! 词表按概念拆分，文件树与之一致。插件记录定义在 plugin 模块并在此再导出，因此声明
 //! 仍以原名引用它们（`declaration::PluginManifest`），而本模块不持有第二份副本。
 
+#[path = "soil_builder.rs"]
+mod soil_builder;
+pub use soil_builder::*;
+
 use std::fmt;
 
 use crate::registry_core::identity::{NodeId, StableFaceId};

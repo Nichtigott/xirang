@@ -24,7 +24,7 @@ note   a file compiled only under a non-default feature cannot fail on the defau
        `cargo test --all-features` (or `--features <name>`) before believing a green default run
 ```
 
-它回答的是"**该跑哪个面**"，**不是**"哪个面红" ✓ —— 但第 11 轮真正卡住人的正是前者：代理需要一个理由去加宽特性面。成本低（纯粹的清单读入，不新增 I/O 类别），落点是一个新模块（`toolchain/src/mcp/src/faces.rs`）加 `status_tool` 一行调用，避免 `tools.rs` 顶到 600 行棘轮。
+它回答的是"**该跑哪个面**"，**不是**"哪个面红" ✓ —— 但第 11 轮真正卡住人的正是前者：代理需要一个理由去加宽特性面。成本低（纯粹的清单读入，不新增 I/O 类别），落点是一个新模块（`toolchain/src/mcp/faces.rs`）加 `status_tool` 一行调用，避免 `tools.rs` 顶到 600 行棘轮。
 
 ### B. 观测到的测试面（需维护者单独拍板）
 
@@ -56,7 +56,7 @@ note   a file compiled only under a non-default feature cannot fail on the defau
 
 候选 **A** 与 **B** 都已实现（同一批）：
 
-- **A**：新模块 `toolchain/src/mcp/src/faces.rs`（从 `workspace::metadata_json` 读 Cargo 自己的看法，命令拼法仍只有一份），`xirang.status` 末尾多一节。真树上实测输出：
+- **A**：新模块 `toolchain/src/mcp/faces.rs`（从 `workspace::metadata_json` 读 Cargo 自己的看法，命令拼法仍只有一份），`xirang.status` 末尾多一节。真树上实测输出：
   `faces  xirang-toolchain: default=[build, run] all=[authoring, build, cli, dev-supervisor, evidence, mcp, …]`
   加那条盲区备注 —— 第 11 轮那个盲区现在在调用方跑测试**之前**就写在答案里了。
 - **B**：新工具 `xirang.check {face, timeout_ms?, root?}`（目录第 22 项），四条钉子：失败运行如实报出退出码/结果行/失败测试名；`timeout_ms` 到点 ⇒ 印 `unknown (timed out…只杀直接子进程…日志在…)` **而不是 pass**；没有 `test result:` 行 ⇒ 印"什么都没跑，这不是通过"；不说 `face` ⇒ 按名拒绝（没有默认面）。输出走**文件**而不是管道（没人排空的管道会填满并让子进程死锁，本仓已经付过一次代价）。

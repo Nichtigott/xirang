@@ -44,8 +44,8 @@ fn main() {
                 full: false,
                 typed: true,
                 cfg: None,
-                line: 50,
-                column: 8,
+                line: 38,
+                column: 5,
             },
             xirang_toolchain::build_method::HostCut {
                 cut: "crate::control::object::slider::NODE_ID".to_owned(),
@@ -54,8 +54,8 @@ fn main() {
                 full: false,
                 typed: true,
                 cfg: None,
-                line: 52,
-                column: 8,
+                line: 40,
+                column: 5,
             },
         ],
     )

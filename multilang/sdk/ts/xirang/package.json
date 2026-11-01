@@ -1,0 +1,14 @@
+{
+  "name": "xirang",
+  "version": "0.1.0",
+  "description": "The TypeScript types for a XiRang registration face; the runtime re-exports the JavaScript SDK.",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs"
+    }
+  }
+}

@@ -1,0 +1,157 @@
+#!/bin/sh
+# Out-of-checkout compatibility gate: old published spellings and an old LanguageAdapter still work.
+# 仓外兼容门禁：旧的已发布拼法与旧的 LanguageAdapter 实现仍能工作。
+#
+# This has to run **outside** the checkout: an in-tree test can see names that a consumer cannot, and
+# a path dependency from another workspace is the shape a real consumer has.
+# 它必须在**检出之外**运行：树内测试能看到消费者看不到的名字，而来自另一个工作区的 path 依赖才是真实消费者形状。
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/xirang-api-compat.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT INT TERM
+KEEP=${XIRANG_API_COMPAT_KEEP:-0}
+
+step() { printf '\n== %s\n' "$1"; }
+fail() { printf 'xirang-api-compat: FAILED: %s\n' "$1" >&2; exit 1; }
+
+mkdir -p "$WORK/caller/src" "$WORK/implementer/src"
+cat >"$WORK/Cargo.toml" <<'MANIFEST'
+[workspace]
+resolver = "3"
+members = ["caller", "implementer"]
+MANIFEST
+
+cat >"$WORK/implementer/Cargo.toml" <<MANIFEST
+[package]
+name = "old-impl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+xirang-kernel = { path = "$ROOT/kernel" }
+xirang-multilang = { path = "$ROOT/multilang" }
+MANIFEST
+
+cat >"$WORK/implementer/src/lib.rs" <<'RUST'
+//! An external implementer written against the published `LanguageAdapter::read` method.
+//! 一个按已发布 `LanguageAdapter::read` 方法编写的外部实现者。
+use std::sync::OnceLock;
+
+use xirang_kernel::authoring::{FaceAuthoringPlan, FaceAuthoringRequest, LanguageCapabilities};
+use xirang_kernel::interchange::LanguageId;
+use xirang_multilang::registration::{FaceReadBack, LanguageAdapter};
+
+static CAPABILITIES: OnceLock<LanguageCapabilities> = OnceLock::new();
+
+fn capabilities() -> &'static LanguageCapabilities {
+    CAPABILITIES.get_or_init(|| LanguageCapabilities {
+        language: LanguageId::parse_language("compat").expect("a valid language id"),
+        file_extensions: &["compat"],
+        operations: &[],
+        fields: &[],
+    })
+}
+
+pub struct OldAdapter;
+
+impl LanguageAdapter for OldAdapter {
+    fn capabilities(&self) -> &'static LanguageCapabilities {
+        capabilities()
+    }
+
+    fn plan(&self, _request: &FaceAuthoringRequest) -> Result<FaceAuthoringPlan, String> {
+        Err("the compatibility adapter does not plan".to_owned())
+    }
+
+    fn read(&self, _source: &str) -> Result<FaceReadBack, String> {
+        Err("old adapter called".to_owned())
+    }
+}
+
+/// Use the old trait method exactly as published callers do.
+/// 完全按已发布调用方的方式使用旧 trait 方法。
+pub fn old_read() -> String {
+    OldAdapter.read("source").expect_err("the old adapter refuses")
+}
+RUST
+
+cat >"$WORK/caller/Cargo.toml" <<MANIFEST
+[package]
+name = "old-caller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+old-impl = { path = "../implementer" }
+xirang-kernel = { path = "$ROOT/kernel" }
+xirang-multilang = { path = "$ROOT/multilang", features = ["lang-cpp", "lang-python", "production"] }
+xirang-toolchain = { path = "$ROOT/toolchain", features = ["cli"] }
+MANIFEST
+
+cat >"$WORK/caller/src/main.rs" <<'RUST'
+//! A published caller that still uses the 0.2 spellings, plus the new names on the same values.
+//! 一个仍使用 0.2 拼法的已发布调用方，并在同一批值上使用新名字。
+use std::path::Path;
+
+use xirang_kernel::authoring::{RegistrationField, RegistrationUpdate};
+use xirang_kernel::interchange::Capability;
+use xirang_multilang::registration::LanguageAdapter;
+use xirang_multilang::{CppLanguage, PythonLanguage, cpp_header, cpp_native, cpp_record, facts, languages, production};
+
+fn main() {
+    // Kernel: old associated functions and old method spelling.
+    // 内核：旧关联函数与旧方法拼法。
+    assert!(Capability::parse("discovery").is_some());
+    assert!(RegistrationField::parse("kind").is_ok());
+    let update = RegistrationUpdate::new();
+    let _ = update.get(RegistrationField::Kind);
+
+    // Multilang: old free functions and old associated constructor.
+    // 多语言：旧自由函数与旧关联构造器。
+    let root = Path::new(".");
+    let _ = facts::Facts::load(root, false);
+    let _ = cpp_header::render(&[]);
+    let _ = cpp_native::read(root);
+    let _ = cpp_record::read(&root.join("missing.o"));
+    let _ = languages::cpp::read("no declaration");
+    let _ = languages::python::read("no declaration");
+    // The old trait method also works on the built-in adapters, not only on a third-party one.
+    // 旧 trait 方法在内置适配器上也能用，不只第三方实现者。
+    let _ = CppLanguage.read("no declaration");
+    let _ = PythonLanguage.read("no declaration");
+
+    // The published toolchain surface re-exports production; the old `build` name must still resolve.
+    // 已发布 toolchain 表面重导出 production；旧 `build` 名字必须仍能解析。
+    let _ = xirang_toolchain::multilang::build as fn(&Path, bool) -> Result<String, String>;
+    let _ = production::build as fn(&Path, bool) -> Result<String, String>;
+
+    // New names remain the forward path.
+    // 新名字仍是前进路径。
+    assert!(Capability::parse_ability("discovery").is_some());
+    assert!(RegistrationField::parse_field("kind").is_ok());
+    let _ = update.find_field(RegistrationField::Kind);
+    let _ = facts::Facts::load_facts(root, false);
+    let _ = production::build_project as fn(&Path, bool) -> Result<String, String>;
+
+    // An old third-party adapter, using the trait method as published.
+    // 一个旧的第三方适配器，按已发布方式使用 trait 方法。
+    let message = old_impl::old_read();
+    assert_eq!(message, "old adapter called");
+    println!("OLD-OK");
+}
+RUST
+
+step "outside-checkout workspace: $WORK"
+if ! (cd "$WORK" && CARGO_TARGET_DIR="$WORK/target" cargo run --offline -q -p old-caller) >"$WORK/run.log" 2>&1; then
+    cat "$WORK/run.log" >&2
+    fail "the old caller/implementer did not compile or run"
+fi
+grep -q '^OLD-OK$' "$WORK/run.log" || { cat "$WORK/run.log" >&2; fail "the old caller did not print OLD-OK"; }
+
+step "deprecation notices are present"
+grep -q 'deprecated' "$WORK/run.log" || { cat "$WORK/run.log" >&2; fail "the old spellings did not warn as deprecated"; }
+
+step "kept work directory: $WORK"
+[ "$KEEP" = "1" ] || true
+printf 'xirang-api-compat: ok (old caller + old LanguageAdapter compiled and ran outside the checkout)\n'

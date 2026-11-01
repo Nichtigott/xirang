@@ -140,6 +140,7 @@ name = "xirang-kernel"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
+ "quote",
  "syn 2.0.119",
 ]
 
@@ -148,6 +149,15 @@ name = "xirang-macro"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "xirang-kernel",
+]
+
+[[package]]
+name = "xirang-multilang"
+version = "0.1.0"
+dependencies = [
  "xirang-kernel",
 ]
 
@@ -160,6 +170,7 @@ dependencies = [
  "syn 2.0.119",
  "xirang-kernel",
  "xirang-macro",
+ "xirang-multilang",
 ]
 
 [[package]]

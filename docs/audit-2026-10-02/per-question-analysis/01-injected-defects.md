@@ -41,7 +41,7 @@
 **两侧差异与归因**：
 - **信息差（可见窗口的分配）**：我们把"词 → 地方"的入口 `locate` 的 5 个可见名额**全给了同一个测试文件**（22 个候选只露 5 个，而真因文件零出现）；codegraph 没有排名，`node <file>` 是整文件转储，**契约行与病灶行必然同屏**，不需要"排得准"。这一题里"用症状的词找到病灶"这条链在我们侧是断的——真因是 agent 自己读出来的，不是 `locate` 给的。
 - **信息差（契约的来源）**：答案要引的契约是**字段 doc**（`min_amount` 的 13-14 行），而本桥的 `read` 窗口是"行 ± context"、`why` 只打定义自己的 doc、`callgraph` 只打函数体前两行 doc ⇒ **四道题里我们没有任何一次调用打印过 13-14 行**；cg 的整文件转储一次到位。
-- **流程差**：codegraph 每题先付 `init`（本题日志 2 次 init + 1 次 files = 3/5 条与诊断无关）；我们不建索引，但每次 `read` 都要先有 `path:line`（三种形状 `line/lines/whole` 都以 path 为前提，toolchain/src/mcp/src/tools.rs:197-211）。
+- **流程差**：codegraph 每题先付 `init`（本题日志 2 次 init + 1 次 files = 3/5 条与诊断无关）；我们不建索引，但每次 `read` 都要先有 `path:line`（三种形状 `line/lines/whole` 都以 path 为前提，toolchain/src/mcp/tools.rs:197-211）。
 
 **代价**（README §三）：仪器 **5 vs 5** · 输出 1,613 vs 2,527 · 推理 3,324 vs 4,776 · 上下文 182,016 vs 89,344。
 
@@ -96,7 +96,7 @@
   `src/model/entry.rs:22 new (its doc overlaps debit)`
   `src/model/entry.rs:38 postable (its doc overlaps debit)`
   （①1）。真因 `src/store/index.rs:24` 不在里面；答案 ⑤ 自己写：`2 个候选，都把 debit 词排到 src/model/entry.rs（未命中真因）`。
-  原因能从源码读出来：`locate` 的语料 = **函数名 + 其上方 doc**（toolchain/src/mcp/src/locate.rs:15-19、62-72 的 `doc_text`），而 `debit`/`small` 只作为**函数体里的字符串字面量**存在——`0 => "debit"`、`1 => "small"`（cg/r3.md ①4 的第 45-48 行），以及测试断言的值里。
+  原因能从源码读出来：`locate` 的语料 = **函数名 + 其上方 doc**（toolchain/src/mcp/locate.rs:15-19、62-72 的 `doc_text`），而 `debit`/`small` 只作为**函数体里的字符串字面量**存在——`0 => "debit"`、`1 => "small"`（cg/r3.md ①4 的第 45-48 行），以及测试断言的值里。
 - `why` 拿到了什么（本题唯一可下结论的一行）：`at src/store/index.rs:19 — the definition contains (lines 19-27)` + `contract src/store/index.rs:17 /// Whether this bucket holds an amount: at or above low, below high when it has one.` / `:18 /// 本桶是否容纳某个金额：不小于 low，有上界时严格小于它。` + `callers src/store/index.rs::bucket_of, tests/ledger.rs::the_report_names_its_totals_and_its_buckets …`（①2）。契约说"严格小于上界"，实现是 `<=`：**契约与实现相反**。
 - `callgraph` 拿到了什么：`callers (2): src/store/index.rs::bucket_of, tests/ledger.rs::…`、`also here: buckets -> src/store/index.rs:32, bucket_of -> src/store/index.rs:42`、源码里 `impl Some(high) => amount < high,`（①3）——**改后**读数；改前的 `<=` 只出现在 agent 自己的 `read` 窗口里（`24: Some(high) => amount <= high,`，ours/r3.md step 21）。
 - `check`：`verdict passed … 9 passed`（①4，改后）。

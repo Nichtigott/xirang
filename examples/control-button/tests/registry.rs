@@ -70,24 +70,21 @@ fn built_in_tree_has_the_expected_paths_and_derived_sources() {
 /// only a shape in a unit test.
 #[test]
 fn handle_faces_record_plain_default_preset_and_parts_names() {
-    assert_eq!(control_button::control::REGISTRATION.preset, "NoPreset");
-    assert_eq!(control_button::control::REGISTRATION.parts, "NoParts");
-    assert_eq!(
-        control_button::control::object::button::REGISTRATION.preset,
-        "NoPreset"
-    );
-    assert_eq!(
-        control_button::control::object::button::REGISTRATION.parts,
-        "NoParts"
-    );
-    assert_eq!(
-        control_button::control::object::slider::REGISTRATION.preset,
-        "NoPreset"
-    );
-    assert_eq!(
-        control_button::control::object::slider::REGISTRATION.parts,
-        "NoParts"
-    );
+    // The snapshot the tree assembles is what a consumer reads now: a face written as a `Registration`
+    // literal carries its declaration on its own type, and the runtime record is the build's half.
+    // 现在消费者读的是**生成树拼装出来的快照**：写成 `Registration` 字面量的面把声明放在自己的类型上，而运行期
+    // 记录是构建那一半。
+    let recorded = |kind: &str| {
+        control_button::registrations()
+            .into_iter()
+            .find(|row| row.kind == kind)
+            .unwrap_or_else(|| panic!("no registration record for `{kind}`"))
+    };
+    for kind in ["Control", "Button", "Slider"] {
+        let row = recorded(kind);
+        assert_eq!(row.preset, "NoPreset", "{kind}");
+        assert_eq!(row.parts, "NoParts", "{kind}");
+    }
 }
 
 /// 叶子面以自身名字载入，公开模块路径和类型名都不变。
@@ -147,7 +144,11 @@ fn parent_rule_rejects_a_child_that_misses_a_required_export() {
         .register_all(&control_button::registrations())
         .expect("built-in faces register");
 
-    let mut broken = control_button::control::object::button::REGISTRATION.into_snapshot();
+    let mut broken = control_button::registrations()
+        .into_iter()
+        .find(|row| row.kind == "Button")
+        .expect("the button face records a registration")
+        .into_snapshot();
     broken.kind = "BrokenButton".to_owned();
     broken.exports.clear();
     broken.id =
@@ -176,7 +177,11 @@ fn parent_rule_rejects_a_child_that_misses_a_required_export() {
 #[test]
 fn parent_rule_admits_a_new_kind_that_satisfies_it() {
     let mut registry = base_registry();
-    let mut sibling = control_button::control::object::button::REGISTRATION.into_snapshot();
+    let mut sibling = control_button::registrations()
+        .into_iter()
+        .find(|row| row.kind == "Button")
+        .expect("the button face records a registration")
+        .into_snapshot();
     sibling.kind = "Toggle".to_owned();
     sibling.registry_name = "toggle".to_owned();
     sibling.id = NodeId::from_namespaced_path(&sibling.namespace, &sibling.source.file, "Toggle");

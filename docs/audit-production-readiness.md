@@ -120,10 +120,10 @@ Updated as the fixes landed; this is the state after the tenth batch.
 
 - **C1 ✅ FIXED CRITICAL 宿主 `src/` 下只要有普通平铺 `.rs`，`check`/`build`/`explain`/`grafts`
   与宿主自己的 `cargo build` 都会 panic** `[实测]` —
-  `build_method/src/discovery.rs:10-11`（`read_dir(src).expect`）、`:20-23` 与 `:57-60`
+  `build_method/discovery.rs:10-11`（`read_dir(src).expect`）、`:20-23` 与 `:57-60`
   （`panic!("registration source ... must use `<name>/<name>.rs` layout")`）；同一条
-  `discover_root` 由宿主的 `build.rs` 经 `build_method/src/lib.rs:119-122` →
-  `pipeline.rs:14` 调起，CLI 四条命令经 `cli/src/lib.rs:120-124` 调起。
+  `discover_root` 由宿主的 `build.rs` 经 `build_method/lib.rs:119-122` →
+  `pipeline.rs:14` 调起，CLI 四条命令经 `cli/lib.rs:120-124` 调起。
   实测：`./target/debug/xirang check debug_method` → 退出 101、stdout 空；把
   `examples/control-button`（合法宿主）复制到 `/tmp` 并加一个 `src/helpers.rs` → 同样
   退出 101。`discovery.rs:16` 只豁免 `lib.rs`/`main.rs`/`bin`，这条布局规则**没有写进任何
@@ -134,13 +134,13 @@ Updated as the fixes landed; this is the state after the tenth batch.
   同一处），而是面的文件变成 `phase=face-layout` 诊断并指出该移到哪；`pipeline::run` 在解码
   字段的各阶段之前收集它。实测：合法宿主 + `src/helpers.rs` → `check` 退出 0；平铺文件里的面
   → 退出 1 且 `check --json` 输出完整十一键文档。Pinned by
-  `build_method/src/pipeline.rs::an_ordinary_flat_module_is_not_a_registration_source` 与
+  `build_method/pipeline.rs::an_ordinary_flat_module_is_not_a_registration_source` 与
   `::a_face_outside_the_layout_is_reported_with_its_path`。
   该布局规则已随 m16 写进 README 的 `## Boundaries`（`README.md:787-789`、
   `README.zh-CN.md:703`，中英同步），因此 C1 没有遗留项。
 - **C2 ✅ FIXED CRITICAL 畸形注册面 panic 而不是诊断** `[实测]` —
-  `build_method/src/registration_check.rs:104-105` 与
-  `build_method/src/validation.rs:170-171` 用 `unwrap_or_else(|error| panic!(...))`，
+  `build_method/registration_check.rs:104-105` 与
+  `build_method/validation.rs:170-171` 用 `unwrap_or_else(|error| panic!(...))`，
   由 `pipeline.rs:34,37-40` 触达。后果与 C1 相同：`check --json` 不产出任何 JSON 文档。
   **Fixed:** `validation::parsed_face` 不再 panic（返回 `None`，下游所有 `&& let Some(face)`
   链因此自然跳过），`validation::face_syntax_errors` 在任何解码阶段之前把
@@ -150,9 +150,9 @@ Updated as the fixes landed; this is the state after the tenth batch.
   的副本里放一个未闭合的 `src/broken/broken.rs`，改前退出 101、stdout 空；改后
   `check --json` 输出一个文档、`count: 2`（`phase=entry` 与 `phase=face-syntax` 都指向
   `broken/broken.rs:1`），退出非零。Pinned by
-  `build_method/src/pipeline.rs::a_malformed_face_is_reported_instead_of_aborting`。
+  `build_method/pipeline.rs::a_malformed_face_is_reported_instead_of_aborting`。
 - **C3 ✅ FIXED CRITICAL Studio 会认错项目树，并可能把新面写进 XiRang 自己的源码目录**
-  `[实测]` — `studio/src/studio/app/support.rs` 的根回退是
+  `[实测]` — `studio/studio/app/support.rs` 的根回退是
   `env!("CARGO_MANIFEST_DIR").parent()`（编译期 crate 源码目录），而
   `core/src/registry_core/lexicon/lexicon.rs:228-238` 对 `XIRANG_PACKAGE_ROOT`
   **原样采信、不检查存在性**；随后 `source_index.rs` 返回空注册表，`lifecycle.rs:86` 照样显示
@@ -162,26 +162,26 @@ Updated as the fixes landed; this is the state after the tenth batch.
   显式路径 → 环境变量 → 持有 `Cargo.toml` 的当前目录），四个候选全部**按名字拒绝**不可用者；
   `CARGO_MANIFEST_DIR` 回退已删除，兜底改为当前目录。`app::preflight` 在 `launch_with` 里、
   **接管终端之前**运行，失败即打印一行并退出 1（见 M10）。独立二进制现在还接受
-  `xirang-studio [PROJECT]`（`studio/src/main.rs`），并支持 `--help`。
+  `xirang-studio [PROJECT]`（`studio/main.rs`），并支持 `--help`。
   实测：`XIRANG_PACKAGE_ROOT=/nonexistent` 或从无 `Cargo.toml` 的目录启动 → 退出 1 且消息
   点出变量/路径。Pinned by
-  `studio/src/studio/app/tests/project.rs::{an_unresolvable_project_is_refused_instead_of_falling_back,
+  `studio/studio/app/tests/project.rs::{an_unresolvable_project_is_refused_instead_of_falling_back,
   only_a_working_directory_that_holds_a_package_is_opened,
   a_relative_candidate_resolves_against_the_working_directory}`。
 - **C4 ✅ FIXED CRITICAL Studio `e` … `s` 静默整文件重写，手写内容被丢且无备份** `[实测]` —
   `overlay/edit.rs` → `mutations.rs:180-182` →
-  `run_method/src/authoring/operations/operations.rs` 的
+  `run_method/authoring/operations/operations.rs` 的
   `atomic_write(&source, &rendered)`；重写从固定字段集重建整个文件，只有 `plugin:`
   被护住（`render.rs:22-28`），其余手写项与注释会被丢掉，且没有任何备份。
   **Fixed:** 重写前把先前的文本存进删除路径本就使用的回收目录
   （`<package>/.xirang/trash/faces/<file>-<id>-<nanos>.rs`），并把路径写进返回消息，因此
   读者看得到旧文本去了哪里；重写没有实质变化时不产生备份。新增
-  `run_method/src/authoring/operations/trash.rs`（回收目录、纳秒时间戳、`stash_face_source`），
+  `run_method/authoring/operations/trash.rs`（回收目录、纳秒时间戳、`stash_face_source`），
   并把 `delete_module` 拆到 `delete.rs` —— 这同时是一笔尺寸还款：`operations.rs` 429 → 423 行，
   离 450 的余量从 21 行回到 27 行，而 "不许新增超标条目" 的棘轮规则因此没有被触碰。
   实测：给一个注册面手写一行注释再经 `e` … `s` 保存，重写后的文件里没有那行，而
   `.xirang/trash/faces/` 下恰好一份备份含有它。Pinned by
-  `studio/src/studio/app/tests/edit.rs::a_rewritten_face_keeps_its_previous_text_in_the_trash`。
+  `studio/studio/app/tests/edit.rs::a_rewritten_face_keeps_its_previous_text_in_the_trash`。
   **仍可选（未做）:** 写入前显示 diff 并要求确认；备份是"可恢复"，确认是"不会发生"。
 - **M1 ✅ FIXED MAJOR 内核 `syn` 解析无递归深度上限 → 病态嵌套直接 abort（绕过 `Result`）**
   `[实测]` — 入口：`core/src/registry_core/syntax/face.rs:149,238`、
@@ -189,7 +189,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   `authoring/parse/parse.rs:107`、`authoring/parse/flow.rs:98,110`、
   `syntax/fields.rs:177,205`。`syn 2.0.119` 自身无深度守卫，而下一层的 `proc-macro2`
   显式防了它自己（fallback 词法器注释 "Nonrecursive to prevent stack overflow"）。可达面是
-  "项目不拥有的文本"：Studio 的作者编辑缓冲区（`studio/src/studio/app/keyboard.rs:172`）
+  "项目不拥有的文本"：Studio 的作者编辑缓冲区（`studio/studio/app/keyboard.rs:172`）
   与 authoring。触发量级约上万层括号，与栈大小相关。复现：60k 层配平括号 / 60k 层花括号 /
   50k 层 `Vec<…>` 三类在改前均以 `fatal runtime error: stack overflow, aborting`（SIGABRT）
   打死整个测试进程；未闭合的一串不溢出（`proc-macro2` 词法器先拒）。
@@ -258,7 +258,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   不可表示 → 拒绝，恰好可表示的 `2^53` → 照常判定）。
   顺带一笔还款：该文件的测试模块搬成 `runtime_checks_tests.rs`，棘轮条目从 **751 → 551**。
 - **M6 ✅ FIXED MAJOR MCP 树遍历跟随符号链接目录，可读出包根之外** `[报告]` —
-  `mcp/src/index.rs` 的 `StdSourceTree::is_directory` 是裸 `path.is_dir()`（跟随链接），而
+  `mcp/index.rs` 的 `StdSourceTree::is_directory` 是裸 `path.is_dir()`（跟随链接），而
   `load_file` 只用语法 `strip_prefix` 做根检查：根内一个指向根外的链接能通过前缀比较，整棵
   外部树因此被拉进索引，其中的文件也进了回答。`inspect`/`read` 走的 `load_one` 本来就
   canonicalize ✓。
@@ -268,14 +268,14 @@ Updated as the fixes landed; this is the state after the tenth batch.
   而对同一路径的**直接** `inspect`/`read` 仍按名字拒绝。Pinned by
   `index::tests::a_link_out_of_the_source_root_is_neither_walked_nor_read`（unix symlink）与
   `::a_file_inside_the_source_root_is_still_read`（守卫针对位置而非链接本身）。
-- **M7 ✅ FIXED MAJOR `xirang mcp` 永远不会以非零退出** `[报告]` — `cli/src/lib.rs` 调
-  `xirang_mcp::run()`（返回 `()`）后 `Ok(())`；`mcp/src/protocol.rs` 的循环在 stdin 读错或
+- **M7 ✅ FIXED MAJOR `xirang mcp` 永远不会以非零退出** `[报告]` — `cli/lib.rs` 调
+  `xirang_mcp::run()`（返回 `()`）后 `Ok(())`；`mcp/protocol.rs` 的循环在 stdin 读错或
   stdout 写失败时静默 `break`。传输层失败 ⇒ 退出 0、stderr 无消息。
   **Fixed:** `run()` 改为 `Result<(), String>`；分帧抽成可测的 `run_with(&mut dyn BufRead,
   &mut dyn Write)`（两个值得钉住的失败在真实终端上无法从测试里造出来）；CLI 用
   `map_err` 传播，独立二进制打印一行并以 1 退出（与 studio 的入口同形）。Pinned by
   `protocol::tests::{an_unwritable_response_is_reported, a_closed_input_ends_the_session_cleanly}`。
-- **M8 ✅ FIXED MAJOR `grafts` 静默部分成功** `[报告]` — `cli/src/grafts.rs` 用
+- **M8 ✅ FIXED MAJOR `grafts` 静默部分成功** `[报告]` — `cli/grafts.rs` 用
   `face_views(...).unwrap_or_default()` 丢掉源码树读取错误（声明那一列于是变成猜的），
   `plan_rows` 把读不了的计划目录变成"没有计划"，不可读的宿主入口只打印而退出码仍是 0。
   **Fixed:** 三处读取失败都收集进 `problems`；`plan_rows` 改为 `Result<Vec<Value>, String>`
@@ -286,7 +286,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   的答案是"不能"），不是回答不出来。Pinned by
   `tests::{grafts_reports_an_unreadable_plans_directory, grafts_reports_a_host_whose_sources_cannot_be_read}`。
 - **M9 ✅ FIXED MAJOR `xirang-dev` 在 Studio 子进程崩溃时仍报成功** `[报告]` —
-  `studio/src/bin/xirang-dev.rs` 对任何退出状态都 `Ok(())`，于是"启动即崩"与"读者正常退出"
+  `studio/bin/xirang-dev.rs` 对任何退出状态都 `Ok(())`，于是"启动即崩"与"读者正常退出"
   对调用方是同一件事。
   **Fixed:** 抽出 `exited(status)`：成功状态仍是 `Ok(())`，非零则返回
   `Err("Studio exited with {status}")`，由 `main` 打印一行并以 1 退出。Pinned by
@@ -311,15 +311,15 @@ Updated as the fixes landed; this is the state after the tenth batch.
   `walk::tests::{a_cyclic_tree_stops_at_the_depth_bound, a_flat_tree_yields_every_rust_file}`。
 - **M12 ✅ FIXED MAJOR 每个函数都从偏移 0 重数换行（O(n·f)），MCP 索引会走这条路** `[报告]` —
   `core/src/registry_core/source/source.rs` 对每个函数做两次
-  `source[..offset].bytes().filter(...).count()`，而 `mcp/src/index.rs` 在全树上调用它。
+  `source[..offset].bytes().filter(...).count()`，而 `mcp/index.rs` 在全树上调用它。
   **Fixed:** `function_symbols` 改为一次前向扫描：它报告的两个偏移都是非递减的（循环从刚取下的
   函数末尾继续），因此从上次的偏移继续数即可，整趟变线性；`target < counted_to` 保留一条正确性
   兜底（旧代价、正确答案），而不是给出错答案。Pinned by
   `source::tests::every_function_reports_its_own_lines_in_a_long_file`（200 个函数逐个断言
   `line`/`end_line`）。
 - **M13 ✅ FIXED MAJOR Studio 删除 graft 记录是单键无确认，且坏记录删不掉** `[实测]` —
-  `studio/src/studio/app/overlay/graft.rs` 的 `d` 直接调用删除；
-  `run_method/src/authoring/external_graft/plan.rs` 的 `remove_external_graft` 先
+  `studio/studio/app/overlay/graft.rs` 的 `d` 直接调用删除；
+  `run_method/authoring/external_graft/plan.rs` 的 `remove_external_graft` 先
   `read_external_graft` 再改名，因此**读不懂的记录一条也删不掉**——而那恰恰是最需要能删掉的
   情况。
   **Fixed:** ①删除不再以解析为前提：新增 `external_graft_directory(selector)`（校验选择器是
@@ -327,26 +327,26 @@ Updated as the fixes landed; this is the state after the tenth batch.
   字节保留，因此删错仍可手工恢复；②`d` 改为**两次确认**：第一次只进入待删状态并在事件行点名
   记录，任何其他键解除，第二次才移动（状态存在 `GraftState::pending_delete`，因此提示画得
   出来），页脚改为 `d delete (press twice)`。Pinned by
-  `run_method/src/authoring/external_graft/plan.rs::tests::a_broken_record_can_still_be_removed`
-  与 `studio/src/studio/app/tests/graft.rs::graft_composes_an_external_overlay_plan_without_touching_source`
+  `run_method/authoring/external_graft/plan.rs::tests::a_broken_record_can_still_be_removed`
+  与 `studio/studio/app/tests/graft.rs::graft_composes_an_external_overlay_plan_without_touching_source`
   （已扩为：一击不删、别的键解除、两击才删）。
 - **M14 ✅ FIXED MAJOR Studio 新建项目与插件选择无确认，且可能留下半个项目** `[实测]` —
   新建项目的相对目录按 Studio 的 CWD 解析、脚手架中途失败留下部分目录、空目录检查与写入之间
   有 TOCTOU；插件选择在单次按键上追加 `use <crate> as _;` 与锁行，锁写失败会留下半对文件。
   **Fixed:** ①相对目录改为相对**打开的项目**解析（`package_root()`），不再相对进程 CWD；
-  ②`build_method/src/scaffold/project.rs` 新增 `write_project(root, files, existed)`：失败时
+  ②`build_method/scaffold/project.rs` 新增 `write_project(root, files, existed)`：失败时
   移除自己写下的内容；若目录本来就存在（TOCTOU 窗口内可能有别人的文件）则**不删**，而是把
   "留下了部分项目"写进错误消息——两种情形都有测试；③插件写入改为**两次确认**（
   `PluginState::pending_submit`，任何其他键解除），锁写失败时把入口文件恢复成先前的字节
   （原本不存在则删除），并在事件行说明；两次追加共用新的 `append_line` 助手。
-  Pinned by `build_method/src/scaffold/project.rs::tests::a_failed_scaffold_removes_what_it_wrote`
-  与 `studio/src/studio/app/tests/forms.rs::a_plugin_selection_takes_two_presses_and_rolls_back_a_half_write`。
+  Pinned by `build_method/scaffold/project.rs::tests::a_failed_scaffold_removes_what_it_wrote`
+  与 `studio/studio/app/tests/forms.rs::a_plugin_selection_takes_two_presses_and_rolls_back_a_half_write`。
   **有意未加:** 新建项目向导的第二道确认。它的 `s` 已经是一次对三字段表单的显式提交，而
   M13/M14 里加两击确认的两处都是"列表行上的一次裸按键"；这一条按后者的形态记录在案。
 - **M15 ✅ FIXED MAJOR 宿主 crate 在 `--cfg rust_analyzer` 下对嵌套面编译失败** `[实测]` —
   实测 `cargo rustc -p xirang-example-control-button --lib --offline -- --cfg
   rust_analyzer` → 退出 101，`generated_lib.rs` 报 `E0433 cannot find registry_rule in super`。
-  根因写在渲染器自己的注释里（`build_method/src/renderer/ide.rs`）：`rust-analyzer` 只在文件或
+  根因写在渲染器自己的注释里（`build_method/renderer/ide.rs`）：`rust-analyzer` 只在文件或
   展开的**顶层**应用 `#[path]`，因此嵌套面必须再有一条 crate 根影子声明，而那条影子里 `super`
   就是 crate 根；于是面里派生的规则路径 `super::registry_rule::REGISTRATION_RULE`
   （`macro/src/lib.rs` 的 `face_rule_or` 在 `needs_registry: true` 且作者省略规则时发出）在
@@ -431,14 +431,14 @@ Updated as the fixes landed; this is the state after the tenth batch.
   限定词保持不变（图例 `+ live` 描述的是证据标记词表，与样本无关）。Pinned by
   `sample::tests::the_built_in_sample_carries_one_observed_local`。
 - **m8 ✅ FIXED MINOR `atomic_write` 会删掉已存在的同名临时文件** `[实测]` —
-  `run_method/src/authoring/filesystem/filesystem.rs` 用固定临时名，并在复用前**先删除**它：
+  `run_method/authoring/filesystem/filesystem.rs` 用固定临时名，并在复用前**先删除**它：
   一个恰好带着该名字的同级文件会被销毁，崩溃留下的残留也会被下一次写入清掉。
   **Fixed:** 临时名改为唯一形式 `.<name>.xirang-<pid>-<counter>.tmp`，只清理自己的临时文件
   （写入或改名失败时）。Pinned by
   `filesystem::tests::writing_replaces_the_target_and_touches_nothing_else`（预置一个旧式
   `face.xirang.tmp` 同级文件，断言它原样保留、目标换成新内容、且不留下自己的临时文件）。
 - **m9 ✅ FIXED MINOR 写失败与环境配置错误走 panic 而非诊断** `[实测]` —
-  `build_method/src/cache.rs:36-39` `expect("write generated module tree")`；
+  `build_method/cache.rs:36-39` `expect("write generated module tree")`；
   `entry.rs` 的入口解析与 `scope.rs` 的取值解析在配置错误时直接 panic（`XIRANG_ENTRY`
   指不到文件、`application!` 解析失败/非 `crate::`/不可解析/多条、`XIRANG_SCOPE` 的
   schema 不对/身份不是 32 位十六进制/身份不存在、入口里的 graft 声明解析失败），
@@ -458,7 +458,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   `Result`；`pipeline::run` 收集写失败——它是生成树唯一无法承载的失败，因为本该承载它的文件正
   是写不成的那个——构建脚本路径仍以带原因的 panic 停下（那正是构建脚本的失败机制），而
   `check --json` 把它当作 `phase=out-dir` 诊断与其他诊断一起报出。Pinned by
-  `build_method/src/pipeline.rs::an_unwritable_generated_tree_is_reported_not_fatal`。
+  `build_method/pipeline.rs::an_unwritable_generated_tree_is_reported_not_fatal`。
 - **m10 ✅ FIXED MINOR `GraftPlanDocument::parse` 接受重复键** `[实测]` —
   `core/src/registry_core/plugin/graft/document.rs` 里第二个 `graft=` 静默获胜，而同一工作区的
   `from_jsonl` 与注册面解析器都拒绝重复字段。
@@ -476,7 +476,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   `mir::text::tests::text_that_is_not_mir_yields_an_empty_graph`——将来改成 `Result` 的人必须
   连同这条测试与那段文档一起更新。
 - **m13 ✅ FIXED MINOR 24 个 `ignore` 文档围栏永不编译** `[实测]` —
-  `run_method/src/macros/face.rs` 里 24 个示例是宿主 crate 里宏调用**内部**的内容（命名
+  `run_method/macros/face.rs` 里 24 个示例是宿主 crate 里宏调用**内部**的内容（命名
   `crate::…` 与生成的按注册机别名），永远无法作为 `run_method` 的 doctest 编译。
   **Fixed（两半）:** ①24 个围栏重标为 `rust,ignore`（语言写明；裸 `ignore` 连"这是 Rust"都不说），
   模块文档用一段话说明为什么它们不能编译，而不是重复 24 次；②**文档门禁现在也扫 rustdoc 注释**：
@@ -637,7 +637,7 @@ Updated as the fixes landed; this is the state after the tenth batch.
   **仍未验证**：`M3/W7` 里的 `W7` 这个编号在本仓库任何文件里都不存在（三份早期审计、
   roadmap、CHANGELOG 都没有），因此无法复核它指的是什么；本轮只关掉 M3 那一半。
 - **U5 已测（本轮）** `CallEvidence::Live` 的可达性。新增两条运行观察
-  （`studio/src/studio/app/tests/evidence.rs`，在夹具工程上枚举调用图页面**可能画出的每一条边**
+  （`studio/studio/app/tests/evidence.rs`，在夹具工程上枚举调用图页面**可能画出的每一条边**
   ——即对该工程每个函数问它的调用者与被调用者，与树/详情面板读的是同一个 `call_relations`）：
   (a) 出厂 Studio 装的演示样本确实带一条边，而且它的节点不属于已加载工程的任何节点（逐条断言），
   此时 `call_evidence` 回答 `Live` 的条数是 **0**；(b) 换成针对已加载注册面的追踪
@@ -717,7 +717,7 @@ warnings' cargo doc --workspace --no-deps`; `cargo check --workspace --no-defaul
 `conventions/src/{purity,size,doc_blocks}.rs`, `core/.../identity/{node_id,identity}.rs`,
 `docs/roadmap-1.0.md`, `docs/threat-model.md`, `.github/workflows/ci.yml`, `tools/*`, the root
 and per-crate manifests, `plugin-host/src/{wasm,artifact-caller,verifier}.rs`,
-`studio/src/studio/app/support.rs`, `build_method/src/{discovery,lib}.rs`. The four delegated
+`studio/studio/app/support.rs`, `build_method/{discovery,lib}.rs`. The four delegated
 audits are recorded by their own evidence in the rows above (`[报告]`), each of which ran
 read-only with `--offline` and left the tree clean.
 基线 `b963632`，审计前后工作树都干净（`git status --porcelain` 为空；探针只写 `/tmp` 与被忽略的

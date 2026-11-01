@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Probe native Rust completion through an ordinary rust-analyzer process.
+通过普通 rust-analyzer 进程验证原生 Rust 补全，不注入 Xirang 编辑器代码。
+Usage: python3 tools/xirang-native-completion --rust-analyzer /path/to/rust-analyzer
+"""
+import argparse,json,subprocess,threading,queue,time,pathlib,os,tempfile
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--rust-analyzer',default='rust-analyzer')
+parser.add_argument('--output',type=pathlib.Path,default=pathlib.Path('target/native-completion.json'))
+args=parser.parse_args()
+args.output=args.output.resolve()
+args.output.parent.mkdir(parents=True,exist_ok=True)
+workspace=pathlib.Path(__file__).resolve().parents[1]
+fixture=tempfile.TemporaryDirectory(prefix='xirang-native-completion-')
+root=pathlib.Path(fixture.name)
+
+files={'Cargo.toml': '[package]\nname = "xirang-native-ra"\nversion = "0.0.0"\nedition = "2024"\n[workspace]\n[dependencies]\nxirang-toolchain = { path = "/home/nich/Moirai_N3/nichlink/toolchain" }\n[build-dependencies]\nxirang-toolchain = { path = "/home/nich/Moirai_N3/nichlink/toolchain" }\n', 'build.rs': 'fn main() { xirang_toolchain::build_method::run(); }\n', 'src/lib.rs': 'xirang_toolchain::host!();\npub const GRAFTS: &[Graft] = &[\n    graft(crate::catalog::control::BUTTON).with(crate::catalog::control::BUTTON),\n];\n', 'src/control/control.rs': 'use xirang_toolchain::{Soil, RegistrationRule};\npub struct Control;\n#[xirang_toolchain::soil]\npub const CONTROL: Soil = Soil::of::<Control>()\n    .under(xirang_toolchain::root_node_id(crate::XIRANG_NAMESPACE))\n    .needs_registry(true)\n    .registry_rule(RegistrationRule::ANY);\n', 'src/control/button/button.rs': 'use xirang_toolchain::Soil;\npub struct Button;\n#[xirang_toolchain::soil]\npub const BUTTON: Soil = Soil::of::<Button>()\n    .under(crate::catalog::CONTROL)\n    .name("Button", "按钮");\n'}
+for name,text in files.items():
+ file=root/name;file.parent.mkdir(parents=True,exist_ok=True)
+ file.write_text(text.replace("/home/nich/Moirai_N3/nichlink/toolchain",str(workspace/"toolchain")))
+log=open(args.output.with_suffix('.stderr.log'),'w')
+p=subprocess.Popen([args.rust_analyzer],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=log,cwd=root)
+q=queue.Queue();seq=0
+config={'cargo':{'buildScripts':{'enable':True}},'procMacro':{'enable':True},'checkOnSave':False}
+def reader():
+ while True:
+  headers={}
+  while True:
+   line=p.stdout.readline()
+   if not line:return
+   if line==b'\r\n':break
+   k,v=line.decode().split(':',1);headers[k.lower()]=v.strip()
+  q.put(json.loads(p.stdout.read(int(headers['content-length']))))
+threading.Thread(target=reader,daemon=True).start()
+def send(method,params,request=True):
+ global seq
+ msg={'jsonrpc':'2.0','method':method,'params':params}
+ if request:seq+=1;msg['id']=seq
+ raw=json.dumps(msg).encode();p.stdin.write(f'Content-Length: {len(raw)}\r\n\r\n'.encode()+raw);p.stdin.flush();return msg.get('id')
+def reply(msg):
+ if 'method' in msg and 'id' in msg:
+  result=[config for _ in msg['params'].get('items',[])] if msg['method']=='workspace/configuration' else None
+  raw=json.dumps({'jsonrpc':'2.0','id':msg['id'],'result':result}).encode();p.stdin.write(f'Content-Length: {len(raw)}\r\n\r\n'.encode()+raw);p.stdin.flush()
+def matches(label, expected):
+ return label == expected or label.startswith(expected + "(") or label.startswith(expected + " = ")
+def wait(rid,timeout=90):
+ end=time.monotonic()+timeout
+ while time.monotonic()<end:
+  msg=q.get(timeout=end-time.monotonic());reply(msg)
+  if msg.get('id')==rid and 'method' not in msg:return msg
+try:
+ rid=send('initialize',{'processId':os.getpid(),'rootUri':root.as_uri(),'capabilities':{'window':{'workDoneProgress':True},'experimental':{'serverStatusNotification':True}},'initializationOptions':config})
+ print('initialize',wait(rid).get('error','ok'),flush=True);send('initialized',{},False)
+ end=time.monotonic()+120
+ while time.monotonic()<end:
+  try:msg=q.get(timeout=3)
+  except queue.Empty:continue
+  reply(msg)
+  if msg.get('method')=='experimental/serverStatus':
+   print('status',msg.get('params'),flush=True)
+   if msg['params'].get('quiescent'):break
+ cases=[('methods','src/control/button/button.rs','.name','.na',None,'name'),('kind','src/control/button/button.rs','::<Button>()','::<Bu',None,'Button'),('catalog','src/lib.rs','crate::catalog::control::BUTTON','crate::catalog::control::BU',None,'BUTTON'),('replacement','src/lib.rs','.with(crate::catalog::control::BUTTON)','.with(crate::catalog::control::BU',None,'BUTTON')]
+ results=[]
+ for label,path,needle,partial,_,expected in cases:
+  file=root/path;original=file.read_text();at=original.index(needle)
+  # Keep the suffix so partially written expressions have the same surrounding Rust context.
+  text=original[:at]+partial+original[at+len(needle):]
+  pos=at+len(partial);pre=text[:pos];line=pre.count('\n');character=len(pre.rsplit('\n',1)[-1].encode('utf-16-le'))//2
+  send('textDocument/didOpen',{'textDocument':{'uri':file.as_uri(),'languageId':'rust','version':1,'text':text}},False)
+  labels=[]
+  for attempt in range(10):
+   rid=send('textDocument/completion',{'textDocument':{'uri':file.as_uri()},'position':{'line':line,'character':character}})
+   response=wait(rid,30);data=response.get('result') or [];items=data.get('items',[]) if isinstance(data,dict) else data;labels=[item['label'] for item in items]
+   if any(matches(item, expected) for item in labels):break
+   time.sleep(.5)
+  result={'case':label,'expected':expected,'found':any(matches(item, expected) for item in labels),'labels':labels[:60]};results.append(result);print(json.dumps(result),flush=True)
+  send('textDocument/didClose',{'textDocument':{'uri':file.as_uri()}},False)
+ args.output.write_text(json.dumps(results,indent=2))
+finally:
+ p.terminate();p.wait(timeout=10)
+ log.close();fixture.cleanup()
+if not all(result['found'] for result in results):
+ raise SystemExit(1)

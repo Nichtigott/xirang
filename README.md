@@ -1,926 +1,252 @@
 <div align="center">
 
-<img src="./picture/XiRang_wordmark.svg" alt="XiRang ASCII wordmark">
+<img src="picture/xirang-mark.svg" width="72" alt="XiRang: a registration tree growing from a shared foundation">
 
-<p><strong>A Rust code-organization model built for how communities actually extend software, for engineering collaboration, and for agentic coding: passive recursive registration, explicit contracts, atomic replacement at any level.</strong></p>
+# XiRang · 息壤
 
-[![license](https://img.shields.io/github/license/Nichtigott/xirang?style=flat-square)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/Nichtigott/xirang/ci.yml?style=flat-square&label=CI)](.github/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/MSRV-Rust%201.96-8250df?style=flat-square)](Cargo.toml)
+**An engineering framework that gives code explicit organization and collaboration boundaries, so people and AI can extend, replace, and verify it together.**
 
+[简体中文](README.zh-CN.md) · [User guide](docs/using-xirang.md) · [Extend a language](docs/extending-languages.md) · [Discussions](https://github.com/Nichtigott/xirang/discussions)
 
-<p>
-<a href="#features"><kbd>Features</kbd></a>
-<a href="#get-started"><kbd>Get started</kbd></a>
-<a href="#registration-faces"><kbd>Registration faces</kbd></a>
-<a href="#studio-and-cli"><kbd>Studio / CLI</kbd></a>
-<a href="#boundaries"><kbd>Boundaries</kbd></a>
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/Nichtigott/xirang/ci.yml?label=CI)](.github/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d8bb82)](LICENSE)
+
+<img src="picture/xirang-overview.svg" width="100%" alt="XiRang separates registration relationships, source placement, and compilation ownership, connecting them through shared facts.">
 
 </div>
 
-💬 [Discuss the graft model](https://github.com/Nichtigott/xirang/discussions)
+An `Area` can belong to a `Panel`, live in a separate source directory, and be compiled by another crate. A team can also deliver a compatible implementation and **graft** it into a slot chosen by the host. Each change has a distinct meaning; the tools maintain the connections.
 
-In a large Rust project, a localized change can cut across half the
-repository. XiRang addresses this at the structural level: objects carry
-small, explicit boundaries; a replacement is validated where it plugs in; and
-the source location of every object remains visible to the people and tools
-working on it.
+XiRang provides a registration protocol, build wiring, CLI, Studio TUI, and MCP around a Rust host. It is intended for long-lived frameworks, component libraries, and projects maintained by multiple people or agents. For a small application assembled in one place, ordinary modules are often enough.
 
-AI-assisted and agentic coding amplify this pressure rather than create it.
-Neither a model nor a human reviewer sustains complete attention over a large
-codebase; hallucinated references and missed context are routine failure
-modes, not exceptions. XiRang therefore turns assumptions that usually live
-in convention into inspectable structure: atomic objects, explicit contracts,
-source provenance, and a development-time registry graph that a team can read
-together. The same boundaries serve code review, community contributions, and
-ordinary Rust development — AI agents are one consumer of this structure, not
-the reason it exists.
+> **The name:** XiRang (息壤) is the self-growing soil of Chinese mythology. Here it describes an engineering ambition: new parts grow from an existing structure, with room for implementations from other people. `Soil` declares a registration face; `graft` selects a replacement; a `Registry` receives the objects.
 
-The model also defines how a community extends a project. A contributor ships
-an implementation beside the original tree, declares the boundary it
-replaces, and lets the host validate the graft. Competing implementations
-coexist without turning upstream into a patch queue: the project keeps its
-shape, and experimentation happens inside named contracts.
+The project brings together two questions: **Can an AI read engineering responsibilities before making a change, without being retold the project in every prompt? Can code organization itself leave attachment points for independent community implementations?** The first needs inspectable context and change boundaries; the second needs contracts and replacement mechanisms. XiRang puts them in one organizational model.
 
-XiRang is early-stage software: the core protocol is usable in real projects
-today, and both static analysis and runtime evidence report their coverage
-explicitly.
+The practical benefits are fewer parent-maintained child lists, an explicit validation point for replacements, and common facts for people, editors, and agents. Maintaining declarations and verification has a cost; the adoption tradeoffs below make that explicit.
 
-## Features
+## Start in five minutes
 
-- **Passive, recursive registration.** A face declares its parent in its own
-  file. The parent accepts it; no central child list is maintained. A face may
-  own another `Registry`, so the same rule repeats at every depth.
-- **One registry type.** A root registry and a nested registry use the same API.
-  The tree comes from registration, not from special root/leaf types.
-- **Contracts at the boundary.** Preset/parts output types and handle contracts
-  can fail at compile time. Structural `registry_rule` checks and external
-  `admission` checks return all failures before publication.
-- **Atomic grafting.** A replacement targets a logical slot and must match the
-  declared input/output `FlowContract`. Validation happens before the live tree
-  is changed.
-- **Two build passes.** The first pass discovers the reachable registration
-  faces and emits a smaller `StaticPlan`. The normal Rust compiler and linker
-  then perform the final code and symbol elimination. These are separate goals:
-  less registration metadata first, smaller machine code at the end.
-- **Debug only when requested.** `off`, `errors-only`, and `full` tracing keep
-  the release path free of evidence collection unless an application opts in.
-  Studio consumes that registry and call/data-flow model; the MCP bridge
-  serves those queries and previews authoring writes before it makes one.
-
-## Get started
-
-There are two supported ways to try XiRang.
-
-### Install the XiRang CLI
-
-This keeps the XiRang source outside your application. Install the CLI from
-crates.io; it provides the `xirang` command, including `xirang
-studio` for the Ratatui Studio:
-
-```sh
-cargo install xirang-toolchain
-xirang new my-app
-cd my-app && xirang studio
-```
-
-The released versions are on crates.io (`CHANGELOG.md` names the newest). The Git source still works if you want the checkout's tip
-rather than the released version: `cargo install --git
-https://github.com/Nichtigott/xirang xirang-toolchain`.
-The plugin binary also answers to `cargo xirang <command>`. To inspect an
-existing project instead, point the CLI at it:
-
-```sh
-XIRANG_PACKAGE_ROOT=/work/my-app xirang studio
-```
-
-The standalone `xirang-toolchain` binary remains available for direct installs.
-
-### Run from a clone
-
-This is handy while developing XiRang itself and does not install anything:
+Use a checkout to try the capabilities described here; published packages may lag behind this branch. You need **Rust 1.96.0 or newer**, Cargo, and a native linker. C++ examples also require a C++ toolchain.
 
 ```sh
 git clone https://github.com/Nichtigott/xirang
 cd xirang
-cargo run -p xirang-toolchain -- studio
+cargo install --path toolchain --features cli,lang-cpp
+
+# Point the new host at this XiRang checkout.
+xirang new my-app --lib --path "$PWD"
+cd my-app
+
+# Inspect the plan first. --write applies it.
+xirang face add panel --lang rust --fields '{"needs_registry":true}'
+xirang face add panel --lang rust --fields '{"needs_registry":true}' --write
+xirang check
+cargo build
+xirang explain root/panel --json
+xirang studio
 ```
 
-To inspect another project from the clone:
+For a released version: `cargo install xirang-toolchain --features cli`. The `cli` feature installs `xirang`, `cargo-xirang`, `xirang-studio`, and `xirang-mcp`; the checkout-only `xirang-dev` is excluded. Run `xirang face languages` to inspect the authoring adapters in your binary.
 
-```sh
-XIRANG_PACKAGE_ROOT=/work/my-app cargo run -p xirang-toolchain -- studio
-```
+This creates a registration skeleton. You still supply the implementation and behavioral tests. `check` validates registration facts; `cargo build` compiles the generated connections. Neither proves application behavior.
 
-Studio's `n` action creates a binary or library project. It writes the manifest,
-the thin build entry, and the source entry point; the first face is added with
-`a`. It does not invent a `control` tree. A registry owner gets a local
-`registry_rule/` directory only when that rule is needed.
+The [user guide](docs/using-xirang.md) covers existing projects, separate source directories, editing, MCP setup, grafts, partitions, verification, and team workflows.
 
-### Add XiRang to an application
+## Three changes, three operations
 
-The application owns its declarations, so Cargo needs one small build adapter:
+| Intent | Mechanism | What must remain consistent or be verified |
+| --- | --- | --- |
+| Change an object's parent or source placement | `move` and explicit placement mappings | Object continuity, parents, references, ledger, consumers |
+| Keep a slot and select another implementation | `graft` | Boundary contracts, admission, effective tree, behavior |
+| Change which packages compile the implementation | `crates` partitioning | Logical catalog, dependency edges, type ownership, host wiring |
 
-```sh
-# From Git. `xirang-toolchain` belongs to the build dependency table.
-cargo add xirang-toolchain --git https://github.com/Nichtigott/xirang --branch main
-cargo add xirang-toolchain --build --git https://github.com/Nichtigott/xirang --branch main
+**The registration tree, filesystem tree, and compilation partitions can align without being coupled.** Default creation follows the conventional layout. An explicit `--file` establishes another placement; descendants can inherit it or override it again. Directories still organize multilingual code, while declarations and shared facts describe registration relationships.
 
-# Or, while developing both projects from local checkouts:
-cargo add xirang-toolchain --path /path/to/xirang/run_method
-cargo add xirang-toolchain --build --path /path/to/xirang/build_method
-```
+Identity is explicit too. Today's `NodeId` retains the compatible source-instance identity rules. `StableFaceId` and the object ledger connect a persistent object to its current and historical instances. Changing the absolute checkout location should preserve identity; changing the recorded source spelling can produce a new `NodeId` and requires migration. Content digests describe versions; machine paths locate files.
 
-Do not add `xirang-toolchain` once under `[dependencies]` and again from a
-different source under `[build-dependencies]`; Cargo requires one canonical
-source for a package throughout a manifest.
+Local source declarations and machine bindings exist. **Arbitrary remote islands with pinned materialization, cross-platform equivalence, and whole-project testing are outside this foundation acceptance.** The production pipeline has worker and queue commands, but those commands alone do not prove that complete workflow.
+
+## Ordinary code, explicit boundaries
+
+Types and algorithms remain ordinary Rust. A registration face says what an implementation is, where it belongs, and what it provides. A parent does not maintain a central roster of every child.
 
 ```rust
-// build.rs
-fn main() {
-    xirang_toolchain::build_method::run();
-}
-```
-
-In the crate root, connect the generated plan once:
-
-```rust
-xirang_toolchain::run_method::host!();
-```
-
-This expands to `include!(concat!(env!("OUT_DIR"), "/generated_lib.rs"))`;
-writing the include directly is an equivalent, advanced alternative.
-`xirang-toolchain` re-exports the kernel, so face code refers to
-contracts, plans, and traces through `xirang_toolchain::run_method::…`.
-
-`main.rs` is optional. A binary uses `src/main.rs` as the application entry; a
-framework library uses `src/lib.rs`. The build adapter scans the host crate's
-own source tree. Cargo does not give a dependency's `build.rs` access to the
-consumer's `main.rs`, so a consumer that owns faces needs its own adapter.
-
-## Registration faces
-
-A registration face has two layers. The Rust `struct` and its `impl` contain the
-real implementation. The declaration records where that implementation belongs
-and what may enter or replace it.
-
-```rust
-pub struct Canvas;
-
-pub struct CanvasParts;
-pub struct CanvasPreset;
-
-impl xirang_toolchain::run_method::PresetContract for CanvasPreset {
-    type Output = CanvasParts;
-    const REQUIRED_PARTS: &'static [&'static str] = &["paint"];
-}
-
-impl xirang_toolchain::run_method::PartsContract for CanvasParts {
-    type Output = CanvasParts;
-    const PROVIDED_PARTS: &'static [&'static str] = &["paint"];
-}
-
-impl Canvas {
-    pub fn render(&self, input: CanvasInput) -> CanvasFrame {
-        // the implementation stays ordinary Rust
-        input.into_frame()
-    }
-}
-
-// The generated parent macro expresses the source hierarchy.
-// For a face under `node_editor`, use `node_editor_object!` here.
-crate::node_editor_object! {
-    kind: Canvas,
-    preset: CanvasPreset,
-    parts: CanvasParts,
-    summary: { zh: "二维画布", en: "A 2-D drawing surface" },
-    exports: ["canvas.render"],
-    needs_registry: false,
-    requires: ["viewport" => "layout.viewport"],
-    provides: ["canvas.frame"],
-    flow: xirang_toolchain::run_method::FlowContract::new(
-        xirang_toolchain::run_method::ContractId::new("canvas.render.v1"),
-        1,
-        "CanvasInput",
-        "CanvasFrame",
-    ),
-}
-```
-
-Most fields have safe defaults. The smallest face is simply
-`crate::root_object! { kind: App }` or a generated `<parent>_object!` with a
-`kind`. Add `summary`, `exports`, `requires`, or `flow` when they carry useful
-information; do not repeat defaults just to fill a table.
-
-There are three different checks, and they are deliberately not merged:
-
-1. **Construction contract (compile time).** `preset` and `parts` must agree
-   on their associated output type. `handle_contracts` and `part_contracts` ask
-   rustc to prove that the handle and parts types implement the required traits.
-2. **Registration rule (build/publication time).** `registry_rule` describes only
-   the minimum child shape: preset, parts, exports, and interfaces. It does not
-   keep a kind allowlist or decide parentage. Missing structure is reported
-   together instead of producing
-   a half-registered object.
-3. **Admission (dependency gate).** `admission` controls which outside registry
-   paths this face may use. A call to an object outside that gate is rejected;
-   the resulting diagnostic names the face, source location, and dependency.
-
-For a replacement, both sides publish a flow contract. The host validates the
-contract id, version, input, and output before applying the graft:
-
-```rust
-let plan = xirang_toolchain::run_method::GraftPlan::command(
-    framework,
-    "cut root/canvas graft canvas_fast",
-)?;
-let effective = base.overlay(&plan, &external)?;
-```
-
-An extension only needs to satisfy the target registration rule. A replacement
-also needs an input/output contract that is semantically compatible with the
-slot. This is what makes a middle-layer swap explicit rather than an accidental
-module rename.
-
-### Structural rules are minimums
-
-registry_rule is a lower bound. A face may contain more fields, methods,
-interfaces, or exports than the rule lists; it may not omit a required one.
-The rule does not claim that the listed fields are the complete shape of the
-object. This matters for framework evolution: adding a method to an existing
-face does not break older consumers, while removing a required part does.
-
-### How a parent constrains its children
-
-Here is a complete two-level example. `Control` is the parent face. `Button` is
-a child entering the Registry owned by `Control`. The rule belongs to the
-parent, so it lives under `control/registry_rule/`; the child only declares
-what it supplies.
-
-```text
-src/
-└── control/
-    ├── control.rs                         # parent: Control
-    ├── registry_rule/
-    │   └── registry_rule.rs               # minimum shape of every direct child
-    └── object/
-        └── button/
-            └── button.rs                  # child: Button
-```
-
-The parent defines the shared interfaces and declares that it owns a Registry:
-
-```rust
-// src/control/control.rs
-pub struct Control;
-pub struct ControlFrame;
-
-pub trait ControlHandle {
-    type Parts;
-
-    fn paint(&self, parts: &Self::Parts) -> ControlFrame;
-}
-
-pub trait ActionPartsContract {
-    fn action_id(&self) -> &str;
-}
-
-crate::root_object! {
-    kind: Control,
-    needs_registry: true,
-    parent: crate::root_node_id(env!("CARGO_PKG_NAME")),
-    // No `registry_rule:` line: this face owns a registry, so the rule resolves
-    // to the canonical module beside it (`super::registry_rule`), and there is no
-    // second copy of the path to keep in step.
-    registry_rule_path: "src/control/registry_rule/registry_rule.rs",
-}
-```
-
-`needs_registry: true` is the declaration that lets Control receive children.
-`parent` places Control below the package root. Nothing here lists Button; a
-second valid child does not require an edit to `control.rs`.
-
-The parent's rule describes a minimum shape, not a kind allowlist:
-
-```rust
-// src/control/registry_rule/registry_rule.rs
-use crate::RegistrationRule;
-
-pub const REGISTRATION_RULE: RegistrationRule = RegistrationRule::new()
-    .require_preset("ActionParts")
-    .require_parts(&["label", "action"])
-    .require_exports(&["control.render"])
-    .require_handle_traits(&["ControlHandle"])
-    .require_part_traits(&["ActionPartsContract"]);
-```
-
-This Button satisfies that rule:
-
-```rust
-// src/control/object/button/button.rs
-use crate::control::{ActionPartsContract, ControlFrame, ControlHandle};
-use crate::{PartsContract, PresetContract};
-
-crate::control_object! {
-    kind: Button,
-    preset: ActionParts,
-    parts: ButtonParts,
-    parent: crate::control::NODE_ID,
-    exports: ["control.render"],
-    handle_traits: ["ControlHandle"],
-    handle_contracts: [crate::control::ControlHandle],
-    part_traits: ["ActionPartsContract"],
-    part_contracts: [crate::control::ActionPartsContract],
-}
-
 pub struct Button;
-pub struct ActionParts;
 
-pub struct ButtonParts {
-    pub label: String,
-    pub action: String,
-    pub tooltip: Option<String>, // extra structure is allowed
-}
-
-impl PresetContract for ActionParts {
-    type Output = ButtonParts;
-    const REQUIRED_PARTS: &'static [&'static str] = &["label", "action"];
-}
-
-impl PartsContract for ButtonParts {
-    type Output = ButtonParts;
-    const PROVIDED_PARTS: &'static [&'static str] = &["label", "action", "tooltip"];
-}
-
-impl ControlHandle for Button {
-    type Parts = ButtonParts;
-
-    fn paint(&self, parts: &ButtonParts) -> ControlFrame {
-        let _ = (&parts.label, &parts.action);
-        ControlFrame
-    }
-}
-
-impl ActionPartsContract for ButtonParts {
-    fn action_id(&self) -> &str {
-        &self.action
-    }
-}
-
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Button>()
+    .under(crate::control::NODE_ID)
+    .exports(&["control.render"])
+    .needs_registry(false);
 ```
 
-The `control_object!` name mirrors the parent folder, making the relationship
-visible in source. The source of truth used to build the tree is
-`parent: crate::control::NODE_ID`. The build step checks the macro name, folder
-position, and parent together, so accidentally wiring Button to another
-Registry fails before generated code is compiled.
+This fragment assumes an existing `Control` parent. See [control-button](examples/control-button) for a compilable host. An `exports` declaration describes an interface; it does not implement that interface for you.
 
-Four layers validate this declaration:
+| Vocabulary | Question it answers |
+| --- | --- |
+| `Soil` / registration face | How does this implementation enter the shared structure? |
+| `Registry` | Where does it belong, and who owns the next level? |
+| `registry_rule` | What structure, interfaces, and exports must a child provide? |
+| `admission` | Which external registration paths may this branch use? |
+| `FlowContract` | What contract identity, version, input, and output does replacement promise? |
+| `catalog` | How can an object be referenced independently of its compilation owner? |
+| `graft` | Which compatible implementation occupies this slot? |
 
-| Check                    | Enforced by                                                                        | What it proves here                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Parent topology          | `xirang-toolchain`                                                               | Button's macro, folder, and `parent` all point to Control                        |
-| Rust type contract       | rustc                                                                              | Both associated `Output` types are `ButtonParts`, and the real trait impls exist |
-| Parent registration rule | Aggregated build diagnostics, generated const checks, and the development Registry | Preset, parts, export, and interfaces are at least the Control minimum           |
-| External admission       | Registry connector                                                                 | Cross-tree `requires` stay within Control's allowed `admission` paths            |
+Rust checks type constraints. XiRang adds structural, admission, and graft checks. Matching contract labels cannot prove equivalent algorithms; consumer tests and counterexamples still matter.
 
-`handle_traits` and `part_traits` are interface names retained in registration
-metadata. The matching `handle_contracts` and `part_contracts` are Rust trait
-paths, which make rustc prove that the implementations exist. They do not
-create trait objects or vtables.
+## A code structure with room for a community
 
-The following child is intentionally invalid. Assume `WrongPreset` and
-`BrokenParts` implement `PresetContract` and `PartsContract` with the same
-output type, so this example isolates failures against the parent rule:
+A contributor can maintain an implementation in its own crate. The host chooses the attachment point, while the framework and third-party source remain separate. Implementations become candidates under a common contract, available for comparison and adoption.
 
 ```rust
-crate::control_object! {
-    kind: BrokenButton,
-    preset: WrongPreset,
-    parts: BrokenParts,
-    parent: crate::control::NODE_ID,
-    exports: ["control.preview"],
-}
+pub const GRAFTS: &[xirang_toolchain::Graft] = &[
+    xirang_toolchain::graft(crate::catalog::control::object::BUTTON)
+        .with(control_button_graft::button_fast::NODE_ID),
+];
 ```
 
-One `cargo check` reports the declaration site together with the missing
-`ActionParts` preset, `control.render` export, `ControlHandle`, and
-`ActionPartsContract`. Removing only `action` from
-`BrokenParts::PROVIDED_PARTS` is rejected by the generated const check. Keeping
-`handle_contracts: [crate::control::ControlHandle]` while deleting the real
-impl produces a rustc trait-bound error at the declaration. Those paths cover
-a missing declaration, a missing structural constant, and a missing Rust
-implementation without pretending they are the same error.
+This follows the repository's example host. The boundary is checked before overlay, and the host makes its selection explicit. A graft does not automatically reroute every Rust call or provide live code replacement; the host must connect execution to its effective tree.
 
-Parentage is not selected by a kind filter, and external use is not controlled
-by the registration rule:
+Contributors can offer replacements without maintaining a full framework fork. Maintainers can keep alternatives outside the main implementation. **The community mechanism is a publishable boundary and a selectable attachment point**, supported by contracts, version policies, and verification.
 
-| Layer                            | Question it answers                                        |
-| -------------------------------- | ---------------------------------------------------------- |
-| Rust `struct` / `impl`           | How does the object actually work?                         |
-| `parent` + parent-specific macro | Where is the object registered?                            |
-| `registry_rule`                  | What is the minimum shape accepted by the parent Registry? |
-| `admission`                      | Which external paths may this branch depend on?            |
-| `FlowContract`                   | Are both sides of a graft data-compatible?                 |
+Read [grafts and coordinated replacements](docs/graft.md) and [declarations and language extensions](docs/extending-languages.md).
 
-Older prototypes used `RegistrationRule::new(&["Button"], &[])`. That form is
-gone. Replace it with `RegistrationRule::new()` plus only the required shape
-methods shown above. Move external path allow/deny entries to `Admission`; do
-not move the old kind list there, because kind never decides parentage.
+## The project is the memory
 
-### Output extensions and compatibility
+XiRang brings engineering context into AI workflows: current responsibilities, applicable precedents, modification boundaries, and verification obligations. Conversations end; declarations, rules, adopted references, and tests remain with the project.
 
-The current flow contract compares a stable contract id, version, and the
-declared input/output labels. It does not guess field-level covariance from
-Rust types. If a new implementation returns more information, use one of these
-explicit designs:
+| A new contributor or agent asks | Project memory should answer with |
+| --- | --- |
+| Where does this feature belong? | Responsibilities, registration ownership, source locations, dependencies |
+| How are related features written? | Applicable siblings, adopted specimens, legitimate variations |
+| Which boundaries must this change preserve? | Type and flow contracts, providers, consumers, admission |
+| Why these names, aliases, and comments? | The convention's source, scope, executable checks, exceptions |
 
-- keep the same output label and add backward-compatible fields to a stable
-  envelope (CanvasFrame with optional metadata);
-- publish a new contract version (CanvasFrame v2) and update every consumer
-  boundary in one change; or
-- add an adapter face that converts the richer output back to the old contract.
+Memory needs freshness. Source changes can invalidate an adoption, and similar siblings can share the same mistake. Useful precedents need applicability conditions, positive examples, fault-detecting counterexamples, and permitted variations.
 
-The last two choices make the affected boundary visible instead of silently
-discarding data. A graft is accepted only after the chosen boundary contracts
-and the destination registration rule pass.
+### Extend a family; evolve a responsibility
 
-### One graft or a coordinated graft set
+For a new sibling, find a suitable reference and the parent's rules, reuse the boundary, implement the difference, and verify existing siblings. For a new internal layer, preserve the external promise, organize the responsibilities, and verify that consumers actually use the new layer.
 
-The registration tree describes ownership, not every data-flow edge. A
-requires edge can resolve a provider on another branch, and runtime data edges
-may cross several registry boundaries. When a replacement changes several
-consumers, describe the affected slots as one plan and commit them together.
-
-The three participants stay separate. The framework tree and third-party
-implementation remain in their own crates. The host only declares an overlay
-plan in its `main.rs` or `lib.rs`:
+MCP connects that process to tools: `explore` returns source and responsibility context; `consistency` compares a family; `converge` joins contracts, consumers, and evidence; `apply` previews structural changes; `check` and candidate workflows support verification.
 
 ```text
-framework crate                         external graft crate
-src/                                    src/
-└── control/                            └── button_fast/
-    ├── control.rs                          └── button_fast.rs
-    └── object/button/...                        │
-             │                                   │
-             └──── immutable base Registry       └──── external Registry
-                                  \               /
-                                   GraftPlan + overlay
-                                            │
-                                    effective Registry
-                                            │
-                                  host crate: src/main.rs
+Understand → choose precedents → scope and budget → preview
+           → implement → compile and test behavior → independent review → adopt learning
 ```
 
-The host entry declares cuts and external selectors. It never copies framework
-or third-party source. The static macro constructs no `Vec` or `String`; the
-builder writes its contents directly into the `StaticPlan`:
+This is the recommended engineering workflow. Enforcement depends on the execution mode and project policy. Ordinary MCP cannot stop writes through an unrelated shell, and candidate landing checks are not an OS sandbox. An upstream defect calls for an evidenced scope proposal, rather than an unauthorized expansion or a downstream workaround that violates the contract.
 
-```rust
-use xirang_toolchain::run_method::{FrameworkId, Registry};
+### How conventions become durable
 
-const FRAMEWORK: FrameworkId = FrameworkId::new("nichui");
+This project follows a practical loop: a real failure, a minimal counterexample, a fix, a regression, then an explicit convention. Mechanically checkable standards live in [conventions](conventions): kernel purity, module mounting, compatibility paths, documentation examples, and feature gates. Semantic requirements retain tests and review obligations.
 
-xirang_toolchain::run_method::static_graft_plan!(FRAMEWORK,
-    cut "root/control/button" graft "button_fast",
-);
+The rules need tests too: reject bad implementations, accept good ones and valid exceptions. Historical evidence must not pass for current evidence. Proposed experience becomes reusable policy only through the project's acceptance process.
 
-fn registry_for_this_run(base: &Registry, external: &Registry) -> Registry {
-    base.overlay_static(builtin_static_plan().grafts(), external)
-        .expect("checked graft")
-}
+The [MCP user guide](docs/using-xirang.md#mcp) describes current entry points. Project memory and managed maintenance continue to evolve; establish guarantees from the execution mode, implementation, and matching acceptance evidence.
+
+## One model, several surfaces
+
+```mermaid
+flowchart TB
+    H[Developers · teams · AI agents] --> UI[CLI / Studio / MCP]
+    UI --> A[Shared authoring: resolve · plan · preview · transact]
+    A --> F[Shared facts: identity · sources · placement · module chains]
+    A --> L[Language adapters: declarations · precise edits · editor material]
+    F --> B[build_method: discover · validate · generate modules and partition wiring]
+    L --> B
+    B --> N[Native compilers and language services]
+    N --> R[run_method: actual registry · grafts · call evidence]
+    R --> UI
+    A -.pure decisions.-> K[xirang-kernel: protocol and pure methods, no I/O]
+    L -.shared protocol.-> K
+    B -.validation and planning.-> K
+    R -.trees and contracts.-> K
 ```
 
-A cut can also name both sides with Rust expressions:
-`cut(crate::control::object::button::NODE_ID) graft(button_fast::NODE_ID)`. The
-typed form resolves at compile time and requires the external implementation to
-be linked, so a record cannot override it; the string form above needs neither
-and is resolved by selector name at overlay time. Both forms are described in
-[`docs/graft.md`](docs/graft.md).
+| Part | Responsibility |
+| --- | --- |
+| [`kernel/`](kernel) | Identity, declarations, trees, contracts, syntax, pure decisions; no filesystem or process binding |
+| [`toolchain/`](toolchain) | Seven execution surfaces: build, run, evidence, plugins, Studio, MCP, CLI; shared authoring service |
+| [`multilang/`](multilang) | Language adapters, SDKs, and the separate multilingual production pipeline |
+| [`macro/`](macro) | Rust declaration front end at compile time |
+| [`conventions/`](conventions) | Executable standards for this checkout; not a published runtime dependency |
 
-`overlay` returns a new effective Registry. Neither `base` nor `external` is
-modified. If any cut fails its flow contract, destination parent rule,
-admission, or connector check, none of the plan is published. `overlay_static`
-skips dynamic `GraftPlan` and selector-string allocation. If the external
-implementation is loaded at runtime, validation and effective Registry
-construction still happen once.
+Adapters own language differences. Execution surfaces own filesystem and process work. CLI, MCP, and Studio reuse services; adding a language should not recreate identity, placement, and transactions in each UI.
 
-A normal cut replaces one node and keeps the base node's children:
+### Extend a language
 
-```text
-base                              cut A/a1 graft a1_fast
-A                                 A
-├── a1                            ├── a1_fast       # only a1 is replaced
-│   ├── b1                        │   ├── b1         # inherited from base
-│   └── b2                        │   └── b2         # inherited from base
-├── a2                            ├── a2
-└── a3                            └── a3
-```
+A **registration adapter** understands declarations. A **build backend** builds and tests code. Implement the parts you need and declare their limits separately.
 
-`full` explicitly drops the base subtree and uses the external subtree:
+| Layer | What an extension provides |
+| --- | --- |
+| Registration and editing | `LanguageAdapter` capabilities, `plan`, `read`; `plan_move` and `editor_material` where supported |
+| Build and execution | Discovery, action plans, actual builds/tests, diagnostics, evidence; optionally an external backend process |
+| Cross-language calls | A representable ABI, generated bindings, ownership and error conventions, consumer tests |
+| Acceptance | Real hosts, round trips, mixed parent chains, failure behavior, relocated checkouts, consumer consistency |
 
-```text
-external                          cut A/a1 full graft a1_fast
-a1_fast                           A
-└── bx                            ├── a1_fast
-                                  │   └── bx         # supplied by external
-                                  ├── a2
-                                  └── a3
-```
+Rust and C++ have real mixed-registration host rehearsals. Python has an authoring adapter and SDK; **its production integration with this foundation remains paused**. The separate production pipeline already has some Python capabilities. Other languages declare support per backend and per capability; appearing in a list does not imply complete integration.
 
-When several data boundaries must change together, put all cuts in one static
-declaration:
+Ordinary rust-analyzer and clangd consume native declarations and generated material. Cross-language completion needs type and binding data. A path map cannot make arbitrary language types interoperable. See the [language extension guide](docs/extending-languages.md).
 
-```rust
-xirang_toolchain::run_method::static_graft_plan!(FRAMEWORK,
-    cut ["root/canvas"] graft "canvas_fast",
-    cut ["root/hit_test"] graft "hit_test_fast",
-    cut ["root/layout"] graft "layout_fast",
-);
-```
+## CLI, Studio, and agents
 
-Use the dynamic `graft_plan!` expression only when an editor, command, or hot
-reload path must construct and modify a plan at runtime.
+<img src="picture/xirang-studio-current.webp" width="100%" alt="Actual XiRang Studio PTY output, rendered as SVG, showing a temporary host's registration tree and inspector.">
 
-A path range can target contiguous siblings under one parent Registry:
+*Actual terminal output from the current program in a temporary host: tree, inspector, and controls, with the legacy decorative banner cropped.*
 
-```rust
-let plan = xirang_toolchain::run_method::GraftPlan::command(
-    framework,
-    "cut [root/a1 to root/a3] graft replacement",
-)?;
-let effective = base.overlay(&plan, &external)?;
-```
+Use the CLI for scripts, Studio for browsing and interactive authoring, and MCP for evidence-driven agent work. In Studio: `a` adds, `e` edits, `g` opens graft management, `/` searches, `r` reloads, `b` checks the build, and `q` quits.
 
-The span is the contiguous run of siblings between the two endpoints in
-`registry_name` order — not file order or registration order — and a range whose
-endpoints are written the other way round is refused instead of silently
-swapped.
-
-The returned effective registry keeps the base tree and external tree
-unchanged, preserves the logical target path, inherits untouched siblings, and
-re-runs destination-rule, admission, and connector checks before publication.
-
-Studio's graft workflow uses `g`. Three different things meet there, and the
-screen keeps them apart:
-
-* `static_graft_plan!` at the host entry is the **declaration** the build step
-  reads: it keeps the named slot alive through pruning and fills the
-  release-time static plan. It removes no code.
-* `Registry::overlay` is the **application**: it validates and returns the
-  effective tree at runtime, leaving both the base registry and the external
-  registry untouched.
-* `.xirang/external-grafts/<selector>/graft.plan` is the **record** the screen
-  writes: the authoring input the runtime can now apply over the declaration.
-  It is not compiled; `xirang_toolchain::run_method::apply_recorded_grafts` loads it and
-  `Registry::overlay_recorded` reconciles it under the precedence rule in
-  [`docs/graft.md`](docs/graft.md) — a record overrides a string-form
-  `static_graft_plan!` cut, a typed-form cut stays final, and a record selector
-  the external registry cannot resolve falls back to the declaration. The screen
-  reads it back to list, open, re-scope, and delete plans.
-
-`g` opens the compose screen for the selected face. It shows the logical slot,
-lets you name the selector and choose `cut` (the overlay keeps the base node's
-children) or `full` (it replaces the subtree), checks the slot against the cuts
-the host entry declares — a face no `cut` names is not shipped — and prints the
-exact `static_graft_plan!` clause to paste into that entry, because Studio never
-rewrites host source. `s` writes the plan and opens it, `o` opens it again, `f`
-flips `full`, and `d` moves it to `.xirang/trash/external-grafts/`. There is
-no source-copy or source-replacement graft path.
-
-XiRang does not prescribe the programming paradigm inside a face. Functions,
-traits, generics, closures, dependency injection, and message passing remain
-ordinary Rust. The registration face governs the published boundary. Declared
-`requires/provides` and `FlowContract` edges are checked automatically during
-registration, connection, and grafting. Changing an implementation is fine; a
-failure occurs only when an input has no admitted provider or a replacement no
-longer reconnects to the declared data flow. The diagnostic names the broken
-capability, consumer, candidate provider, source location, and phase. This is
-not a claim that XiRang guesses every undeclared value flow inside arbitrary
-Rust code.
-
-## Static release plans, performance, and two-stage pruning
-
-XiRang's two pruning stages solve different problems.
-
-The first stage runs before rustc expands the generated module tree. Its unit is
-a complete registration face:
-
-1. the host crate's thin `build.rs` calls `xirang-toolchain`;
-2. the builder reads folder-backed faces and the entry in `main.rs`, `lib.rs`,
-   `application!(entry = …)`, or whatever `XIRANG_ENTRY` names (a value that
-   names no file fails the build; the same entry feeds pruning and the cut
-   table);
-3. it conservatively derives the faces needed by this crate — what the entry
-   reaches plus the slot each `cut(` in `static_graft_plan!` names — and emits
-   only those faces into the generated modules and `StaticPlan`, so a face
-   nobody declared is not shipped (`XIRANG_SCOPE` widens that scope on
-   purpose);
-4. dynamic dispatch, generated code, or an unresolved path forces a full-tree
-   fallback instead of an unsafe deletion.
-
-This reduces registration faces and metadata sent to rustc. It is not a
-complete rustc call graph, and it does not remove individual functions from an
-active face.
-
-The second stage is the normal Rust toolchain. Rustc reachability and
-monomorphisation, LLVM, ThinLTO, and linker garbage collection remove unused
-functions and symbols. The workspace release profile enables ThinLTO with one
-codegen unit. `tools/xirang-release-audit` checks release artifacts, rejects a
-remaining `.inventory` linker section, and can compare the symbols and bytes of
-full and minimal application binaries. XiRang does not present source-level
-function-name matching as compiler-accurate elimination.
-
-A release build also does not reconstruct the built-in Registry at startup.
-Generated code stores checked topology as `&'static [StaticFace]` and
-build-declared grafts as `&'static [StaticGraftCut]` in the same `StaticPlan`.
-`builtin_static_plan()` borrows that read-only data directly. There is no heap
-allocation, global constructor, inventory walk, or startup registration loop.
-Build-time `registry_rule` checks do not become per-frame runtime checks. The
-per-face `runtime_checks` list is a separate, opt-in host API: a host that has
-an observed value calls `Registry::health_check(node, value, call_path)` at the
-value boundary — passing an empty path when no trace is attached — and that
-call runs exactly the checks the face declared.
-
-Static does not mean every operation in every configuration is free. It means
-the costs are explicit:
-
-The allocation and timing numbers behind this table are measured, not inferred:
-[`docs/performance-baseline.md`](docs/performance-baseline.md) records how they were
-taken and what each check asserts.
-本表背后的分配与耗时数字是实测而非推断：
-[`docs/performance-baseline.md`](docs/performance-baseline.md) 记录了它们如何测得、以及每项检查
-断言了什么。
-
-| Usage                        | Runtime representation                              | Cost boundary                                                                                                              |
-| ---------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Read-only built-in topology  | Static `StaticFace` slice                           | No startup allocation; `find` and `children_of` both scan the slice in O(n), because the table follows registry-tree order |
-| Mutable development Registry | `Arc` header, 32 entry pages, and indexes           | Cloning increments `Arc` counts; the first write copies only the touched page, not the tree                                |
-| Build-declared static graft  | Static selector slice inside `StaticPlan`           | Reading the declaration allocates nothing; a framework with statically bound implementations needs no Registry overlay     |
-| Post-release plugin/graft    | Selected dynamic metadata and an effective Registry | `overlay_static` allocates no plan but still performs contract, admission, and connector validation once                   |
-| `CallTrace::runtime()`       | `errors-only` in debug, `off` in release            | Off collects no evidence; code that still calls tracing APIs is not promised instruction-level zero overhead               |
-
-The Registry page-copy concern therefore does not affect startup when an
-application only reads the built-in static plan. Page-level COW is used only
-when an application explicitly builds a mutable Registry, enables runtime
-plugins, or applies a graft. Studio, MCP, debug, and plugin-host are separate
-tools or optional dependencies; an application that does not link them does
-not carry them in its binary.
-
-XiRang core does not rewrite arbitrary Rust call sites. A framework that
-wants a fully static implementation binding uses its own generated layer to
-select a concrete Rust type or function from these checked selectors. A
-runtime plugin has no implementation to link ahead of time, so it still needs
-one overlay. This distinction avoids presenting dynamic loading as compile-time
-magic.
-
-Results depend on hardware, filesystem, and face contents. The repository
-ships reproducible checks instead of a fixed benchmark claim:
+Start MCP with:
 
 ```sh
-# Build and index a large Registry
-cargo run --release -p xirang-toolchain --example scale_audit -- 100000
-
-# fmt, tests, Clippy, docs, release artifacts, symbols, and linker sections
-tools/xirang-release-audit
-
-# Optional: compare two real application artifacts
-XIRANG_FULL_BINARY=/path/to/full \
-XIRANG_MINIMAL_BINARY=/path/to/minimal \
-tools/xirang-release-audit
+XIRANG_PACKAGE_ROOT=/absolute/path/to/my-app xirang mcp
 ```
 
-## Studio and CLI
+Begin with `xirang.explore {"query":"root/panel"}`. The default entry points also include `xirang.apply` and `xirang_tools`. Answers distinguish declarations, static candidates, build projections, and recorded runtime evidence. A discovered relationship is not proof of causality. See [configuration and calls](docs/using-xirang.md#mcp).
 
-Studio is a resident Ratatui application, not a stream of printed snapshots. It
-opens an alternate terminal screen, watches the selected project, and redraws
-on input, resize, or a file event.
+Teams share source, contracts, object ledgers, and accepted rules; absolute machine paths belong in local bindings. Use separate branches or working copies, explicit write scopes, and evidence tied to a snapshot. Parallel agents are useful for independent changes and reviews. Concurrent edits to the same files can invalidate evidence; XiRang does not replace Git merges or conflict resolution.
 
-![XiRang Studio](https://raw.githubusercontent.com/Nichtigott/xirang/main/picture/XiRang_studio.png)
+## Learning from other tools
 
-| Key              | Action                                               |
-| ---------------- | ---------------------------------------------------- |
-| `n`              | New binary/library project                           |
-| `a` / `e` / `d`  | Add, edit, or delete a face                          |
-| `g`              | Compose an external graft plan for the selected face |
-| `/`              | Search files and functions                           |
-| `1`–`3`          | Search, inspect, data pages                          |
-| `Tab`            | Move focus between the tree and the data pane        |
-| `p`              | Select a plugin and record it in the lock            |
-| arrows / `j` `k` | Move or resize the focused panel                     |
-| `r` / `F5`       | Reload the project                                   |
-| `b` / `F9`       | Run the build check                                  |
-| `q` / `Ctrl-C`   | Quit                                                 |
+| Tool or approach | Starting point | Relationship to XiRang |
+| --- | --- | --- |
+| Rust modules, traits, Cargo | Language types, modules, package dependencies | Retained; XiRang adds object organization, boundaries, and replacement intent |
+| CodeGraph / CodeQL | Symbols, calls, code analysis | Complementary; XiRang focuses on declared responsibilities and controlled changes |
+| Bazel | Build graphs, platforms, caching, execution, test rules | A source of input-closure and evidence ideas; no claim of equivalent distributed maturity or ecosystem |
+| Plugins / DI / distributed registration | Discover implementations and compose applications | XiRang adds recursive registration, contracts, and grafts when the project needs them |
 
-For source-driven hot rebuild while working on Studio itself:
+The goal is less repeated work understanding a project, maintaining its connections, and proving a change. Time, token, and compute savings require comparable tasks, configurations, and acceptance criteria. There is no blanket superiority claim. The exploration focuses on responsibility context, input closure, and delivery evidence; it does not establish a general performance ranking.
+
+## Adoption tradeoffs
+
+You maintain declarations, contracts, and verification, add host build wiring, and use tools for managed structural changes. Default directory conventions reduce configuration; explicit mappings provide flexibility. An arbitrary manual file move is not a completed migration.
+
+A generated crate is a compilation projection, not automatically another independently editable source repository. Edit authoritative host source and regenerate. Multiple writable islands, synchronized work versions, pinned whole-project tests, and remote scheduling need their own protocols and acceptance.
+
+Incremental indexing, end-to-end parallelism, and performance still have follow-up work. Some native-declaration packages currently bypass the row cache. The registration tree is not the complete call graph: dynamic dispatch, FFI, and runtime values require observation; unobserved does not mean absent.
+
+## How XiRang uses XiRang
+
+[control-button](examples/control-button) and its [external graft](examples/control-button-graft) are actual hosts exercising declarations, contracts, replacements, and runtime trees. [island-loop](tools/xirang-island-loop) and [partition-rehearsal](tools/xirang-partition-rehearsal) drive actual MCP/Cargo workflows. [External callers](tools/xirang-api-compat) exercise API compatibility.
+
+Repository policy lives in `AGENTS.md`; executable checks live in conventions. This self-use means exercising the hosts, tools, and maintenance workflow. It does not mean every utility function is registered as an object.
 
 ```sh
-XIRANG_PACKAGE_ROOT=/work/my-app \
-  cargo run -p xirang-toolchain --features dev-supervisor --bin xirang-dev -- watch
+# From the XiRang checkout, with the required native toolchains.
+tools/xirang-island-loop
+tools/xirang-partition-rehearsal
+tools/xirang-api-compat
+tools/xirang-test
 ```
 
-`xirang-dev` is **workspace-only**: it rebuilds Studio from this checkout and
-launches that checkout's `target/debug` binary. The `dev-supervisor` feature is
-not enabled by default, so `cargo install xirang-toolchain` installs the TUI and
-not a supervisor that would have nothing to rebuild.
+See each script for offline defaults and cold-environment options. Acceptance belongs to a specific source snapshot. Historical passes do not certify a changed checkout. Old API compatibility entries remain; extensions should exercise both old callers and old trait implementers.
 
-The command-line surface is intentionally small. `xirang` is the unified
-entry point: `xirang new` scaffolds host projects, `xirang check` runs the
-registration discovery and validation pass without a full compile, `xirang
-build` validates the registration tree and then invokes `cargo build`,
-`xirang snippets` injects the face-field editor snippets — a VS Code project
-file, a LuaSnip file, or blink.cmp's snippet file (`new` writes the VS Code one
-too; `--editor vscode|nvim|blink` picks one, `--editor auto` installs the
-editors found on the machine in their user-level locations, skipping the ones
-that match snippets fuzzily — blink.cmp and LuaSnip also offer a field trigger
-at value positions, so those need `--editor blink`/`--editor nvim` explicitly —
-and `--stdout` prints any of them). Value completion needs no snippet at all.
-`xirang grafts` lists the `.xirang/external-grafts/` records and whether the
-host entry declares their slots, and `xirang explain <node|path>` reports one
-node's identity, build scope, pruning state, and naming cuts (`explain
---overlay` renders the build's static overlay projection, not a live tree;
-the live effective tree is the host-side `Registry::dump_effective`).
-`xirang studio` is the interactive authoring/debug surface, and `xirang
-mcp` is the JSON-RPC/MCP bridge for AI clients: source and registry queries, plus
-authoring writes that preview unless `apply: true`. `cargo check`
-remains the build validation command:
+## Read more and contribute
 
-```sh
-cargo check
-XIRANG_PACKAGE_ROOT=/work/my-app xirang mcp
-```
+[User guide](docs/using-xirang.md) · [Language extensions](docs/extending-languages.md) · [Grafts](docs/graft.md) · [Migration](docs/migration.md) · [Threat model](docs/threat-model.md) · [Roadmap](docs/ROADMAP.md)
 
-MCP tools include `xirang.search` (faces first, matched on logical path, kind, module,
-or `registry_name` and annotated with the build's verdict — `ok`, `added since build`,
-`re-identified`, or `build unknown`; a manifest that no longer describes these sources is
-announced above the verdicts as `stale (run xirang check)` — then the file and function
-hits),
-`xirang.inspect`, `xirang.callgraph`,
-`xirang.read`, `xirang.status`, and `xirang.registry` — the last reports the
-registration tree the build derives, so an agent can read the registry instead of
-reconstructing it from macro names — plus `xirang.explain` (the build's published
-scope and release pruning, which source text cannot answer; with `overlay: true` the
-overlay projection instead — which slot each declared cut replaces and which faces the
-scope prunes, the published state after replacement), `xirang.diff` (the
-face-level delta between the sources and the build, including identities that
-changed under an unmoved file — and, with `records: true`, between the external graft
-records and the sources, where a record whose slot moved identity is `re-identified`
-instead of silently broken), and `xirang.trace` (the recorded trace's call
-report — what actually ran — refused when the artifact describes another tree; with
-`values: true` it reports the recorded values and data edges instead, grouped by the
-frame that captured them),
-`xirang.mir` (a `-Zunpretty=mir` text dump or the compact JSONL artifact, read
-either way and *written* when `jsonl: true` — the portable channel nothing in the
-workspace produced before; what it writes is a snapshot naming its tree, and with
-`against` two snapshots diff into the call-graph delta, a foreign one refused by name),
-`xirang.unified` (that graph merged with the recorded
-trace through `debug_method`'s own `UnifiedCallGraph`, where a live call confirms its
-compiler candidate instead of sitting beside it), and
-`xirang.usages` (a face's neighbourhood: its tree edges, the fields `apply` can set
-read back, and the capability tokens other faces mention in either direction),
-`xirang.impact` (the transitive blast radius of a change: descendants, capability
-consumers, and declared graft cuts, each with its hop distance and reasons),
-`xirang.grafts` (every external graft plan and whether the host entry declares the slot
-it targets, so an unkept record is visible before a release prunes it), and
-`xirang.converge` (one call that returns the converged starting point for a face:
-scope and pruning verdicts, its neighbourhood, whether each requirement is answered,
-and the files to read — reporting a kernel rejection as its verdict rather than as an
-error; with `trace: true` it starts from the recorded run instead and collapses the
-tree to the files that both declare a face and actually ran, carrying the values those
-frames captured and the edges between them), `xirang.verify` (re-run the kernel's validation and report the tree delta the
-run published, so an edit is confirmed rather than merely written), and
-`xirang.apply`, which adds, edits, renames, or deletes a face through the
-same authoring executor Studio uses and previews the change on a throwaway copy
-unless `apply: true` is given. Static call-graph answers are labelled
-heuristic; dynamic calls and runtime values are authoritative only when a host
-records a real `CallTrace`, which Studio loads from the artifact that host writes
-(`docs/design-trace-ingest.md`); a session with no artifact says `TRACE: none`
-rather than showing values it does not have, and `xirang.unified` is where a
-recorded trace and the compiler's MIR candidates are joined.
+Concrete use cases, minimal failures, language adapters, and compatible independent implementations are welcome. A feature contribution should include success and failure paths and state its verification scope. A proposed convention should also explain which legitimate differences it permits.
 
-## When XiRang is worth it
-
-XiRang is not a replacement for Rust's module system. It earns its place when
-an object graph is maintained by several people or tools, when a middle layer
-must be swapped without rebuilding its neighbours, or when an AI agent needs a
-machine-readable explanation of what an object accepts and provides. For a
-small application assembled in one place, ordinary Rust is usually the better
-choice.
-
-## Comparison
-
-| Approach               | Solves well                                                                                                                | Leaves to the application                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Modules, traits, DI    | Namespaces, static behaviour, explicit construction                                                                        | Discovery, parent closure, admission, replacement policy   |
-| `inventory` / `linkme` | Distributed collection of static items                                                                                     | Tree semantics, contracts, provenance, atomic grafts       |
-| Bevy-style plugins     | Explicit composition of an application                                                                                     | Generic source paths and middle-layer contract checks      |
-| CodeGraph / CodeQL     | Symbol and call evidence                                                                                                   | Runtime registration and replacement decisions             |
-| XiRang               | Passive recursive tree, contracts, admission, graft validation, Studio views, and MCP source queries with previewed writes | Rust's own rules for dynamic dispatch and optimised values |
-
-## Boundaries
-
-- The coarse build pass sees the host crate's source, not a downstream
-  consumer's source. The final binary still follows rustc/LLVM/linker reachability.
-- MIR and static scans provide candidates. `dyn Trait`, function pointers, FFI,
-  runtime-selected calls, and macro-generated code may require conservative
-  retention or live evidence.
-- Uninstrumented optimized locals may be shown as `unobserved`. Use the `full`
-  tracing mode when values, not just types, matter.
-- Process plugins isolate crashes and resource limits; they are not an
-  operating-system security sandbox. Wasm/process loading is optional.
-- Studio, debug, MCP, and plugin-host code are optional tools. A core-only
-  release keeps the registry protocol without the development UI.
-- A registration face lives in `<name>/<name>.rs`. An ordinary `.rs` module
-  beside the faces is skipped in silence, while a file that *is* a face outside
-  that layout is a build diagnostic naming the file and the layout it belongs in
-  — the build can never compile it, so it must not pass unnoticed.
-- Plugin trust is a checksum by default and a signature when the host verifies
-  one: only `PluginArtifact::verify_signed` records signature assurance, and only
-  that opens the official channel. Revocation is consulted during verification,
-  before any signature is accepted. Nothing here is an operating-system
-  sandbox — that boundary is the process adapter's, and it is stated above.
-
-## Runtime tracing
-
-```rust
-let trace = xirang_toolchain::run_method::CallTrace::runtime(); // debug: errors-only, release: off
-let quiet = xirang_toolchain::run_method::CallTrace::disabled();
-let detailed = xirang_toolchain::run_method::CallTrace::full();
-```
-
-`errors-only` keeps failed chains and discards successful evidence. `full` keeps
-frames, locals, and data edges for Studio inspection. The default release
-path collects nothing unless the application opts in.
-
-## Kernel and execution surfaces
-
-XiRang splits the workspace into one pure kernel and a set of thin
-execution surfaces. The sinking rule is simple: **logic with no I/O, no
-`std::env`, and no time or process binding belongs in the kernel**; anything
-that reads the filesystem, spawns processes, or drives a terminal stays in an
-execution surface that binds kernel methods to its own context.
-
-`xirang-kernel` (library name `xirang_kernel`) is the kernel. It holds the
-protocol vocabulary and the complete set of pure operations: identity,
-declaration, parsing, tree operations, policy, and rendering. Nothing in the
-kernel performs I/O or binds to the environment, so every tool can reuse the
-same methods.
-
-| Crate                | Directory                  | Execution surface                                                                                                                                                                                          |
-| -------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `xirang-toolchain` | `toolchain/build_method/`    | Build-time filesystem and `OUT_DIR` orchestration: source scanning, kernel validation, `generated_lib` rendering, manifest/cache writes, cargo directives                                                  |
-| `xirang-toolchain` | `toolchain/runtime/`       | Runtime state and tracing: `CallTrace` frame stack and data edges, the `host!`/`trace_call!` macros, and the authoring executor                                                                            |
-| `xirang-toolchain` | `toolchain/call_evidence/` | Observation evidence: MIR text/JSONL parsing and merge, `CallTrace` and data-flow models, tracing/petgraph adapters, `UnifiedCallGraph` (the `cargo rustc` that *produces* MIR runs from Studio, not here) |
-| `xirang-toolchain` | `toolchain/plugin_host/`   | Plugin host execution: Wasm/process sandbox instances, generational deployment, lazy activation slot table                                                                                                 |
-| `xirang-toolchain` | `toolchain/studio/`        | TUI surface: rendering and keyboard/mouse state machines that consume kernel queries and authoring methods                                                                                                 |
-| `xirang-toolchain` | `toolchain/mcp/`           | AI-agent stdio bridge: JSON-RPC loop, tool dispatch, path guarding                                                                                                                                         |
-| `xirang-toolchain` | `toolchain/cli/`           | Process glue: argv dispatch, cargo subprocesses, subcommand forwarding                                                                                                                                     |
-
-`xirang-macro` is the ninth published crate: a proc-macro crate that
-normalises face fields at compile time (tolerant separators and order, spanned
-diagnostics, editor mirror). It is a build-time front end rather than an
-execution surface, so it has no row above.
-
-## Workspace layout
-
-```text
-kernel/       xirang-kernel (lib xirang_kernel): protocol vocabulary and pure methods — identity,
-              declaration, diagnostic, tree, plugin, mir, requirements, release,
-              source, authoring, syntax, json, lexicon
-macro/        xirang-macro: compile-time face-field front end (tolerant
-              separators and order, spanned diagnostics, editor mirror)
-build_method/ xirang-toolchain: build-time discovery, cache, coarse StaticPlan
-run_method/   xirang-toolchain: runtime trace state, host!/trace_call! macros,
-              authoring executor
-debug_method/ xirang-toolchain: optional CallTrace adapters, MIR evidence,
-              data-flow and graph models
-cli/          xirang-toolchain: unified entry (xirang new/check/build/snippets/
-              explain/grafts/studio/mcp, cargo-xirang)
-studio/       Ratatui authoring, search, watch and source navigation
-mcp/          MCP bridge for AI-assisted queries and previewed writes
-plugin-host/  optional Wasm/process adapters and atomic deployment
-examples/     two host packages (not cargo example targets): control-button
-              plus its out-of-project graft
-picture/      brand wordmark and Studio screenshots
-conventions/  xirang-conventions: gates that walk this checkout (kernel
-              purity, module mounting, size ratchet, doc blocks); not published
-```
-
-The technical roadmap is in [`docs/ROADMAP.md`](docs/ROADMAP.md), with a Chinese
-version at [`docs/ROADMAP.zh-CN.md`](docs/ROADMAP.zh-CN.md). Package-specific API
-notes live beside each crate.
-
-## Build and license
-
-```sh
-cargo fmt --all
-cargo test --workspace --offline
-cargo clippy --workspace --all-targets --offline -- -D warnings
-```
-
-XiRang is released under the [MIT License](LICENSE). Contributions, design
-critique, and real-world failure reports are welcome in GitHub Issues and
-Discussions.
-
-[简体中文](README.zh-CN.md) 
+[MIT License](LICENSE) · [Issues](https://github.com/Nichtigott/xirang/issues) · [Discussions](https://github.com/Nichtigott/xirang/discussions)

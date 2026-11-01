@@ -19,7 +19,7 @@ path = "src/lib.rs"
 # parser. `syn` is already in the lock through the kernel's `syntax` feature.
 # C6 的文档代码块门禁要解析 markdown 围栏里的 Rust，需要真正的解析器。
 # `syn` 已通过内核的 `syntax` 特性存在于锁文件中。
-syn = { version = "2", features = ["full", "parsing"] }
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 # That parse used to be unguarded, so a fence nesting tens of thousands of
 # delimiters aborted this gate's process instead of failing it — the same defect
 # the kernel's parse entries had. The measurement lives in the kernel, and this

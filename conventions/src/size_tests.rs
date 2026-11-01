@@ -208,14 +208,12 @@ fn a_deep_mount_chain_is_still_test_only() {
 /// 仅测试文件按所在位置识别，或按名字加 `#[cfg(test)]` 挂载识别。
 #[test]
 fn test_only_files_are_recognised() {
-    assert!(is_test_shaped(Path::new(
-        "toolchain/src/cli/src/lib_tests.rs"
-    )));
+    assert!(is_test_shaped(Path::new("toolchain/src/cli/lib_tests.rs")));
     assert!(is_test_shaped(Path::new(
         "kernel/src/registry_core/syntax/face_tests.rs"
     )));
     assert!(is_test_shaped(Path::new(
-        "toolchain/src/studio/src/studio/app/tests.rs"
+        "toolchain/src/studio/studio/app/tests.rs"
     )));
     assert!(!is_test_shaped(Path::new(
         "kernel/src/registry_core/syntax/face.rs"
@@ -224,7 +222,7 @@ fn test_only_files_are_recognised() {
         "toolchain/src/studio/tests/graph.rs"
     )));
     assert!(!is_test_by_location(Path::new(
-        "toolchain/src/studio/src/studio/app/tests.rs"
+        "toolchain/src/studio/studio/app/tests.rs"
     )));
 }
 
@@ -504,4 +502,39 @@ fn a_longer_identifier_is_not_the_declaration() {
     assert_eq!(declared_stem("modx;"), None);
     assert_eq!(declared_stem("module x;"), None);
     assert_eq!(declared_stem("mod x {}"), None);
+}
+
+/// The declaration index is a cache, and a cache that answered for a tree somebody has already rewritten would be a
+/// gate that measures a tree no longer on disk. Fixture crates are therefore rebuilt on every question: changing a
+/// fixture's mount and asking again gets the new answer.
+/// 声明索引是一份缓存，而"替一棵已经被改写过的树作答"的缓存，等于一道在量一棵已不在磁盘上的树的门禁。因此夹具
+/// crate 每次都重建：改掉夹具的挂载再问一次，拿到的就是新答案。
+#[test]
+fn a_fixture_crates_answer_follows_its_current_bytes() {
+    let root = synthetic(&[
+        ("src/lib.rs", "pub mod plain;\n"),
+        ("src/plain.rs", &over_ceiling()),
+    ]);
+    // A plain `mod` is source, so the oversized file is measured.
+    // 普通的 `mod` 是源码，因此那个超限文件会被量到。
+    assert!(
+        oversized(&root)
+            .iter()
+            .any(|(path, _)| path.ends_with("plain.rs")),
+        "a plain module is measured"
+    );
+    // Mount it under `#[cfg(test)]` and ask again: the same path, new bytes, new answer.
+    // 把它挂到 `#[cfg(test)]` 之下再问一次：同一个路径、新的字节、新的答案。
+    std::fs::write(
+        root.join("probe/src/lib.rs"),
+        "#[cfg(test)]\npub mod plain;\n",
+    )
+    .expect("rewrite the mount");
+    assert!(
+        !oversized(&root)
+            .iter()
+            .any(|(path, _)| path.ends_with("plain.rs")),
+        "the answer follows the current bytes, not a cached one"
+    );
+    let _ = std::fs::remove_dir_all(root);
 }

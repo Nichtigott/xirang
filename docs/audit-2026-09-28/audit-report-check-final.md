@@ -42,7 +42,7 @@
 
 ## 2. K5 那条锚点 + 正文锚点全量扫描 + §1.5 口径 —— **已关闭**
 
-- 锚点现为**区间**：`studio/src/studio/app/call_tree_queries.rs:74-101`（`audit-report.md:572` 同一段），配对 token `CallTreeMemo` 实测在 `studio/src/studio/app/call_tree_queries.rs:93`，**落在区间内** ✓。
+- 锚点现为**区间**：`studio/studio/app/call_tree_queries.rs:74-101`（`audit-report.md:572` 同一段），配对 token `CallTreeMemo` 实测在 `studio/studio/app/call_tree_queries.rs:93`，**落在区间内** ✓。
 - 我自己的**全量正文锚点扫描**（`/tmp/anchor_check.py`，规则与 `conventions/src/doc_anchors.rs` 一致）：本文档共 **450 条** `<path>:<line>`（含区间）锚点，结果：
   - 文件不存在 **0**、行号越界 **0**、配对 token 不在所引行/区间 **0**；
   - 余下 **1 条**被我的脚本标为 `AMBIGUOUS`：`control/control.rs`（+43），两个同名候选；**按门禁规则"多于一个候选"是跳过而不是违规**（`conventions/src/doc_anchors.rs` 的 `resolve` 对多解直接放过），且它已在正文就地标注并在 §1.5 的排除项里（见 §4）。因此按门禁口径：**0 violation**。

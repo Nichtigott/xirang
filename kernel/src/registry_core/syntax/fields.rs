@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 
 use super::tokens::{
-    is_path_to, literal_string, location, only_group, path_to_string, split_top_level,
+    is_path_to, list_group, literal_string, location, only_group, path_to_string, split_top_level,
 };
 use super::{
     FaceSyntax, FaceSyntaxError, FieldSyntax, ParentSyntax, SyntaxLocation, compact,
@@ -22,6 +22,12 @@ use super::{
 };
 
 impl FaceSyntax {
+    /// Whether this declaration is a native `#[soil]` const (or its `#[face]` alias).
+    /// 声明是否为原生 `#[soil]` 常量（或兼容的 `#[face]` 别名）。
+    pub fn is_native(&self) -> bool {
+        self.expression.is_some()
+    }
+
     /// One field's tokens as compact source text, exactly as written.
     /// 某个字段的 token 渲染成的紧凑源码文本，按原文输出。
     ///
@@ -134,7 +140,7 @@ impl FaceSyntax {
     /// 某个方括号列表字段按原文读出，不做任何推导。
     fn written_string_list(&self, name: &str) -> Option<Vec<String>> {
         let field = self.fields.get(name)?;
-        let group = only_group(&field.tokens, Delimiter::Bracket)?;
+        let group = list_group(&field.tokens, Delimiter::Bracket)?;
         split_top_level(group.stream())
             .into_iter()
             .map(|tokens| syn::parse2::<syn::LitStr>(tokens).map(|literal| literal.value()))
@@ -146,7 +152,7 @@ impl FaceSyntax {
     /// 某个方括号列表字段的 Rust 路径，按书写顺序。
     pub fn path_list(&self, name: &str) -> Option<Vec<String>> {
         let field = self.fields.get(name)?;
-        let group = only_group(&field.tokens, Delimiter::Bracket)?;
+        let group = list_group(&field.tokens, Delimiter::Bracket)?;
         split_top_level(group.stream())
             .into_iter()
             .map(|tokens| syn::parse2::<syn::Path>(tokens).map(|path| path_to_string(&path)))
@@ -207,7 +213,10 @@ impl FaceSyntax {
         let expression = syn::parse2::<syn::Expr>(field.tokens.clone()).ok()?;
         match expression {
             syn::Expr::Path(path) => {
-                let path = path_to_string(&path.path);
+                let path = crate::syntax::catalog_reference(&super::super::imports::expand(
+                    &path_to_string(&path.path),
+                    &self.imports,
+                ));
                 if is_path_to(&path, "ROOT_NODE_ID") {
                     Some(ParentSyntax::Root)
                 } else {
@@ -327,13 +336,17 @@ pub(super) fn parse_face_fields(
     fallback_span: Span,
 ) -> Result<BTreeMap<String, FieldSyntax>, FaceSyntaxError> {
     let fields = parse_fields(tokens, fallback_span)?;
-    if let Some(unknown) = fields
-        .keys()
-        .find(|name| !crate::registry_core::declaration::FACE_FIELD_ORDER.contains(&name.as_str()))
-    {
+    if let Some(unknown) = fields.keys().find(|name| {
+        name.as_str() != "collector"
+            && !crate::registry_core::declaration::FACE_FIELD_ORDER.contains(&name.as_str())
+    }) {
         return Err(super::syntax_error(
             fallback_span,
-            format!("`{unknown}` is not a registration face field"),
+            format!(
+                "`{unknown}` is not a registration face field; if this declaration comes from an \
+                 application macro that reuses an `*_object!` name, it is not a registration \
+                 declaration — rename that macro or move the field out of it"
+            ),
         ));
     }
     Ok(fields)

@@ -19,7 +19,7 @@ test what it says. **Confirmed under attack** = survived specific probes.
 
 **Claims attacked.** B1 item 1: "`face_objects` arm 绑定 `$preset`/`$parts` 却展开成
 `NoPreset`/`NoParts` … 先写一条**失败**测试钉住'自定义 preset/parts 不被吞'，再修".
-The B1 fix comment (`run_method/src/macros/face_objects.rs:278-289`) states the
+The B1 fix comment (`run_method/macros/face_objects.rs:278-289`) states the
 boundary: an omitted `preset`/`parts` "keeps `NoPreset`/`NoParts`" /
 "省略者保持 `NoPreset`/`NoParts`". That is only true for the **no-`handle`** arm
 (lines 239-341). One arm earlier it is false.
@@ -85,7 +85,7 @@ six test suites above pass.
 - The compiled value and the authored-snapshot value disagree for the same face:
   `RegistrationSnapshot::merge_authored` (`core/.../declaration/owned.rs:189-226`) and
   the manifest parser default to the literal `"NoPreset"`
-  (`run_method/src/authoring/manifest/parse/parse.rs:111`), while the compiled
+  (`run_method/authoring/manifest/parse/parse.rs:111`), while the compiled
   `into_snapshot` copies `"$crate :: NoPreset"` (`registration.rs:287`). This is exactly
   the compiled/owned divergence B2 claims to have eliminated; the B2 equivalence test
   cannot see it because it builds both twins by hand with identical data
@@ -318,12 +318,12 @@ executable text in **Proposed tests**):
 | `path_is_under("", "")` | `true` | `path == prefix` short-circuits before `strip_prefix`. Callers: only reachable from `Admission` with an empty entry; identical to the old `Admission` spelling, so no regression. `is_registration_path("")` is still `false` because the prefix is `"registry_core"`. |
 | `path_is_under("a", "")` | `false` | `"a" != ""`; `strip_prefix("") = "a"`, `starts_with('/')` false. An empty allowed/denied prefix is *not* a universal prefix. Old spellings agreed (the connector's `starts_with("/")` is also false). |
 | `path_is_under("ab", "a")` | `false` | segment boundary holds; same as both old segment-correct spellings. |
-| `is_registration_path("registry_core")` | `false` | `path_is_under` is `true` but the `&& relative != SCOPE_REGISTRATION_MODULE` subtraction (`:125-127`) removes exactly the name case the scope exemption list matches by name (`build_method/src/scope.rs:286`). Preserved as documented. |
+| `is_registration_path("registry_core")` | `false` | `path_is_under` is `true` but the `&& relative != SCOPE_REGISTRATION_MODULE` subtraction (`:125-127`) removes exactly the name case the scope exemption list matches by name (`build_method/scope.rs:286`). Preserved as documented. |
 
 Trailing slash: `path_is_under("a/", "a") == true`; `path_is_under("a", "a/") == false`.
 Unicode: byte-prefix based, no panic, correct segment boundary. `\\`: returned `false`,
 consistent with the old spellings, and **all current callers feed `/`-normalized paths**
-(`build_method/src/node.rs:21-26` replaces `\` with `/`; registry paths are built with
+(`build_method/node.rs:21-26` replaces `\` with `/`; registry paths are built with
 `format!("{}/{}")` and `transaction.rs:251`), so the backslash case is latent, not live.
 The equality delta is F2; the fixed-prefix `.rs`/`_extra` delta is in Unresolved.
 
@@ -368,7 +368,7 @@ The equality delta is F2; the fixed-prefix `.rs`/`_extra` delta is in Unresolved
 
 `registry_name` never reaches `NodeId`:
 
-- `run_method/src/macros/face_registration.rs:45-49` builds the face identity from
+- `run_method/macros/face_registration.rs:45-49` builds the face identity from
   package, source, and **kind** only:
   ```rust
   pub const NODE_ID: $crate::NodeId = $crate::NodeId::from_namespaced_path(
@@ -381,7 +381,7 @@ The equality delta is F2; the fixed-prefix `.rs`/`_extra` delta is in Unresolved
 - `NodeId::from_namespaced_path` hashes `(namespace, relative_path, declared_name)`
   (`core/.../identity/node_id.rs:45-57`); no `registry_name` input.
 - The build side and the cache agree: `package_node_id(relative, declared_name)` /
-  `package_node_id(&relative, &kind)` (`build_method/src/identity.rs:62-64`,
+  `package_node_id(&relative, &kind)` (`build_method/identity.rs:62-64`,
   `faces.rs:47-51`, `cache.rs:127-132`), and `StableFaceId` uses `stable_name` else `kind`
   (`registration.rs:234-258`).
 

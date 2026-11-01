@@ -37,7 +37,10 @@
 //! 只有真实的声明（`fn <name>`）才会报违规，因此**提到** `get_x` 的文档注释不算——这就是本门禁
 //! 与子串搜索的区别。
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+use syn::visit::Visit;
 
 /// The documented verbs, with the meaning the review fixed for each.
 /// 词汇共识里的动词，以及复核为每一个定下的含义。
@@ -119,9 +122,9 @@ pub fn is_entry_file(path: &Path) -> bool {
     // （`mcp::protocol::run`）。规则 ④ 允许裸动词出现在入口位，而它们**就是**各自执行面的入口
     // ——这三个文件里的其它东西仍然必须带宾语。
     const ENTRY_FILES: &[&str] = &[
-        "toolchain/src/build_method/src/lib.rs",
-        "toolchain/src/cli/src/lib.rs",
-        "toolchain/src/mcp/src/protocol.rs",
+        "toolchain/src/build_method/lib.rs",
+        "toolchain/src/cli/lib.rs",
+        "toolchain/src/mcp/protocol.rs",
     ];
     if ENTRY_FILES.contains(&text.as_str()) {
         return true;
@@ -142,18 +145,41 @@ fn declarations(source: &str) -> Vec<(usize, String, bool, String)> {
     // 用本工作区**唯一**的词法规则来扫描，而不是原文：恰好拼出 `fn main` 的字符串字面量是数据、不是声明
     // ——生成的 `build.rs` 正是从这样的字面量里写出来的（审计 `M7`，P3.2），一刀切地匹配它，等于禁止一个
     // 生成器发射它存在就是为了发射的那份文件。
+    let syntax_owned = syntax_exempt_lines(source);
     let source = &xirang_kernel::source::mask_non_code(source);
-    // `impl Trait for Type` methods are named by the trait, not by us: a `write` that implements
-    // `std::io::Write` cannot be renamed, so it is not a naming decision this gate can make.
-    // `impl Trait for Type` 里的方法名由 trait 决定，不是我们起的：实现 `std::io::Write` 的
-    // `write` 改不了名，因此它不是本门禁能裁定的命名。
     let mut out = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
-    let in_trait_impl = |upto: usize| -> bool {
-        for i in (0..upto).rev() {
-            if let Some(rest) = lines[i].trim_start().strip_prefix("impl") {
-                return rest.contains(" for ");
+    // A deprecated declaration is a **compatibility entry**: it exists so a published caller keeps
+    // compiling, and the table cannot ask it to disappear. The suffix is explicit, so the exemption
+    // is precise rather than a blanket allow-list.
+    // 被 `#[deprecated]` 标记的声明是**兼容入口**：它存在是为了让已发布的调用方继续编译，词汇表不能要求它消失。
+    // 标记是显式的，因此豁免是精确的，而不是一张范围宽泛的 allow-list。
+    let is_deprecated = |upto: usize| -> bool {
+        let mut i = upto;
+        while i > 0 {
+            i -= 1;
+            let line = lines[i].trim();
+            if line.is_empty() {
+                return false;
             }
+            if line.starts_with("#[deprecated") {
+                return true;
+            }
+            // A multi-line attribute contributes `note = ...` / `)]` lines between the opening
+            // `#[deprecated(` and the declaration; they are part of the same marker.
+            // 多行属性在 `#[deprecated(` 与声明之间贡献 `note = ...` / `)]` 行；它们属于同一个标记。
+            if line.starts_with("///")
+                || line.starts_with("//!")
+                || line.starts_with("//")
+                || line.starts_with("#[")
+                || line.starts_with("note =")
+                || line.starts_with("since =")
+                || line == ")]"
+                || line == ")"
+            {
+                continue;
+            }
+            return false;
         }
         false
     };
@@ -171,8 +197,8 @@ fn declarations(source: &str) -> Vec<(usize, String, bool, String)> {
         if name.is_empty() {
             continue;
         }
-        if in_trait_impl(index) {
-            continue; // the trait owns the name (see the note above)
+        if syntax_owned.contains(&(index + 1)) || is_deprecated(index) {
+            continue; // the syntax owns the name, or this is a compatibility entry
         }
         // The signature may wrap, so the tail is taken up to the opening brace.
         let mut signature = String::new();
@@ -185,6 +211,61 @@ fn declarations(source: &str) -> Vec<(usize, String, bool, String)> {
         out.push((index + 1, name, is_public, signature));
     }
     out
+}
+
+/// The lines of function declarations whose names are owned by **syntax**, not by this crate:
+/// direct functions of a trait declaration, direct methods of a trait implementation, and foreign
+/// functions in an `extern` block.
+/// 名字由**语法**（而非本 crate）拥有的函数声明行：trait 声明里的直接函数、trait 实现的直接方法，
+/// 以及 `extern` 块里的外部函数。
+///
+/// Parsing with `syn` is what makes the ownership exact: a backward search for the nearest `trait`
+/// or `impl` header keeps answering "inside the trait" after its closing brace, while syn tells us
+/// which item directly contains each function. A file that does not parse contributes no exemption
+/// (conservative: the name is checked rather than silently skipped).
+/// 用 `syn` 解析才能得到精确归属：往回找最近的 `trait`/`impl` 头会在闭合括号之后仍回答"在 trait 里"，
+/// 而 syn 直接告诉我们每个函数属于哪个 item。解析失败的文件不贡献豁免（保守：检查名字而不是静默跳过）。
+fn syntax_exempt_lines(source: &str) -> BTreeSet<usize> {
+    let Ok(file) = syn::parse_file(source) else {
+        return BTreeSet::new();
+    };
+    let mut owners = SyntaxOwners::default();
+    owners.visit_file(&file);
+    owners.0
+}
+
+#[derive(Default)]
+struct SyntaxOwners(BTreeSet<usize>);
+
+impl<'ast> Visit<'ast> for SyntaxOwners {
+    fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
+        for item in &node.items {
+            if let syn::TraitItem::Fn(function) = item {
+                self.0.insert(function.sig.fn_token.span.start().line);
+            }
+        }
+        syn::visit::visit_item_trait(self, node);
+    }
+
+    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        if node.trait_.is_some() {
+            for item in &node.items {
+                if let syn::ImplItem::Fn(function) = item {
+                    self.0.insert(function.sig.fn_token.span.start().line);
+                }
+            }
+        }
+        syn::visit::visit_item_impl(self, node);
+    }
+
+    fn visit_item_foreign_mod(&mut self, node: &'ast syn::ItemForeignMod) {
+        for item in &node.items {
+            if let syn::ForeignItem::Fn(function) = item {
+                self.0.insert(function.sig.fn_token.span.start().line);
+            }
+        }
+        syn::visit::visit_item_foreign_mod(self, node);
+    }
 }
 
 /// Every verb-table violation in `source`, given the file it came from.
@@ -271,14 +352,17 @@ pub fn rust_files(root: &Path) -> Vec<PathBuf> {
 pub fn violations(root: &Path) -> Vec<Violation> {
     let mut out = Vec::new();
     for path in rust_files(root) {
-        let Ok(source) = std::fs::read_to_string(&path) else {
-            continue;
-        };
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
+        if crate::archived_evaluation(&relative) {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         out.extend(violations_in(&relative, &source));
     }
     out

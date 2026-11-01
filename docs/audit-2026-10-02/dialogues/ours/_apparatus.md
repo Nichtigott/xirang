@@ -1153,7 +1153,7 @@ s8.jsonl total 4 exit0 4 nonzero 0
 ### step 49（turn 1）· `bash`
 
 ```
-{"command": "cd /home/nich/Moirai_N3/nichlink && ls toolchain/src/mcp/src/ 2>/dev/null | head; grep -rn \"deepen\" toolchain/src/mcp/src/*.rs 2>/dev/null | head -30", "description": "Find deepen implementation in mcp module"}
+{"command": "cd /home/nich/Moirai_N3/nichlink && ls toolchain/src/mcp/ 2>/dev/null | head; grep -rn \"deepen\" toolchain/src/mcp/*.rs 2>/dev/null | head -30", "description": "Find deepen implementation in mcp module"}
 ```
 
 **结果**：
@@ -1168,34 +1168,34 @@ apply_target.rs
 apply_tests.rs
 build_evidence.rs
 build_evidence_tests.rs
-toolchain/src/mcp/src/apply_cut.rs:105:        // A cut has one reading: hand this subtree over. `deepen` is the action whose reply has to
-toolchain/src/mcp/src/apply_cut.rs:107:        // 切口只有一种读法：把这棵子树交出去。需要说出请求的另一种读法的是 `deepen`。
-toolchain/src/mcp/src/apply.rs:77:        Some("deepen") => Action::Deepen,
-toolchain/src/mcp/src/apply.rs:82:                 `rename`, `delete`, and `deepen`"
-toolchain/src/mcp/src/apply.rs:108:        Action::Deepen => run_deepen(target.work_dir(root), &namespace, arguments),
-toolchain/src/mcp/src/apply.rs:168:    /// Whether this change came from `deepen`, whose reply also states the *other* reading of
-toolchain/src/mcp/src/apply.rs:170:    /// 这次改动是否来自 `deepen`——它的回复还会说出"把它做深"的**另一种读法**及那种读法的代价。
-toolchain/src/mcp/src/apply.rs:491:fn run_deepen(root: &Path, namespace: &str, arguments: &Value) -> Result<Outcome, String> {
-toolchain/src/mcp/src/apply.rs:496:            "deepen requires `node`: the face, by logical path or identity".to_owned()
-toolchain/src/mcp/src/apply.rs:504:            "deepen requires `inside.parts`: an object of `field: Type` pairs, at least one — \
-toolchain/src/mcp/src/apply.rs:505:             accepted shape: {\"action\":\"deepen\",\"node\":\"<node>\",\
-toolchain/src/mcp/src/apply.rs:538:        format!("`{target}` does not name a face in this tree, so there is nothing to deepen")
-toolchain/src/mcp/src/apply.rs:556:            "deepen needs the line `{marker}` in {named} exactly once to hold the layer, and found \
-toolchain/src/mcp/src/apply.rs:557:             it {markers} time(s); this action deepens a face whose shape it can read rather than \
-toolchain/src/mcp/src/apply.rs:594:            "deepened {}: `{kind}` now holds `{kind}Parts` with {} part(s) ({listed}); its \
-toolchain/src/mcp/src/apply_tests.rs:241:/// `deepen` adds a layer **inside** a face: the tree, the declaration and the public path do not
-toolchain/src/mcp/src/apply_tests.rs:243:/// `deepen` 在一个面**内部**加一层：树、声明与公开路径都不动，而且回复会给出另一种读法（"它下面再挂
-toolchain/src/mcp/src/apply_tests.rs:246:fn a_deepen_adds_a_layer_inside_the_face_and_prices_the_other_reading() {
-toolchain/src/mcp/src/apply_tests.rs:247:    let (root, _) = package("deepen");
-toolchain/src/mcp/src/apply_tests.rs:263:        &json!({"action": "deepen", "node": "root/control/button",
-toolchain/src/mcp/src/apply_tests.rs:266:    .ex
+toolchain/src/mcp/apply_cut.rs:105:        // A cut has one reading: hand this subtree over. `deepen` is the action whose reply has to
+toolchain/src/mcp/apply_cut.rs:107:        // 切口只有一种读法：把这棵子树交出去。需要说出请求的另一种读法的是 `deepen`。
+toolchain/src/mcp/apply.rs:77:        Some("deepen") => Action::Deepen,
+toolchain/src/mcp/apply.rs:82:                 `rename`, `delete`, and `deepen`"
+toolchain/src/mcp/apply.rs:108:        Action::Deepen => run_deepen(target.work_dir(root), &namespace, arguments),
+toolchain/src/mcp/apply.rs:168:    /// Whether this change came from `deepen`, whose reply also states the *other* reading of
+toolchain/src/mcp/apply.rs:170:    /// 这次改动是否来自 `deepen`——它的回复还会说出"把它做深"的**另一种读法**及那种读法的代价。
+toolchain/src/mcp/apply.rs:491:fn run_deepen(root: &Path, namespace: &str, arguments: &Value) -> Result<Outcome, String> {
+toolchain/src/mcp/apply.rs:496:            "deepen requires `node`: the face, by logical path or identity".to_owned()
+toolchain/src/mcp/apply.rs:504:            "deepen requires `inside.parts`: an object of `field: Type` pairs, at least one — \
+toolchain/src/mcp/apply.rs:505:             accepted shape: {\"action\":\"deepen\",\"node\":\"<node>\",\
+toolchain/src/mcp/apply.rs:538:        format!("`{target}` does not name a face in this tree, so there is nothing to deepen")
+toolchain/src/mcp/apply.rs:556:            "deepen needs the line `{marker}` in {named} exactly once to hold the layer, and found \
+toolchain/src/mcp/apply.rs:557:             it {markers} time(s); this action deepens a face whose shape it can read rather than \
+toolchain/src/mcp/apply.rs:594:            "deepened {}: `{kind}` now holds `{kind}Parts` with {} part(s) ({listed}); its \
+toolchain/src/mcp/apply_tests.rs:241:/// `deepen` adds a layer **inside** a face: the tree, the declaration and the public path do not
+toolchain/src/mcp/apply_tests.rs:243:/// `deepen` 在一个面**内部**加一层：树、声明与公开路径都不动，而且回复会给出另一种读法（"它下面再挂
+toolchain/src/mcp/apply_tests.rs:246:fn a_deepen_adds_a_layer_inside_the_face_and_prices_the_other_reading() {
+toolchain/src/mcp/apply_tests.rs:247:    let (root, _) = package("deepen");
+toolchain/src/mcp/apply_tests.rs:263:        &json!({"action": "deepen", "node": "root/control/button",
+toolchain/src/mcp/apply_tests.rs:266:    .ex
 …[结果：此处截断，全文 3483 字符；原件见 outputs/ 里的对话渲染脚本可重跑]
 ```
 
 ### step 50（turn 1）· `bash`
 
 ```
-{"command": "cd /home/nich/Moirai_N3/nichlink && sed -n '240,330p' toolchain/src/mcp/src/apply_tests.rs; echo '=========== run_deepen'; sed -n '485,620p' toolchain/src/mcp/src/apply.rs", "description": "Read deepen tests and implementation"}
+{"command": "cd /home/nich/Moirai_N3/nichlink && sed -n '240,330p' toolchain/src/mcp/apply_tests.rs; echo '=========== run_deepen'; sed -n '485,620p' toolchain/src/mcp/apply.rs", "description": "Read deepen tests and implementation"}
 ```
 
 **结果**：
@@ -1355,7 +1355,7 @@ diff -ru '--exclude=.git' '--exclude=target' s1/crates/report/src/render.rs fd/c
 ### step 65（turn 1）· `bash`
 
 ```
-{"command": "cd /home/nich/Moirai_N3/nichlink && grep -n \"action\\\": \\\"add\\\"\" toolchain/src/mcp/src/apply_tests.rs | head -20; echo '--- example add with many fields'; sed -n '/fn an_add_writes_the_face/,/^}/p' toolchain/src/mcp/src/apply_tests.rs | head -60", "description": "Find add examples in apply tests"}
+{"command": "cd /home/nich/Moirai_N3/nichlink && grep -n \"action\\\": \\\"add\\\"\" toolchain/src/mcp/apply_tests.rs | head -20; echo '--- example add with many fields'; sed -n '/fn an_add_writes_the_face/,/^}/p' toolchain/src/mcp/apply_tests.rs | head -60", "description": "Find add examples in apply tests"}
 ```
 
 **结果**：
@@ -1387,7 +1387,7 @@ diff -ru '--exclude=.git' '--exclude=target' s1/crates/report/src/render.rs fd/c
 ### step 65（turn 1）· `bash`
 
 ```
-{"command": "cd /home/nich/Moirai_N3/nichlink && sed -n '600,760p' toolchain/src/mcp/src/apply.rs", "description": "Read apply overlay field handling"}
+{"command": "cd /home/nich/Moirai_N3/nichlink && sed -n '600,760p' toolchain/src/mcp/apply.rs", "description": "Read apply overlay field handling"}
 ```
 
 **结果**：

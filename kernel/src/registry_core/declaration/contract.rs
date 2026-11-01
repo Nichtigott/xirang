@@ -50,6 +50,56 @@ impl PartsContract for NoParts {
     const PROVIDED_PARTS: &'static [&'static str] = &[];
 }
 
+/// The **type-like** half of a face declaration (H/A2e), as associated types.
+/// 面声明里**类型类**的那一半（H/A2e），写成关联类型。
+///
+/// A struct literal cannot carry a type, so the two declarations that *are* types — the preset that
+/// constructs the face and the parts type that supplies its construction parts — live here, where they
+/// are ordinary Rust: completion works, and a wrong type is a compile error. `Params`/`Handle` are not
+/// here on purpose: today those are written as a **value** and an **identifier** in the macro
+/// (`params: $params:expr`, `handle: $handle:ident`), so a type-level carrier would be a second way to
+/// say the same thing.
+/// 结构体字面量装不下类型，因此那两个**本身就是类型**的声明——构造这个面的 preset、提供其构造 parts 的
+/// parts 类型——住在这里，而这里是普通 Rust：补全可用、写错类型就是编译错误。`Params`/`Handle` **有意不在**
+/// 这里：今天它们在宏里分别写成一个**值**和一个**标识符**（`params: $params:expr`、`handle: $handle:ident`），
+/// 给它们再造一个类型级载体，等于同一件事有第二种写法。
+pub trait FaceContract {
+    /// Preset type that constructs this face.
+    /// 构造本面的 preset 类型。
+    type Preset: PresetContract;
+    /// Parts type that supplies this face's construction parts, tied to the preset's output exactly as
+    /// [`assert_contract`] ties them.
+    /// 提供本面构造 parts 的 parts 类型；其输出与 preset 的输出的绑定，与 [`assert_contract`] 完全一致。
+    type Parts: PartsContract<Output = <Self::Preset as PresetContract>::Output>;
+
+    /// The handle-contract labels this face carries, as the runtime registry reads them.
+    /// 本面携带的 handle 合同标签，按运行期注册机读取的样子。
+    ///
+    /// The declaration macros derive these from the contract **types** they were given, and check with
+    /// `__assert_impls!` that the face implements each of them. That check has no macro-free equivalent —
+    /// Rust cannot quantify a bound over a variable list of traits — so a hand-written face names the
+    /// labels here and keeps the check beside it. The default is "no contracts", which is what a face
+    /// that declares none should say rather than an empty list invented by its consumer.
+    /// 声明宏从它们拿到的合同**类型**推导这些标签，并用 `__assert_impls!` 检查这个面实现了其中每一个。那条检查
+    /// **没有**无需宏的等价物——Rust 无法让一个 bound 对**变长**的 trait 列表做量化——因此手写的面在这里点名
+    /// 标签，并把那条检查写在旁边。"没有合同"是默认值，也正是没有声明合同的面**应当**说的，而不是由它的消费者
+    /// 编一个空列表出来。
+    const HANDLE_TRAITS: &'static [&'static str] = &[];
+
+    /// The part-contract labels this face carries; see [`FaceContract::HANDLE_TRAITS`].
+    /// 本面携带的 part 合同标签；见 [`FaceContract::HANDLE_TRAITS`]。
+    const PART_TRAITS: &'static [&'static str] = &[];
+}
+
+/// The compile-time check a face can make about its own two type-like declarations.
+/// 一个面就自己那两个类型类声明所做的编译期检查。
+///
+/// It exists so the trait has a user the compiler can see — measured: a `pub trait` nothing uses is
+/// `dead_code` under `-D warnings`, while a `pub` struct in the same module is not.
+/// 它的存在让那个 trait 有一个编译器看得见的使用者——实测：无人使用的 `pub trait` 在 `-D warnings` 下是
+/// `dead_code`，而同一模块里的 `pub` struct 不是。
+pub const fn assert_face_contract<F: FaceContract>() {}
+
 /// Force preset and parts output types to match during macro expansion.
 /// 在宏展开时强制 preset 与 parts 的输出类型相同。
 ///
@@ -122,3 +172,7 @@ pub struct ObjectContract {
     /// parts 类型实际提供的 part 名称。
     pub provided_parts: &'static [&'static str],
 }
+
+#[cfg(test)]
+#[path = "contract_tests.rs"]
+mod contract_tests;

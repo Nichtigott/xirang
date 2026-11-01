@@ -1,0 +1,741 @@
+#!/usr/bin/env python3
+"""Run real Rust authoring workflows through advertised MCP tools, retaining all evidence.
+
+Scripted acceptance, not a model trial or a CodeGraph quality score. Creates a new output
+directory, never clears an existing one. Requires the checkout's build dependencies offline.
+通过真实 MCP 和 Cargo 验收创作流程，保留往返、源码指纹和反证；不冒充模型对照成绩。
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import shutil
+import subprocess
+import time
+
+REPO = Path(__file__).resolve().parents[1]
+Session = runpy.run_path(str(REPO / "bench/mcp-codegraph-bench.py"))["Session"]
+
+
+def fingerprint(root):
+    """Authored inputs, including design records; derived output is recorded separately."""
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob("*")) if p.is_file()
+            and not set(p.relative_to(root).parts) & {"target", ".git", ".codegraph"}}
+
+
+def identity(reply, logical_path):
+    for line in reply.splitlines():
+        if re.search(r"(?<![\w/])" + re.escape(logical_path) + r"(?=\s|$)", line):
+            found = re.search(r"\b[0-9a-f]{32}\b", line)
+            if found:
+                return found.group()
+    raise AssertionError(f"no identity for {logical_path}: {reply}")
+
+
+class Workflow:
+    def __init__(self, binary, output):
+        self.binary, self.output = binary, output
+        self.env = {**os.environ, "CARGO_TARGET_DIR": str(output / "cargo-target")}
+        self.results = {"mode": "scripted MCP + Rust acceptance; no model/token claims; cost is "
+                                "wall-clock seconds and wire bytes of MCP calls and cargo runs on this "
+                                "machine, not model tokens",
+                        "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                        "checks": [], "calls": [], "legs": []}
+        self.leg = "init"
+        self.session = Session([binary], output, self.env, output, "workflow")
+        self.session.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": "workflow-eval", "version": "1"}})
+        self.session.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        listed, _, _ = self.session.call("tools/list", {})
+        self.names = {t["name"] for t in listed["tools"]}
+
+    def save(self):
+        (self.output / "results.json").write_text(json.dumps(self.results, indent=2) + "\n")
+
+    def check(self, label, condition):
+        self.results["checks"].append({"name": label, "passed": bool(condition)})
+        self.save()
+        if not condition:
+            raise AssertionError(label)
+
+    def call(self, root, tool, *, refused=False, **arguments):
+        arguments["root"] = str(root)
+        name = f"xirang.{tool}"
+        params = {"name": name, "arguments": arguments} if name in self.names else {
+            "name": "xirang_tools", "arguments": {"tool": tool, "arguments": arguments}}
+        result, seconds, wire_bytes = self.session.call("tools/call", params, allow_tool_error=True)
+        body = "\n".join(c.get("text", "") for c in result.get("content", []))
+        self.results["calls"].append({"tool": tool, "leg": self.leg, "root": str(root),
+                                      "seconds": seconds, "wire_bytes": wire_bytes,
+                                      "isError": result.get("isError", False)})
+        self.save()
+        if bool(result.get("isError")) != refused:
+            raise AssertionError(f"unexpected tool outcome ({tool}): {body}")
+        return body
+
+    def cargo(self, root, label, *, red=False, minimum=1):
+        started = time.perf_counter()
+        proc = subprocess.run(["cargo", "test", "--offline"], cwd=root, env=self.env,
+                              capture_output=True, timeout=300)
+        (self.output / f"{label}.stdout").write_bytes(proc.stdout)
+        (self.output / f"{label}.stderr").write_bytes(proc.stderr)
+        self.results.setdefault("cargo", []).append({"label": label, "leg": self.leg,
+                                                    "exit_code": proc.returncode,
+                                                    "seconds": time.perf_counter() - started})
+        text = proc.stdout.decode()
+        passed = sum(int(n) for n in re.findall(r"test result: ok\. (\d+) passed", text))
+        failed = sum(int(n) for n in re.findall(r"test result: FAILED\. \d+ passed; (\d+) failed", text))
+        self.check(label, (proc.returncode != 0 and failed > 0) if red else
+                   (proc.returncode == 0 and passed >= minimum))
+
+    def run_leg(self, name, action):
+        """Run one leg with a leg tag and record what it cost, so no call is unattributed."""
+        started = time.perf_counter()
+        calls = len(self.results["calls"])
+        cargos = len(self.results.get("cargo", []))
+        self.leg = name
+        action()
+        self.results["legs"].append({
+            "leg": name,
+            "seconds": round(time.perf_counter() - started, 3),
+            "calls": len(self.results["calls"]) - calls,
+            "call_seconds": round(sum(c["seconds"] for c in self.results["calls"][calls:]), 3),
+            "wire_bytes": sum(c["wire_bytes"] for c in self.results["calls"][calls:]),
+            "cargo_runs": len(self.results.get("cargo", [])) - cargos,
+            "cargo_seconds": round(sum(c["seconds"] for c in self.results.get("cargo", [])[cargos:]), 3),
+        })
+
+    def leg_accounting(self):
+        """Every call and every cargo run belongs to exactly one leg; the totals are the whole run."""
+        calls = self.results["calls"]
+        cargos = self.results.get("cargo", [])
+        legs = self.results["legs"]
+        self.check("every MCP call is tagged with the leg that made it",
+                   all(c.get("leg") in {leg["leg"] for leg in legs} for c in calls))
+        self.check("every cargo run is tagged with the leg that ran it",
+                   all(c.get("leg") in {leg["leg"] for leg in legs} for c in cargos))
+        self.check("the legs account for every MCP call",
+                   sum(leg["calls"] for leg in legs) == len(calls))
+        self.check("the legs account for every cargo run",
+                   sum(leg["cargo_runs"] for leg in legs) == len(cargos))
+        # The governance leg measured both hosts by the same instrument.
+        government = [c for c in calls if c["leg"] == "governance"]
+        wired = [c for c in government if c["root"].endswith("governance_wired")]
+        unwired = [c for c in government if c["root"].endswith("governance_unwired")]
+        self.check("the governance leg measured both hosts", bool(wired) and bool(unwired))
+        self.check("both hosts paid for a plan and a task",
+                   any(c["tool"] == "check" for c in wired)
+                   and any(c["tool"] == "check" for c in unwired)
+                   and any(c["tool"] == "task" for c in wired)
+                   and any(c["tool"] == "task" for c in unwired))
+        self.check("only the wired host paid for adoption lines",
+                   sum(1 for c in wired if c["tool"] == "adopted") >= 1
+                   and not any(c["tool"] == "adopted" for c in unwired))
+        self.results["cost"] = {
+            "scope": "wall-clock seconds and wire bytes of MCP calls and cargo runs on this machine; "
+                     "not model tokens",
+            "legs": legs,
+            "governance": {
+                host: {
+                    "calls": len(group),
+                    "call_seconds": round(sum(c["seconds"] for c in group), 3),
+                    "wire_bytes": sum(c["wire_bytes"] for c in group),
+                    "tools": sorted({c["tool"] for c in group}),
+                }
+                for host, group in (("wired", wired), ("unwired", unwired))
+            },
+        }
+
+    def snapshot(self, root, label):
+        data = fingerprint(root)
+        (self.output / f"{label}.sha256.json").write_text(json.dumps(data, indent=2) + "\n")
+        return data
+
+    def create(self, directory, package):
+        self.call(self.output, "new_project", directory=directory, kind="library", package=package,
+                  dependency="path", path=str(REPO), apply=True,
+                  faces=[{"fields": {"module": "button", "kind": "Button"}},
+                         {"fields": {"module": "slider", "kind": "Slider"}}])
+        return self.output / directory
+
+    def construction(self):
+        root = self.create("construction", "workflow_host")
+        for module in ("button", "slider"):
+            source = (root / f"src/{module}/{module}.rs").read_text()
+            self.check(f"new_project emits Soil for {module}",
+                       "#[xirang_toolchain::soil]" in source and "xirang_toolchain::Soil::of::<" in source)
+        tests = root / "tests"
+        tests.mkdir()
+        invariant = tests / "public_surface.rs"
+        invariant.write_text('''#[test]
+fn public_faces_survive_every_round() {
+    let _ = std::mem::size_of::<workflow_host::button::Button>();
+    let _ = std::mem::size_of::<workflow_host::slider::Slider>();
+    assert_ne!(workflow_host::button::NODE_ID, workflow_host::slider::NODE_ID);
+}
+''')
+        frozen_test = invariant.read_bytes()
+        self.cargo(root, "01-scaffold")
+        original = self.snapshot(root, "01-scaffold")
+        self.call(root, "apply", action="add", fields={"module": "knob", "kind": "Knob"})
+        self.check("add preview preserves authored inputs", fingerprint(root) == original)
+        self.call(root, "apply", action="add", apply=True,
+                  fields={"module": "knob", "kind": "Knob"})
+        source = (root / "src/knob/knob.rs").read_text()
+        self.check("apply add emits Soil", "#[xirang_toolchain::soil]" in source
+                   and "xirang_toolchain::Soil::of::<Knob>()" in source)
+        family = self.call(root, "consistency", parent="root")
+        self.check("new sibling is registered", bool(identity(
+            self.call(root, "registry", full=True), "root/knob")))
+        self.check("family comparison runs without a lease", "evidence xirang.consistency" in family
+                   and "no ledger entry" not in family)
+        self.cargo(root, "02-sibling")
+        self.call(root, "adopted", anchor="root/button", files=["src/button/button.rs"],
+                  certifies="fixture reference", evidence="scripted fixture review",
+                  verifier="fixture maintainer", reason="explicit fixture confirmation",
+                  apply=True, confirm=True)
+        before = self.snapshot(root, "02-sibling")
+        before_id = identity(self.call(root, "registry", full=True), "root/button")
+        args = dict(action="deepen", node="root/button", inside={"parts": {"label": "String"}})
+        self.call(root, "apply", **args)
+        self.check("deepen preview preserves authored inputs", fingerprint(root) == before)
+        self.call(root, "apply", apply=True, **args)
+        after = fingerprint(root)
+        self.check("deepen changes only the selected face", {p for p in before.keys() | after.keys()
+                   if before.get(p) != after.get(p)} == {"src/button/button.rs"})
+        self.check("deepen creates a real parts layer", "ButtonParts" in
+                   (root / "src/button/button.rs").read_text())
+        self.check("deepen preserves identity", identity(self.call(root, "registry", full=True),
+                   "root/button") == before_id)
+        self.cargo(root, "03-deepen")
+        ledger = root / ".xirang/adopted/entries"
+        lease_before = ledger.read_bytes()
+        family = self.call(root, "consistency", specimen="root/button")
+        self.check("deepening lapses the reference lease", "lease root/button: lapsed" in family)
+        self.check("query never renews trust", ledger.read_bytes() == lease_before)
+        self.call(root, "apply", action="add", apply=True, fields={"module": "label", "kind": "Label",
+                  "needs_registry": True, "provides": "cap.render"})
+        self.call(root, "apply", action="add", apply=True, parent="root/label",
+                  fields={"module": "consumer", "kind": "Consumer", "requires": "cap.render=>Label"})
+        context = self.call(root, "converge", node="root/label")
+        self.check("provider query names declared consumer", "declared consumers 1" in context
+                   and "root/label/consumer" in context)
+        before = self.snapshot(root, "04-provider")
+        error = self.call(root, "apply", action="edit", apply=True, node="root/label",
+                          fields={"provides": ""}, refused=True)
+        self.check("invalid contract edit names the unsatisfied capability", "cap.render" in error)
+        self.check("invalid contract edit is atomic", fingerprint(root) == before)
+        self.cargo(root, "04-contracts")
+        self.relocate(root)
+        self.regression(root)
+        self.check("original test survives all rounds byte-for-byte", invariant.read_bytes() == frozen_test)
+        self.snapshot(root, "05-final")
+
+    def relocate(self, root):
+        knob = root / "src/knob/knob.rs"
+        # Handwritten behavior must travel with the face, independent of generated aliases.
+        # 手写行为必须随面一起搬走，与生成的别名接线分开验证。
+        knob.write_text(knob.read_text() + "\npub fn move_probe() -> u32 { 73 }\n")
+        probe = root / "tests/move_behavior.rs"
+        probe.write_text("#[test]\nfn moved_behavior() { assert_eq!(workflow_host::knob::move_probe(), 73); }\n")
+        self.cargo(root, "04-handwritten-before")
+        before = self.snapshot(root, "04-before-move")
+        old_id = identity(self.call(root, "registry", full=True), "root/knob")
+        args = dict(action="move", node="root/knob", to="root/label")
+        self.call(root, "apply", **args)
+        self.check("move preview preserves authored inputs", fingerprint(root) == before)
+        self.call(root, "apply", apply=True, **args)
+        probe.write_text(probe.read_text().replace("workflow_host::knob::", "workflow_host::label::knob::"))
+        self.cargo(root, "04-moved")
+        new_id = identity(self.call(root, "registry", full=True), "root/label/knob")
+        self.check("move changes identity with its source path", new_id != old_id)
+        after = fingerprint(root)
+        self.check("move preserves unrelated faces", all(before[p] == after.get(p)
+                   for p in ("src/button/button.rs", "src/slider/slider.rs",
+                             "src/label/object/consumer/consumer.rs")))
+        self.check("move leaves an identity compatibility record", any(
+            old_id in p.read_text() and new_id in p.read_text()
+            for p in (root / ".xirang/moves").rglob("*") if p.is_file()))
+        self.call(root, "apply", action="add", apply=True,
+                  fields={"module": "shelf", "kind": "Shelf", "needs_registry": True})
+        declaration = root / "add_crates.rs"
+        declaration.write_text('pub fn add_crates() -> Shape { Shape::of("app", '
+                               '&[Crate::named("labels").at(&[crate::label::SUBTREE])]) }\n')
+        before = self.snapshot(root, "04-before-cross-owner")
+        args = dict(action="move", node="root/label/knob", to="root")
+        preview = self.call(root, "apply", **args)
+        self.check("cross-crate preview is atomic and informational",
+                   "notice: compilation owner labels -> host" in preview and fingerprint(root) == before)
+        applied = self.call(root, "apply", apply=True, **args)
+        self.check("cross-crate move follows claims without editing them",
+                   "notice: compilation owner labels -> host" in applied
+                   and fingerprint(root)["add_crates.rs"] == before["add_crates.rs"])
+        returned = self.call(root, "apply", action="move", node="root/knob", to="root/label", apply=True)
+        self.check("cross-crate move returns to its owner", "notice: compilation owner host -> labels" in returned)
+        declaration.unlink()
+        before = self.snapshot(root, "04-before-subtree-move")
+        args = dict(action="move", node="root/label", to="root/shelf")
+        self.call(root, "apply", **args)
+        self.check("subtree move preview is atomic", fingerprint(root) == before)
+        self.call(root, "apply", apply=True, **args)
+        probe.write_text(probe.read_text().replace("workflow_host::label::", "workflow_host::shelf::label::"))
+        self.cargo(root, "04-subtree-moved")
+        self.check("subtree move preserves handwritten behavior and unrelated faces",
+                   "pub fn move_probe() -> u32 { 73 }" in
+                   (root / "src/shelf/label/knob/knob.rs").read_text()
+                   and all(before[p] == fingerprint(root).get(p)
+                           for p in ("src/button/button.rs", "src/slider/slider.rs")))
+        current = "root/shelf/label/knob"
+        last_record = max(int(p.name) for p in (root / ".xirang/moves").iterdir() if p.is_dir())
+        for number in range(1, 7):
+            self.call(root, "apply", action="move", node=current, to="root",
+                      name=f"knob{number}", apply=True)
+            current = f"root/knob{number}"
+        records = sorted(int(p.name) for p in (root / ".xirang/moves").iterdir() if p.is_dir())
+        self.check("six real moves retain exactly the newest five records",
+                   records == list(range(last_record + 2, last_record + 7)))
+        probe.write_text("#[test]\nfn moved_behavior() { assert_eq!(workflow_host::knob6::move_probe(), 73); }\n")
+        self.cargo(root, "04-six-moves")
+
+    def regression(self, root):
+        source = root / "src/button/button.rs"
+        buggy = "if value > limit { value } else { limit }"
+        fixed = "if value < limit { value } else { limit }"
+        source.write_text(source.read_text() + f"\npub fn bounded_value(value: i32, limit: i32) -> i32 {{ {buggy} }}\n")
+        test = root / "tests/bounded.rs"
+        test.write_text('''use workflow_host::button::bounded_value;
+#[test]
+fn cap_and_interior() {
+    assert_eq!(bounded_value(12, 10), 10);
+    assert_eq!(bounded_value(4, 10), 4);
+}
+''')
+        self.cargo(root, "05-round1-red", red=True)
+        reply = self.call(root, "explore", query="bounded_value")
+        self.check("repair context contains producer and existing assertion", buggy in reply
+                   and "assert_eq!(bounded_value(12, 10), 10)" in reply)
+        before = self.snapshot(root, "05-before-repair")
+        source.write_text(source.read_text().replace(buggy, fixed))
+        self.cargo(root, "05-round1-green", minimum=2)
+        source.write_text(source.read_text().replace(fixed, buggy))
+        self.cargo(root, "05-round1-counterproof", red=True)
+        source.write_text(source.read_text().replace(buggy, fixed))
+        with test.open("a") as out:
+            out.write('''#[test]
+fn negative_inputs_are_zero() {
+    assert_eq!(bounded_value(-3, 10), 0);
+    assert_eq!(bounded_value(3, -10), 0);
+}
+''')
+        self.cargo(root, "06-round2-red", red=True)
+        source.write_text(source.read_text().replace(fixed, "value.clamp(0, limit.max(0))"))
+        self.cargo(root, "06-round2-green", minimum=3)
+        with test.open("a") as out:
+            out.write('''#[test]
+fn zero_and_extremes_keep_the_same_contract() {
+    for value in [i32::MIN, -1, 0, 1, i32::MAX] {
+        assert_eq!(bounded_value(value, 0), 0);
+    }
+    assert_eq!(bounded_value(i32::MAX, i32::MAX), i32::MAX);
+}
+''')
+        self.cargo(root, "07-round3-green", minimum=4)
+        after = fingerprint(root)
+        self.check("repair rounds touch only implementation and new acceptance tests",
+                   {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)}
+                   == {"src/button/button.rs", "tests/bounded.rs"})
+
+
+    def authored(self, root):
+        """Authored inputs only: governance state and build output are not the code under test."""
+        return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(root.rglob("*")) if p.is_file()
+                and not set(p.relative_to(root).parts) & {"target", ".git", ".codegraph", ".xirang"}}
+
+    def copy_authored(self, source, target):
+        for path in self.authored(source):
+            destination = target / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source / path, destination)
+
+    def plan_of(self, reply):
+        found = re.search(r"^plan (\S+)", reply, re.MULTILINE)
+        if not found:
+            raise AssertionError(f"no plan id in: {reply}")
+        return found.group(1)
+
+    def governance(self):
+        """Same code, with and without governance wiring: the conclusions must not be the same.
+
+        The wired host carries a policy lease, a rule about the face, a passing plan and a task that
+        closes with the rule revision and lease fingerprint in its closure. The unwired host is a
+        byte-identical copy without `.xirang`: the same governance **request** (a task that says its
+        policy requires an acceptance) cannot close there, and a bare task that does close records
+        zero rules and zero leases — so its conclusion cannot be read as the governed one.
+        Body difference, not code difference, is what the checks pin.
+        """
+        wired = self.create("governance_wired", "governance_host")
+        self.call(wired, "apply", action="edit", apply=True, node="root/button",
+                  fields={"provides": "cap.render"})
+        (wired / "policy.txt").write_text("fixture maintenance policy v1\n")
+        tests = wired / "tests"
+        tests.mkdir(exist_ok=True)
+        (tests / "governance.rs").write_text(
+            "#[test]\nfn faces_are_registered() {\n"
+            "    assert_ne!(governance_host::button::NODE_ID, governance_host::slider::NODE_ID);\n}\n")
+        self.cargo(wired, "10-governed-host")
+        unwired = self.output / "governance_unwired"
+        unwired.mkdir()
+        self.copy_authored(wired, unwired)
+        self.check("the two hosts are the same authored code and declarations",
+                   self.authored(wired) == self.authored(unwired))
+        self.check("only the wired host carries governance state",
+                   (wired / ".xirang").is_dir() and not (unwired / ".xirang").exists())
+
+        # Wired: a lease, a rule about the face, a passing plan, and a task whose policy requires a
+        # confirmation made after it opened.
+        self.call(wired, "adopted", anchor="policy", files=["policy.txt"],
+                  certifies="fixture maintenance policy", evidence="scripted fixture review",
+                  verifier="fixture maintainer", reason="explicit fixture confirmation",
+                  apply=True, confirm=True)
+        self.call(wired, "rules", action="propose", rule_id="keep-render", category="protocol",
+                  selector="root/button", requirement="retain cap.render",
+                  origin="accepted_policy", sources=["policy.txt"],
+                  expects={"provides": "cap.render"})
+        self.call(wired, "rules", action="accept", rule_id="keep-render", authority="policy",
+                  confirm=True)
+        wired_plan = self.plan_of(self.call(wired, "check", files=["src/button/button.rs"],
+                                            census=False))
+        opened = self.call(wired, "task", action="open", task="governed", object="root/button",
+                           verification=wired_plan,
+                           acceptance={"required": True, "anchor": "policy"}, apply=True)
+        self.check("the wired task binds a rule revision and a lease fingerprint",
+                   "rules      1 at the revisions recorded now" in opened
+                   and "`policy` at" in opened)
+        self.call(wired, "adopted", anchor="policy", files=["policy.txt"],
+                  certifies="fixture maintenance policy", evidence="re-read after the task opened",
+                  verifier="fixture maintainer", reason="the policy was reviewed again",
+                  apply=True, confirm=True)
+        wired_status = self.call(wired, "task", action="status", task="governed")
+        self.check("all five obligations hold on the wired host", "verdict complete" in wired_status
+                   and "acceptance   satisfied" in wired_status)
+        closed = self.call(wired, "task", action="close", task="governed", confirm=True, apply=True)
+        wired_record = json.loads((wired / ".xirang/tasks/governed.json").read_text())
+        self.check("the wired closure keeps the rule revision and the lease it rests on",
+                   "verdict complete" in closed
+                   and wired_record["closed"]["verdict"] == "complete"
+                   and list(wired_record["rules"]) == ["keep-render"]
+                   and isinstance(wired_record["leases"].get("policy"), str))
+
+        # Unwired: the same code and the same check, but no `.xirang` to carry the decision.
+        unwired_plan = self.plan_of(self.call(unwired, "check", files=["src/button/button.rs"],
+                                              census=False))
+        self.call(unwired, "task", action="open", task="ungoverned", object="root/button",
+                  verification=unwired_plan,
+                  acceptance={"required": True, "anchor": "policy"}, apply=True)
+        unwired_status = self.call(unwired, "task", action="status", task="ungoverned")
+        self.check("the ungoverned host cannot satisfy the acceptance its own request requires",
+                   "verdict incomplete" in unwired_status
+                   and "acceptance   outstanding" in unwired_status
+                   and "absent from the ledger" in unwired_status)
+        refused = self.call(unwired, "task", action="close", task="ungoverned", confirm=True,
+                            apply=True, refused=True)
+        self.check("the ungoverned host is refused for the missing decision, not for its code",
+                   "does not close" in refused and "acceptance" in refused)
+        # A bare task (policy requires nothing) does close there — and its closure says, in the
+        # record, that it certifies no rule and no lease. That is the honest difference: the tool
+        # does not invent governance that was never declared.
+        self.call(unwired, "task", action="open", task="ungoverned-bare", object="root/button",
+                  verification=unwired_plan, apply=True)
+        self.call(unwired, "task", action="close", task="ungoverned-bare", confirm=True, apply=True)
+        bare = json.loads((unwired / ".xirang/tasks/ungoverned-bare.json").read_text())
+        self.check("a closure with no governance records zero rules and zero leases",
+                   bare["closed"]["verdict"] == "complete" and bare["rules"] == {}
+                   and bare["leases"] == {})
+
+        # The same check plan, a task that ran nothing: closure is refused for the missing evidence.
+        sealed = self.call(wired, "check", files=["src/lib.rs"], census=False, action="plan")
+        self.call(wired, "task", action="open", task="unverified", object="root/button",
+                  verification=self.plan_of(sealed), apply=True)
+        unverified = self.call(wired, "task", action="status", task="unverified")
+        self.check("a plan that never ran keeps the task open", "verified     outstanding" in unverified)
+        self.call(wired, "task", action="close", task="unverified", confirm=True, apply=True,
+                  refused=True)
+        # A wired task opened before a real change is refused after it: the object's bytes moved.
+        self.call(wired, "task", action="open", task="changed", object="root/button",
+                  verification=wired_plan, apply=True)
+        self.call(wired, "apply", action="edit", apply=True, node="root/button",
+                  fields={"summary_en": "moved after the task opened"})
+        changed = self.call(wired, "task", action="status", task="changed")
+        self.check("a change after the task opened keeps it open", "applied      outstanding" in changed)
+        self.call(wired, "task", action="close", task="changed", confirm=True, apply=True,
+                  refused=True)
+        self.check("the hosts were the same code before the deliberate change",
+                   all(self.authored(unwired)[path] == digest
+                       for path, digest in self.authored(wired).items() if path != "src/button/button.rs"))
+        # Wrong template: two in-force specimens of one family are a conflict — the tool refuses and
+        # writes nothing rather than picking one.
+        self.call(wired, "apply", action="add", apply=True,
+                  fields={"module": "button2", "kind": "Button"})
+        for anchor, source in (("root/button", "src/button/button.rs"),
+                               ("root/button2", "src/button2/button2.rs")):
+            self.call(wired, "adopted", anchor=anchor, files=[source],
+                      certifies="fixture specimen", evidence="scripted fixture review",
+                      verifier="fixture maintainer", reason="two specimens for the conflict control",
+                      apply=True, confirm=True)
+        before_conflict = self.authored(wired)
+        conflict = self.call(wired, "apply", action="add", apply=True,
+                             fields={"module": "button3", "kind": "Button"}, refused=True)
+        self.check("two approved specimens refuse the third face by name",
+                   "2 approved specimens" in conflict and "root/button" in conflict
+                   and "root/button2" in conflict)
+        self.check("a template conflict writes nothing", self.authored(wired) == before_conflict)
+        # Wrong object binding: a task about one object is not unset by a change to another, and a
+        # change to its own object keeps it open.
+        self.call(wired, "task", action="open", task="bound", object="root/slider",
+                  verification=wired_plan, apply=True)
+        self.call(wired, "apply", action="edit", apply=True, node="root/button",
+                  fields={"summary_en": "another object changed"})
+        other = self.call(wired, "task", action="status", task="bound")
+        self.check("a change to another object does not unset this object's bytes",
+                   "applied      satisfied" in other)
+        slider = wired / "src/slider/slider.rs"
+        slider.write_text(slider.read_text() + "\npub fn slider_probe() -> u32 { 7 }\n")
+        own = self.call(wired, "task", action="status", task="bound")
+        self.check("a change to this object keeps its task open",
+                   "applied      outstanding" in own)
+        bound_refusal = self.call(wired, "task", action="close", task="bound", confirm=True,
+                                  apply=True, refused=True)
+        self.check("the object-bound task is refused by the obligation it lost",
+                   "applied" in bound_refusal)
+        self.results["governance"] = {
+            "conflict": conflict, "other_status": other, "own_status": own,
+            "bound_refusal": bound_refusal,
+            "wired_status": wired_status, "wired_closed": closed,
+            "unwired_status": unwired_status, "unwired_refusal": refused,
+            "unwired_bare": bare["closed"], "changed_status": changed,
+        }
+
+    def scenario(self):
+        """Scenario A/B/C scripted: specimen, new category, second session, move, unknown.
+
+        Not a model trial: every step is an advertised MCP call plus a real `cargo test`. What it
+        pins is that the governed loop really closes end to end on a real host — specimen selection
+        and lineage, a second session reading the same knowledge, a new category becoming a
+        specimen, a move carrying the rule with the object, a stale plan refusing to certify, and an
+        undecidable rule keeping the task open.
+        """
+        root = self.create("scenario", "scenario_host")
+        tests = root / "tests"
+        tests.mkdir(exist_ok=True)
+        (tests / "scenario.rs").write_text(
+            "#[test]\nfn registered_faces_keep_distinct_identities() {\n"
+            "    assert_ne!(scenario_host::button::NODE_ID, scenario_host::slider::NODE_ID);\n}\n")
+        self.cargo(root, "11-scenario-host")
+
+        # Scenario A: read the architecture, choose a specimen, add a same-family face, build it.
+        read = self.call(root, "registry", full=True)
+        self.check("scenario A reads the architecture", "root/button" in read
+                   and "root/slider" in read)
+        self.call(root, "adopted", anchor="root/button", files=["src/button/button.rs"],
+                  certifies="fixture specimen", evidence="scripted fixture review",
+                  verifier="fixture maintainer", reason="the specimen for the family",
+                  apply=True, confirm=True)
+        added = self.call(root, "apply", action="add", apply=True,
+                          fields={"module": "knob", "kind": "Button"})
+        self.check("scenario A chooses the approved specimen",
+                   "follows the approved specimen `root/button`" in added)
+        lineage = (root / ".xirang/templates/lineage.tsv").read_text()
+        self.check("scenario A records the follower in the lineage",
+                   "root/knob\troot/button\t" in lineage)
+        self.check("scenario A writes a real Soil declaration",
+                   "#[xirang_toolchain::soil]" in (root / "src/knob/knob.rs").read_text())
+        (tests / "knob.rs").write_text(
+            "#[test]\nfn knob_is_registered() {\n"
+            "    let _ = scenario_host::knob::NODE_ID;\n}\n")
+        self.cargo(root, "12-scenario-knob")
+
+        # A second session reads the same knowledge: the process is new, the state is not.
+        first = self.session
+        second = Session([self.binary], self.output, self.env, self.output, "scenario-session2")
+        second.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                   "clientInfo": {"name": "workflow-eval", "version": "1"}})
+        second.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        self.session = second
+        try:
+            reopened = self.call(root, "registry", full=True)
+        finally:
+            self.session = first
+            second.close()
+        self.check("scenario A second session sees the same faces", "root/knob" in reopened)
+        self.check("scenario A second session sees the same lineage",
+                   "root/knob\troot/button\t" in
+                   (root / ".xirang/templates/lineage.tsv").read_text())
+
+        # Scenario B: a new category is a candidate; the decision makes it a specimen; the next
+        # face of that category follows it.
+        new_kind = self.call(root, "apply", action="add", apply=True,
+                             fields={"module": "dial", "kind": "Dial"})
+        self.check("scenario B does not crown a new category",
+                   "no approved specimen for this category yet" in new_kind
+                   and "candidate" in new_kind)
+        self.call(root, "adopted", anchor="root/dial", files=["src/dial/dial.rs"],
+                  certifies="fixture specimen", evidence="scripted fixture review",
+                  verifier="fixture maintainer", reason="the decision for the new category",
+                  apply=True, confirm=True)
+        reuse = self.call(root, "apply", action="add", apply=True,
+                          fields={"module": "dial2", "kind": "Dial"})
+        self.check("scenario B reuses the adjudicated specimen",
+                   "follows the approved specimen `root/dial`" in reuse)
+        self.cargo(root, "13-scenario-reuse")
+
+        # Scenario C: a rule and a plan bound to the object; a move carries the rule; the stale
+        # plan is refused; the real build stays green with the consumer rewritten.
+        self.call(root, "apply", action="edit", apply=True, node="root/knob",
+                  fields={"stable_name": "Knob", "provides": "cap.knob"})
+        self.call(root, "rules", action="propose", rule_id="keep-knob", category="protocol",
+                  selector="root/knob", requirement="retain cap.knob",
+                  origin="accepted_policy", sources=["Cargo.toml"],
+                  expects={"provides": "cap.knob"})
+        self.call(root, "rules", action="accept", rule_id="keep-knob", authority="root/button",
+                  confirm=True)
+        before_rules = self.call(root, "rules", action="list")
+        # A rule listing prints the identity on its own `object <32-hex>` line, not beside the path.
+        # 规则列表把身份印在 `object <32-hex>` 那一行，不在路径旁边。
+        found = re.search(r"object ([0-9a-f]{32})", before_rules)
+        if not found:
+            raise AssertionError(f"the rule listing names no object identity: {before_rules}")
+        stable = found.group(1)
+        plan = self.plan_of(self.call(root, "check", files=["src/knob/knob.rs"], census=False))
+        self.call(root, "task", action="open", task="moved", object="root/knob",
+                  verification=plan, apply=True)
+        self.check("scenario C the governed task closes before the move",
+                   "verdict complete" in self.call(root, "task", action="status", task="moved"))
+        moved = self.call(root, "apply", action="move", node="root/knob", to="root",
+                          name="knob2", apply=True)
+        self.check("scenario C the move carries the rule with the object",
+                   "follows the object" in moved)
+        after = self.call(root, "task", action="status", task="moved")
+        self.check("scenario C the stale plan is not accepted after the move",
+                   "applied      outstanding" in after and "verified     unknown" in after)
+        self.call(root, "task", action="close", task="moved", confirm=True, apply=True,
+                  refused=True)
+        (tests / "knob.rs").write_text(
+            "#[test]\nfn knob_is_registered() {\n    let _ = scenario_host::knob2::NODE_ID;\n}\n")
+        self.cargo(root, "14-scenario-moved")
+        listed = self.call(root, "rules", action="list")
+        self.check("scenario C the rule still names the same object at its new path",
+                   "root/knob2" in listed and stable in listed)
+
+        # An undecidable rule is not ignored: the task stays open, naming the obligation.
+        self.call(root, "rules", action="propose", rule_id="review-slider", category="shape",
+                  selector="root/slider", requirement="a person reviews the slider shape",
+                  origin="accepted_policy", sources=["Cargo.toml"])
+        self.call(root, "rules", action="accept", rule_id="review-slider", authority="root/button",
+                  confirm=True)
+        plan2 = self.plan_of(self.call(root, "check", files=["src/slider/slider.rs"],
+                                       census=False))
+        self.call(root, "task", action="open", task="undecided", object="root/slider",
+                  verification=plan2, apply=True)
+        undecided = self.call(root, "task", action="status", task="undecided")
+        self.check("an undecidable rule keeps the task open",
+                   "rules        unknown" in undecided and "cannot be decided" in undecided)
+        self.call(root, "task", action="close", task="undecided", confirm=True, apply=True,
+                  refused=True)
+        self.results["scenario"] = {"added": added, "lineage": lineage, "moved": moved,
+                                   "after_move": after, "undecided": undecided,
+                                   "rules_after_move": listed}
+
+    def migration(self):
+        root = self.create("migration", "migration_host")
+        graft = self.output / "graft"
+        shutil.copytree(REPO / "examples/control-button-graft", graft,
+                        ignore=shutil.ignore_patterns("target", ".git"))
+        manifest = graft / "Cargo.toml"
+        manifest.write_text(manifest.read_text().replace('path = "../../toolchain"',
+                            f'path = "{REPO / "toolchain"}"') + "\n[workspace]\n")
+        manifest = root / "Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("[dependencies]", "[dependencies]\n"
+                            f'xirang-example-control-button-graft = {{ path = "{graft}" }}'))
+        entry = root / "src/lib.rs"
+        slot = "    graft(crate::catalog::SLIDER).with(control_button_graft::slider_fast::NODE_ID),"
+        with entry.open("a") as out:
+            out.write('\npub const FRAMEWORK: FrameworkId = FrameworkId::new("workflow.migration");\n'
+                      'pub const GRAFTS: &[Graft] = &[\n'
+                      '    graft(crate::catalog::BUTTON).with(control_button_graft::button_fast::NODE_ID),\n'
+                      + slot + '\n];\n')
+        slider = root / "src/slider/slider.rs"
+        with slider.open("a") as out:
+            out.write('\n#[cfg(test)]\nmod tests {\n#[test]\nfn slider_survives() {\n'
+                      'let _ = crate::slider::Slider;\n}\n}\n')
+        self.cargo(root, "08-grafted")
+        slider_bytes = slider.read_bytes()
+        external_before = fingerprint(graft)
+        before_id = identity(self.call(root, "registry", full=True), "root/button")
+        record = root / ".xirang/external-grafts/button_fast"
+        record.mkdir(parents=True)
+        (record / "graft.plan").write_text(f"version=1\ntarget={before_id}\ntarget_path=root/button\n"
+                                          "graft=button_fast\nfull=false\n")
+        before = self.snapshot(root, "08-grafted")
+        args = dict(action="promote", selector="button_fast", confirm=True)
+        self.call(root, "apply", **args)
+        self.check("promote preview preserves source and record", fingerprint(root) == before)
+        self.call(root, "apply", apply=True, **args)
+        self.check("promote keeps sibling source and graft slot", slider.read_bytes() == slider_bytes
+                   and slot in entry.read_text())
+        self.check("promote retains external crate byte-for-byte", fingerprint(graft) == external_before)
+        self.check("promote archives the record", not record.exists()
+                   and any((root / ".xirang/trash").rglob("graft.plan")))
+        self.check("promote lands the declared kind", "Soil::of::<ButtonFast>()" in
+                   (root / "src/button/button.rs").read_text())
+        landed = (root / "src/button/button.rs").read_text()
+        external = (graft / "src/button_fast.rs").read_text()
+        fields = ('.name("Fast button", "快速按钮")',
+                  '.summary("Out-of-project implementation", "项目外实现")',
+                  '.exports(&["control.render"])', '.handle_traits(&["ControlHandle"])')
+        self.check("promote copies the external name summary exports and traits",
+                   all(field in external and field in landed for field in fields))
+        flow = r'FlowContract::new\(ContractId::new\("control.render.v1"\),1,"ControlInput","ControlFrame",?\)'
+        self.check("promote copies the external flow contract", all(re.search(flow,
+                   re.sub(r"\s+", "", text).replace("crate::", ""))
+                   for text in (external, landed)))
+        self.check("promote changes button slot to local implementation",
+                   "graft(crate::catalog::BUTTON).with(crate::catalog::BUTTON)" in entry.read_text())
+        self.cargo(root, "09-promoted")
+        scope = root / "target/xirang/out/source_scope.tsv"
+        self.check("promoted face remains in build-selected sources", scope.is_file()
+                   and any(line.split("\t")[1:] == ["button/button.rs", "button"]
+                           for line in scope.read_text().splitlines() if not line.startswith("#")))
+        self.snapshot(root, "09-promoted")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("binary", type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+    binary, output = args.binary.resolve(), args.output.resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    run = Workflow(binary, output)
+    try:
+        run.run_leg("construction", run.construction)
+        run.run_leg("migration", run.migration)
+        run.run_leg("governance", run.governance)
+        run.run_leg("scenario", run.scenario)
+        run.leg_accounting()
+        run.results["passed"] = True
+    except Exception as error:
+        run.results.update(passed=False, error=str(error))
+        raise
+    finally:
+        run.save()
+        run.session.close()
+    print(f"{len(run.results['checks'])} checks passed; evidence: {output / 'results.json'}")
+
+
+if __name__ == "__main__":
+    main()

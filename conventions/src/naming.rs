@@ -160,7 +160,7 @@ fn referenced_names(root: &Path, packages: &[String]) -> Vec<Finding> {
             });
         }
     };
-    let scaffold = root.join("toolchain/src/build_method/src/scaffold");
+    let scaffold = root.join("toolchain/src/build_method/scaffold");
     if is_real_directory(&scaffold) {
         for path in rust_sources(&scaffold) {
             let text = fs::read_to_string(&path)

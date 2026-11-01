@@ -2944,9 +2944,9 @@ plugin_host
 runtime
 studio
 === grep PartsContract in toolchain/src (single dir, not repo-wide) ===
-toolchain/src/mcp/src/apply.rs
-toolchain/src/mcp/src/apply_tests.rs
-toolchain/src/studio/src/studio/app/tests/forms.rs
+toolchain/src/mcp/apply.rs
+toolchain/src/mcp/apply_tests.rs
+toolchain/src/studio/studio/app/tests/forms.rs
 toolchain/src/build_time/src/contracts.rs
 toolchain/src/runtime/src/macros/face_registration.rs
 kernel/src/registry_core/declaration/contract.rs
@@ -3981,7 +3981,7 @@ cg26：改正 h2 的 fix 措辞（删违禁项）与 fc 的指纹理由（可重
 
 **① `answers/h2-claim-unkept.md` 的 fix 里有一项违禁** ✗：你写了"**或删掉该失效条目**" —— 本题真值的 `fix.forbidden` 明列 `remove the entry`，并写着 "**needs a person, not an edit**"。改成：既有条目**一字不改、不删**；处置是**由人**重新确认（在台账**追加**一条确认行，走桥的 `adopted … --apply`），并写明证据（**panel 那行的指纹是别的文件的当前指纹** ⇒ 记录失真、需人工重确认，不是代码缺陷）。
 
-**② `answers/fc.md` 里"指纹树内无法重算 ⇒ 手写等于伪造证据"是错的** ✗：内核有公开函数可重算 —— `adoption_fingerprint`（`kernel/src/registry_core/adoption/adoption.rs:200`，写入路径调用点 `toolchain/src/mcp/src/adopted.rs:329`），复核者**在 fc 树里一条命令就复现出台账值 `22b54a4c…`**（输入 = 相对路径 + 文件文本；拼法 `path\0 字节长\0 内容\0`，sha256）。理由改成**流程性**的：指纹**可以**重算，但**采信该由桥按 conformance 流程写**（人手写会绕过"谁在什么证据下采信的"这条链）；"手写=伪造证据"这句删掉。
+**② `answers/fc.md` 里"指纹树内无法重算 ⇒ 手写等于伪造证据"是错的** ✗：内核有公开函数可重算 —— `adoption_fingerprint`（`kernel/src/registry_core/adoption/adoption.rs:200`，写入路径调用点 `toolchain/src/mcp/adopted.rs:329`），复核者**在 fc 树里一条命令就复现出台账值 `22b54a4c…`**（输入 = 相对路径 + 文件文本；拼法 `path\0 字节长\0 内容\0`，sha256）。理由改成**流程性**的：指纹**可以**重算，但**采信该由桥按 conformance 流程写**（人手写会绕过"谁在什么证据下采信的"这条链）；"手写=伪造证据"这句删掉。
 
 **③ 顺带把 `nonbridge:` 自报与自己的日志对齐** ✗：复核者实测 7/11 份答案的 `nonbridge:` 与自己的日志对不上（另有 8 条 `diff`/`sha256sum` 直接走 bash、未入逐题日志 ⇒ 该栏是**下界**）。要么按日志重算，要么在 `SETUP.md` §5 明确写成"下界 + 口径"，**不留与日志不符的数**。
 

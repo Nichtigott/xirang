@@ -1,5 +1,11 @@
 # 考题与对照装置（永久化，2026-10-10）
 
+最新真实 agent 配对验收入口为 `agent-ab.py`，协议见
+[18 会话验收](../docs/agent-ab-acceptance-2026-10-10.md)。它使用独立项目目录和客户端配置，
+不移动本仓库的 `AGENTS.md`。先运行 `prepare` 与 `controls`，确认正确修复通过、局部修复和
+绕行反例真实失败，再运行 `run` 和 `score`。`score` 产生实际补丁匿名包；机械通过仍须结合
+完整轨迹审计及独立盲评。模型 token 来自服务商 usage，缺失用量不会当作零费用。
+
 **English (short).** The exam recipes live here, in the repository, because `target/` is
 git-ignored: every fixture under it dies on a clean clone, a `cargo clean`, or — on this machine —
 a reboot (`/tmp` is wiped at boot by NixOS). This directory keeps what cannot be regenerated from
@@ -83,3 +89,235 @@ done; done
 - hardbug：`target/hardbug/`；26 题逐题：`target/round10/`；单题探针：`target/probe-perq/`；
 - 结论与账：`docs/design-mcp-optimization-backlog.md` · `docs/design-mcp-hardbug-plan.md` ·
   `docs/design-scenario-bench-k27.md`（先导批结果与修正案）· 以及每轮的报告。
+
+## 五、MCP 优化的可复现检查（2026-10-10）
+
+默认责任链入口的前后对照用 `mcp-responsibility-bench.py`：原生提供者与两个消费者，
+可附加 50,000 份无关源码；经实际 MCP stdio 测函数名/对象路径，保留每次回复、耗时、
+源码文件数、6 类证据覆盖与二进制哈希。首次请求不是冷磁盘，结构查询仍有包级发现成本；
+跨功能版本时前后返回的证据可能不同，不能将耗时直接解释成同任务胜负。
+English: this is a retrieval benchmark with synthetic native declarations, not a model repair trial.
+
+```sh
+python3 bench/mcp-responsibility-bench.py --before BEFORE_BINARY --after AFTER_BINARY \
+  --noise-files 50000 --output target/bench-runs/responsibility-UNIQUE
+```
+
+纯性能变更请加 `--require-identical`，要求两臂全部冷/热回复逐字节一致。
+`--after-first` 反转二进制次序，`--first-case object` 让对象查询从空进程解析缓存开始；
+第二类查询的首次调用已经被第一类查询预热。Linux 还记录服务进程 VmRSS/VmHWM（不含 Cargo 子进程）。
+本轮 5 万/10 万文件数据及限制见[解析复用报告](../docs/mcp-parser-reuse-2026-10-10.md)。
+English: use identical-answer gating for performance-only changes, reverse arm order and choose the
+first query explicitly. Linux memory samples exclude child processes; first-request timing is not cold disk.
+
+`mcp-callgraph-bench.py BEFORE AFTER --output <新目录>` 对两个二进制做同树工具测量，
+保存墙时间、回复与哈希；它不运行模型、不统计 token。`score-m1.py` 的 v2 使用终态
+patch churn 计算编辑放大率，支持 `--json`；历史 v1 结果不改写。两者口径见
+[本轮说明](../docs/mcp-optimization-2026-10-10.md)。评分器的反例用以下命令运行，CI 也执行：
+
+```sh
+python3 -m unittest discover -s bench -p 'test_*.py'
+```
+
+
+### CodeGraph 同题源码上下文对照
+
+`mcp-codegraph-bench.py` 创建独立同构的 Rust 夹具，仅为 CodeGraph 那份建立索引。
+记录一次性 CLI 和持久 MCP 的冷/热耗时、初始化/索引成本、预先指定源码片段的覆盖、
+回复字节数、完整往返帧和实现哈希；不推断模型 token、补丁质量或动态派发能力。
+症状词与类型名查询防止只测精确函数名。CodeGraph MCP 使用 direct 模式、关闭 watcher，
+保留默认的跨请求源码不抑制行为；未测多客户端共享 daemon 的并发吞吐。
+
+```sh
+python3 bench/mcp-codegraph-bench.py target/debug/xirang-mcp CODEGRAPH_BIN \
+  --repeats 5 --output target/bench-runs/codegraph-explore-UNIQUE
+```
+
+OUTPUT 必须不存在。对照设计、局限和本轮读数见
+[`mcp-codegraph-comparison-2026-10-10.md`](../docs/mcp-codegraph-comparison-2026-10-10.md)。
+
+加 `--fixture ledger` 复用 `tools/xirang-mcp-eval` 的原 Kimi 账本题，注入其四个独立缺陷，
+比较限定方法名和原题症状文字的上下文。`--build-label` 标注实际构建配置；debug 与 release
+不得混为同一实现优化的加速比。该对照仍只测工具取回证据，没有模型执行修复。
+
+
+领域场景另由 `consistency_lease_tests.rs` 固定：同族结构偏差与采信失效同答，
+续期不修复结构，旧台账不伪造逐文件归因，读取不续期。运行：
+
+```sh
+cargo test -p xirang-toolchain --features mcp --lib consistency_tests::leases
+```
+
+### 完整 Rust 工作流的机械验收
+
+长链与成本反例可运行：
+
+```sh
+python3 bench/mcp-repair-loop-bench.py target/debug/xirang-mcp \
+  target/bench-runs/repair-loop-UNIQUE --counterproof
+```
+
+它分别记录首次/重复 affected、关闭总账后的 check、编译错误交付，以及双消费者、症状补丁、
+提供者修复和替换实现绕行反例。保存原始 MCP 帧、时延、UTF-8 字节与源码摘要。
+这是脚本验收，不是模型修复胜率；字节不等于供应商 token。详见
+[全流程审计](../docs/mcp-repair-loop-audit-2026-10-10.md)。
+
+```sh
+cargo build -p xirang-toolchain --features mcp --bin xirang-mcp
+python3 tools/xirang-mcp-workflow-eval target/debug/xirang-mcp \
+  --output target/bench-runs/mcp-workflow-UNIQUE
+```
+
+通过真实 stdio 的已广告入口执行建造、同族新增、加深、合同修改拒绝、搬移和外部实现落地，
+在每轮用 Cargo 验证原有测试；修复题含红→绿→撤销后红反证及三轮边界回归。检查源码/设计记录
+指纹、身份变化规则、兄弟与外部消费者保留、采信失效不被查询续期。输出目录必须不存在，
+完整往返、测试输出、逐步指纹和 `results.json` 均保留；失败也保留现场。CI 执行此流程。
+
+这是确定性脚本验收，补丁由脚本给定，不计入模型胜率。完整比较还需同模型独立任务运行、
+四轴 token 和匿名补丁评分；源码片段命中率、churn 或延迟不能代替这些判据。
+
+### 缓存、超大树与解耦覆盖
+
+`tools/xirang-mcp-hardbug tokens SESSION` 分列未命中、cache read、cache write、总输入和输出；
+cache write 不算命中，计费应单列写入价格。对应反例也由上面的 `test_*.py` 门禁运行。
+
+`mcp-scale-bench.py SOURCE_TREE XIRANG_BIN CODEGRAPH_BIN --output NEW_DIR` 复制已有注册面规模树，
+校验同源，记录 CG 索引成本、持久 MCP 首次/重复请求、原始回复和 Linux 服务进程 RSS。
+不清除 OS 页缓存、不运行模型、不声称整树编译；夹具与 CG 安装须另行准备。
+
+最新缓存账、1k/50k 规模结果及 graft/move/crate 覆盖矩阵见
+[本轮核查](../docs/mcp-cache-scale-decoupling-2026-10-10.md)。大树重复查询目前 CG 更快。
+工作流门禁另补手写行为、子树 move、跨 crate 拒绝与六次搬迁记录保留；
+`xirang-partition-rehearsal` 在每次改 crate 边界后实际运行 overlay，并与未拆分有效树比较。
+
+### 重复上下文、范围读取与修改可见性
+
+`mcp-context-bench.py XIRANG_BIN --root ROOT --query QUERY --scope REL_PATH --output NEW_DIR`
+通过真实 MCP 对比全树/限定范围请求（首次与三次重复），再验证显式回执复用与清空回执后的完整重发。
+`--scope` 可重复。记录原始消息、回复字节、延迟和二进制摘要；范围查询不代表全树召回，字节不是模型 token。
+
+`mcp-update-bench.py INDEXED_FIXTURE XIRANG_BIN CODEGRAPH_BIN --file REL_RS --output NEW_DIR`
+在**可丢弃且已建立 CodeGraph 索引的夹具**中，给两臂分别插入新符号并启动各自计时，交替顺序重复三轮。
+CodeGraph 开启 watcher；逐次保存回复和 stderr，以核查目录监听上限或降级。
+测的是编辑到新符号源码首次可见，不是整个关系图完成更新；最后恢复原文件字节。
+不要对真实业务源码运行此变更量器。结果及局限见
+[实测与共享索引设计](../docs/mcp-context-index-2026-10-10.md)。
+
+供应链根因与修复质量的现有覆盖、调用绕行反例和新增完整任务的验收设计见
+[责任链审计](../docs/mcp-supply-chain-audit-2026-10-10.md)。H1/H3 的答案文本评分、M1 churn
+和生成大树延迟不能代替实际修复后的责任层、可替换性及多消费者回归；新设计尚未运行模型对照。
+
+### 声明密集夹具与阶段计时 / Dense declarations and phase timings
+
+`mcp-responsibility-bench.py` 支持 `--extra-faces 2500`，加入独立原生注册声明，
+与 `--noise-files` 的普通源码分开计数。使用 `--require-identical` 核对两臂每份完整回答；
+用 `--after-first --first-case object` 反转顺序，让对象查询从空进程缓存开始。
+`XIRANG_MCP_PROFILE=1` 把 face views、声明、build evidence、trace 阶段耗时写入 stderr。
+性能比较单独运行，不与编译/完整测试争用资源。
+
+当前结果见 [解析缓存报告](../docs/mcp-cache-capacity-2026-10-10.md)。
+[共享读取实验](../docs/mcp-shared-reads-2026-10-10.md) 因性能回退已撤回，报告保留反例数据。
+Use extra native faces to distinguish declaration-heavy trees from ordinary-file cache hits.
+Retained phase timings support attribution; the discarded shared-read experiment is not shipped.
+
+## MCP completion and freshness
+
+`mcp-completion-bench.py BINARY OUTPUT [--files N] [--queries-only]` exercises cold/warm/restart,
+misses, source edits, inventory moves/additions/deletions, executable obligations and stable MIR.
+Output must be new; wire traffic, answers, byte counts, elapsed times and assertions are retained.
+It does not report provider tokens or autonomous AI repair rates.
+
+该脚本验收冷/热/重启、未命中、编辑及清单变化，并实际执行验证义务与稳定版 MIR；输出目录必须不存在。
+字节与墙时间不冒充供应商 token、账单或模型修复成功率。实现与验证范围见
+[收口报告](../docs/mcp-completion-2026-10-10.md)。
+# Mixed coordinate / dispatch faults
+
+`coordinate-ab.py` constructs a compiled 10-crate, 1150-Rust-file synthetic UI project.
+Button, Slider and Timeline share six coordinate-policy layers. Logic errors and wrong
+LOCAL/WORLD dispatch can cancel, including a case whose three visible tests are all green.
+The finite injection model enumerates 5832 assignments; the real-agent pilot uses three
+preregistered cases, three paired repeats each, with DeepSeek V4.1 Flash.
+
+```sh
+python3 bench/coordinate-ab.py prepare target/bench-runs/coordinate-v1
+CARGO_TARGET_DIR="$PWD/target/bench-runs/coordinate-cargo" python3 bench/coordinate-ab.py controls target/bench-runs/coordinate-v1
+python3 bench/coordinate-ab.py run target/bench-runs/coordinate-v1
+CARGO_TARGET_DIR="$PWD/target/bench-runs/coordinate-cargo" python3 bench/coordinate-ab.py score target/bench-runs/coordinate-v1
+python3 bench/agent_ab_audit.py target/bench-runs/coordinate-v1
+CARGO_TARGET_DIR="$PWD/target/bench-runs/coordinate-cargo" python3 bench/coordinate_regression_probe.py target/bench-runs/coordinate-v1
+python3 bench/coordinate_report.py target/bench-runs/coordinate-v1
+```
+
+Use a fresh output directory for each prepare. Controls must pass before model calls.
+Agent worktrees have independent build outputs; only the serial judge shares dependencies,
+cleaning both adjudicated packages whenever it changes source copies, including switching back.
+Default, alternate, release, two replacement implementations, intermediate contracts and actual
+registered routes are judged independently of visible screenshots. Do not infer success from
+agent prose. The protocol is in `docs/coordinate-ab-acceptance-2026-10-11.md`.
+
+The supplemental regression probe skips Viewport, whose current policy is numerically neutral,
+while preserving final outputs. It runs only the original and agent-added tests, not the hidden
+judge. Report this separately from the preregistered repair success rate; it measures whether the
+submitted regression suite protects the provider route against an output-preserving future edit.
+
+After interruption, `score --resume` and `coordinate_regression_probe.py OUTPUT --resume`
+reuse completed results for immutable saved finals and preserve interrupted directories.
+The probe can use `--follow` while scoring runs, but must use a separate `CARGO_TARGET_DIR`.
+Generate the report after both finish; it refuses an incomplete supplemental probe.
+Resume support was added after the coordinate-v1 coding sessions; their original harness
+snapshot remains under `OUTPUT/harness/`. It changes execution recovery, not judging criteria.
+
+## Sequential maintenance acceptance / 连续维护验收
+
+```sh
+python3 tools/xirang-mcp-workflow-eval target/debug/xirang-mcp --output target/bench-runs/workflow-new
+python3 bench/evolution-maintenance.py target/debug/xirang-mcp --output target/bench-runs/evolution-new
+```
+
+Both outputs must be new. The second script uses the first script's real MCP/Cargo harness.
+One project evolves through construction, sibling addition, internal deepening, adoption renewal,
+compensating faults, route/replacement counterexamples and an object move. Frozen tests retain
+their bytes across the move using an explicit public re-export. Raw tool errors are observations,
+not successful capability assertions; inspect them even if the script exits successfully.
+No model calls, provider token estimates or new CodeGraph scores are produced.
+
+两个目录均须不存在。脚本保存查询正文、MCP 往返、源码指纹、冻结合同、Cargo 日志和 harness 副本；
+红灯必须来自实际断言失败，不能用编译失败代替。结构比对有非空 exports 声明的正负对照。
+采信迁移的工具错误按观察结果单列，脚本通过不表示这些错误已修复。
+实测结论与按证据排序的优化方向见[持续维护报告](../docs/mcp-evolution-results-2026-10-11.md)。
+
+### Paired persistent agents / 持久会话配对
+
+`evolution-ab.py` runs three pairs through five successive requirements with persisted DeepSeek
+V4.1 Flash sessions. Each next turn inherits the actual working tree, not a canonical reset.
+Prepare uses the retained coordinate scaffold by default (`--scaffold` can name another copy);
+run requires all controls to pass and verifies the frozen scripts and binaries.
+
+```sh
+python3 bench/evolution-ab.py prepare OUTPUT --scaffold target/bench-runs/coordinate-v1/scaffold
+python3 bench/evolution-ab.py controls OUTPUT
+python3 bench/evolution-ab.py run OUTPUT
+python3 bench/evolution-ab.py score OUTPUT
+python3 bench/evolution_rescore.py OUTPUT
+python3 bench/evolution_audit.py OUTPUT --reviewed
+python3 bench/evolution_report.py OUTPUT
+```
+
+`run` makes real paid model calls. Re-running it against existing run directories is refused;
+`score` reuses completed per-round scores and does not call a model. Raw sessions, interventions,
+before/final trees, usage and judge outcomes are retained. Summary generation refuses fewer than
+30 distinct rounds. Natural provider caching is reported separately from local graph/index state.
+
+这是实际付费模型实验；冻结需求、预算、独立正负控制后才运行。三对项目连续五轮，保留历史和失败，
+评分不反馈给后续轮次。共同验收允许原生采信台账或可审查项目文档，不强迫对照组调用 XiRang 专用工具。
+范围与限制见[模型运行前验收方案](../docs/evolution-agent-acceptance-2026-10-11.md)。
+
+The supplemental `evolution_rescore.py` corrects the drag-route oracle to accept legitimate
+non-provider wrapper spans; WORLD detours remain checked. It retains the frozen original
+scores and applies the correction to both arms. `evolution_audit.py --reviewed` separates
+artifact validity from a normally completed model turn and probes only valid final projects.
+The report refuses incomplete corrected scores or audits. Interrupted, unfinished score
+directories must be preserved under a different name before retrying; completed results are reused.
+
+统一复核允许合法的追踪包装，不改变提供链合同或模型产物；原始分数仍保留。结果和按证据排序的
+优化方向见[真实 agent 持续维护报告](../docs/evolution-agent-results-2026-10-11.md)。

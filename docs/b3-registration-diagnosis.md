@@ -7,9 +7,9 @@
 
 | 级 | 宏 | 位置 | 导出 | 作用 |
 | --- | --- | --- | --- | --- |
-| 1 | `__xirang_object!` | `run_method/src/macros/face_objects.rs:8` | `#[macro_export]` ✓（:7） | 补 `collector:`（缺省 `development`）后转调 → `$crate::__control_object!`（:10 / :13） |
+| 1 | `__xirang_object!` | `run_method/macros/face_objects.rs:8` | `#[macro_export]` ✓（:7） | 补 `collector:`（缺省 `development`）后转调 → `$crate::__control_object!`（:10 / :13） |
 | 2 | `__control_object!` | `…/face_objects.rs:19` | `#[macro_export]` ✓（:18） | **严格 arm**（:35–135）末尾转调 → `$crate::__registration_face!`（:81）；不匹配者走**宽容前端** → `$crate::run_method::face_fields!`（:161） |
-| 3 | `__registration_face!` | `run_method/src/macros/face_registration.rs:82` | `#[macro_export]` ✓（:81） | 产出 `pub const NODE_ID`（:139）与 **`pub const REGISTRATION`（:161）**，再转调 → `$crate::__submit_registration!($collector; REGISTRATION)`（:224） |
+| 3 | `__registration_face!` | `run_method/macros/face_registration.rs:82` | `#[macro_export]` ✓（:81） | 产出 `pub const NODE_ID`（:139）与 **`pub const REGISTRATION`（:161）**，再转调 → `$crate::__submit_registration!($collector; REGISTRATION)`（:224） |
 | 4 | `__submit_registration!` | 同文件（runtime 宏族） | — | 登记到运行期 |
 
 ⇒ **`REGISTRATION` 定义在第 3 级的展开里、落点就是调用者所在的那个模块作用域**（`mod canonical { … }` ⇒ `canonical::REGISTRATION`）。
@@ -18,16 +18,16 @@
 ## 2. 链为什么会断：**同一 crate 内的 `macro_export` 宏不能经绝对路径调用**
 
 - 编译器原文（t123 第 2 轮实测）：`error: macro-expanded `macro_export` macros from the current crate cannot be referred to by absolute paths` ✗
-- 本仓自己的记载（`run_method/src/authoring/operations/migration_tests.rs:66-69`）：`crate::run_method::test_object!` 这类**路径写法**只在“父模块改名”等场景里被讨论，而它能跑通的形态是**同文件/同模块文本作用域**下的裸名调用 ✓。
+- 本仓自己的记载（`run_method/authoring/operations/migration_tests.rs:66-69`）：`crate::run_method::test_object!` 这类**路径写法**只在“父模块改名”等场景里被讨论，而它能跑通的形态是**同文件/同模块文本作用域**下的裸名调用 ✓。
 - 链里有两处**路径调用**：`:81` 的 `$crate::__registration_face!` ✓（手写宏，路径可用）与 **`:161` 的 `$crate::run_method::face_fields!`** ✗ ⇒ **它是整条链最脆的一环** ✗。
-- **校正（批 4 追加；t135 实测更正）**：`face_fields!` **不是**"前端生成的宏" ✗ —— 它是 **proc-macro 的再导出**：`toolchain/src/run_method/src/lib.rs` 里 `pub use xirang_macro::face_fields;`（另有 `face_fields_mirror`）✓。那条禁令的准确形态是"**同 crate 的宏展开里对 `macro_export` 宏的绝对路径调用被拒**"，而它对**外部调用者本来可用** ✓ —— 这正好解释了为什么"改裸名"会把外部调用点弄坏 ✗（t135 实测：`cannot find macro face_fields in this scope` 直接报在集成测试那一行上 ✓）。
+- **校正（批 4 追加；t135 实测更正）**：`face_fields!` **不是**"前端生成的宏" ✗ —— 它是 **proc-macro 的再导出**：`toolchain/src/run_method/lib.rs` 里 `pub use xirang_macro::face_fields;`（另有 `face_fields_mirror`）✓。那条禁令的准确形态是"**同 crate 的宏展开里对 `macro_export` 宏的绝对路径调用被拒**"，而它对**外部调用者本来可用** ✓ —— 这正好解释了为什么"改裸名"会把外部调用点弄坏 ✗（t135 实测：`cannot find macro face_fields in this scope` 直接报在集成测试那一行上 ✓）。
 - 因此语义根因：**任何走进“宽容 arm”（`:157-162`）的声明都会掉进前端路径调用** ✗ ⇒ 展开不成立 ⇒ `canonical|shuffled|parens|external_shuffled|handle_without_preset_or_parts…` 里的 `REGISTRATION`/`NODE_ID` 全缺 ✗（t126 计数 19 条正落在这几个模块 ✓）。
 
 ## 3. 能跑的既有测试 vs `face_fields.rs` 的差异
 
 | 维度 | 能跑的既有形态 | `toolchain/src/run_method/tests/face_fields.rs` |
 | --- | --- | --- |
-| 调用可见性 | **文本作用域**（同文件/同模块树内裸名；如 `run_method/src/lib.rs:63` 的别名宏 `$crate::external_object!{…}` ✓ 由本模块直接可见 ✓） | 挂到 `macros/face_objects.rs` 的**子模块**里 ✓（t124/t126 已证实这步有效：88 → 34），但**调用仍带前缀**（t125 铁证 `xirang_toolchain::run_method::__xirang_object!` ✗，t126 已剥成裸名 ✓ 仍有 19 条 ✗） |
+| 调用可见性 | **文本作用域**（同文件/同模块树内裸名；如 `run_method/lib.rs:63` 的别名宏 `$crate::external_object!{…}` ✓ 由本模块直接可见 ✓） | 挂到 `macros/face_objects.rs` 的**子模块**里 ✓（t124/t126 已证实这步有效：88 → 34），但**调用仍带前缀**（t125 铁证 `xirang_toolchain::run_method::__xirang_object!` ✗，t126 已剥成裸名 ✓ 仍有 19 条 ✗） |
 | 字段分隔 | 严格 arm：`collector:, kind:` 之后**全部逗号**、且顺序须与匹配器（`face_objects.rs:35-61`）一致 | `shuffled`/`parens`…用 **`;` 分隔**（`face_fields.rs` 里 `;$` 行数很多 ✓）⇒ **落入宽容 arm** ✗ |
 | `collector:` | 可省（缺省 `development`，:13） | 省略（同左）✓，非差异 |
 | `needs_registry` | `$(needs_registry: $expr,)?`（:44）⇒ 可选、**必须带逗号** | 写了 `needs_registry: true` ✓ 但**顺序/分隔与匹配器不一致**时无效 ✗ |
@@ -36,7 +36,7 @@
 
 ## 4. 4 条 `cannot find xirang_toolchain in the crate root` 的来源（file:line）
 
-宏体里没有残留 ✓（`grep -rn xirang_toolchain run_method/src/macros/*.rs` = 空 ✓）。定向 grep 命中的是：
+宏体里没有残留 ✓（`grep -rn xirang_toolchain run_method/macros/*.rs` = 空 ✓）。定向 grep 命中的是：
 
 - `toolchain/tests/build_time_outside_src_layout.rs（原路径见下）`（`use xirang_toolchain::build_time::{check_for, face_views};` ✗ 真代码）
 - `toolchain/tests/build_time_outside_src_layout.rs（原路径见下）`、`:41`（**字符串字面量**里的 `xirang_toolchain::root_object!` / `root_node_id` ✗ 不参与编译）

@@ -6,7 +6,7 @@
 **引用体例**：`brief/<arm>/<id>.md ①N` = 该题精简版里第 N 次仪器调用的段落（含工具返回逐字与"当时推理"）；
 `full/<arm>/<id>.md L###` = 完整版（本文件写作时读取的是 **2026-10-02 23:52:30–31 重生成**的那一版，行号以该版为准）；
 `logs/…` = `target/round9/logs/<id>.jsonl`（我们臂）与 `target/probe-cg26/logs/<id>.txt`（cg 臂）；
-源码行号引本检出（`toolchain/src/mcp/src/*.rs`、`kernel/src/…`）与规格 `docs/design-hardbug-bench-spec.md`。
+源码行号引本检出（`toolchain/src/mcp/*.rs`、`kernel/src/…`）与规格 `docs/design-hardbug-bench-spec.md`。
 
 **三条口径（先说清，后面不再重复）**：
 
@@ -68,7 +68,7 @@
 1. **信息差（主因）**：`consistency --parent` 是"同族彼此比"这一个问题的一次调用；codegraph 的图里**没有"同族"这个概念**，只有 `callers <名字>` / `callees <名字>`，所以它必须先知道要比哪两个名字——于是它花 4 次定向（`init`/`files`/测试/入口）+ 1 次读 `control.rs` 才拿到两个族名，再用 2 次 `callers` + 1 次 `callees` 做"多数派 vs 离群"的人肉比较。离群是**推**出来的（1 个 vs 8 个），不是被点名的（我们 ①1 逐字 `outlier toggle: …`）。
 2. **流程差（我们侧，可改）**：一次 `callgraph {function:offset}` 本可以替代那 2–3 次比较，但它的默认 `limit=5` 恰好把 `toggle.rs` 截在 withheld 里（①3 逐字）。agent 于是回去用 shell 逐文件读——这也是本题我们臂"读九个兄弟"的来路。
 3. **记账口径**：cg 的"读文件"全在日志里（4 次 `node`），我们的等价读（step 146 的两次 shell：`for f … grep`、`grep -n ''`）不在桥日志里。按仪器调用数比是 4 vs 10；按"为了拿到同一条结论实际发起的调用"比，我们这边还要加 2 次 shell（它们不计入 4）。
-4. **`--by api` 是默认值**：本检出 `toolchain/src/mcp/src/consistency.rs:519-523` 逐字 `.get("by").and_then(Value::as_str).unwrap_or("api")`，取值只接受 `api|kind|source`。理想路径把它写成必需项，是**写法**而不是行为差异。
+4. **`--by api` 是默认值**：本检出 `toolchain/src/mcp/consistency.rs:519-523` 逐字 `.get("by").and_then(Value::as_str).unwrap_or("api")`，取值只接受 `api|kind|source`。理想路径把它写成必需项，是**写法**而不是行为差异。
 
 **代价**（README §三）：我们 4/0/0/0/0 · codegraph 10/0/0/0/0。
 两栏的"步/输出/推理/上下文"都是 0——这一题的两侧调用都落在共享/装置步里（`full/ours/h1-supply-chain.md L9` 逐字："⚠️ 日志 4 条 vs 会话定位 2 条：差的那些调用发生在**共享步**（一条命令里跑了多道题）或**装置步**里 —— 这正是'逐题 token 不可归因'的具体形状。"），因此本题**没有可比的净 token 读数**，只有仪器调用数可逐题归因。
@@ -126,7 +126,7 @@
 
 **引导含义**：
 
-1. **`adopted` 的 `next` 行不要指向它自己刚答过的问题**。依据：①1 正文逐字 `adoption lapsed at src/control/object/panel/panel.rs`，而同一返回的 next 逐字 `` `conformance {anchor: "root/control/panel"}` says whether that lease still holds and where it lapsed ``，随后 ①3 又答了一遍。改法二选一：(a) next 只列"本条没有判过的锚点"（本题一个都没有 ⇒ next 直接给 `consistency --specimen root/control/button`）；(b) 让 `adopted` 与 `conformance` 合并成一个"每条一行"的视图——`conformance` **已经**支持不带 `--anchor` 的"每个锚点一行"（`toolchain/src/mcp/src/adopted.rs:98-146`，源码注释逐字 "Measured (T-21): asking about two entries cost two calls, because the argument was required … 不带 anchor 就是**每个**锚点一行"），只是 `adopted` 的 next 文案还停在旧能力上。
+1. **`adopted` 的 `next` 行不要指向它自己刚答过的问题**。依据：①1 正文逐字 `adoption lapsed at src/control/object/panel/panel.rs`，而同一返回的 next 逐字 `` `conformance {anchor: "root/control/panel"}` says whether that lease still holds and where it lapsed ``，随后 ①3 又答了一遍。改法二选一：(a) next 只列"本条没有判过的锚点"（本题一个都没有 ⇒ next 直接给 `consistency --specimen root/control/button`）；(b) 让 `adopted` 与 `conformance` 合并成一个"每条一行"的视图——`conformance` **已经**支持不带 `--anchor` 的"每个锚点一行"（`toolchain/src/mcp/adopted.rs:98-146`，源码注释逐字 "Measured (T-21): asking about two entries cost two calls, because the argument was required … 不带 anchor 就是**每个**锚点一行"），只是 `adopted` 的 next 文案还停在旧能力上。
 2. **把 `lapsed` 判据做成可核对的字面量**：现在写的是"the recorded print is `root/control/button`'s current print, not this file's"——**没有给两枚指纹**。补齐成 `recorded edc72845… (= src/control/object/button/button.rs 的当前指纹) · src/control/object/panel/panel.rs 的当前指纹 57afd3b6…`，则任何一侧都不必去猜哈希方案（cg 侧为此付出的推理见 `full/cg/h2-claim-unkept.md L710/L768`，本题 28k 推理字符里的一大块）。
 3. **`conformance` 的 `next` 文案是好的范例**，可作模板：①2 逐字 ``next   `adopted` for every entry's verdict, `consistency --specimen root/control/button` for whether the siblings follow this shape`` ——它点名的是**下一步能拿到新事实**的那一次调用，而我们臂确实照做了（①4）。同一工具家族里 `adopted` 的 next 应改成同一风格。
 4. **（对 cg 侧的口径提醒）**：本题 cg 的"must-refuse"是"把 `lapsed` 说成改代码"——它没有犯（最终答案写"需要人，不是改代码"），但它的**依据链**与我们不同：我们是工具给的判定句，它是 note＋时间戳＋两枚不同字节哈希的推断。这说明"拒绝文案"应当把**判据**一并印出（见第 2 点），否则同一条结论在一侧是事实、在另一侧是推测。
@@ -172,7 +172,7 @@
 **引导含义**：
 
 1. **`why` 的 `wiring` 行要给行号（或给插入点）**——这是本题唯一可省下一次 shell 读的地方，而交付格式明确要 `文件:行号`。建议在该行尾补"8 cut(s) at src/lib.rs:50,52,54,56,58,60,62,64；no cut names `root/control/dial`（追加点在 :64 之后）"。依据：①3 逐字（只给文件路径）+ `full/ours/h3-cross-file-chain.md L362/L364`（"I need the line where the dial cut is missing … Let me get the exact text."）+ 答案 root cause `src/lib.rs:48-66`。
-2. **`scope`/`pruning` 两行与 `check` 的联动要修**：现状是"`scope unknown (no source_scope.tsv; run \`xirang check\`)`"，而 `check` 跑完（①1）仍不产出该文件 ⇒ 这句指引是空转，且规格里承诺的 `scope not-selected` 永远看不到。可实施：`why` 读不到构建证据时，写"this tree has no published build evidence（`target/xirang/out/` 里没有 `source_scope.tsv`）；the `wiring` line is the answer"；或让 `check` 在写 `check-<face>.log` 的同时把这次运行的作用域证据落在同一目录（`toolchain/src/mcp/src/check.rs:269` 已经用同一个 `out_dir(root)`）。依据：①3 逐字；①1 的 `log …/target/xirang/out/check-default.log`；本树该目录当时的实际内容（只有 `check-default.log`）。
+2. **`scope`/`pruning` 两行与 `check` 的联动要修**：现状是"`scope unknown (no source_scope.tsv; run \`xirang check\`)`"，而 `check` 跑完（①1）仍不产出该文件 ⇒ 这句指引是空转，且规格里承诺的 `scope not-selected` 永远看不到。可实施：`why` 读不到构建证据时，写"this tree has no published build evidence（`target/xirang/out/` 里没有 `source_scope.tsv`）；the `wiring` line is the answer"；或让 `check` 在写 `check-<face>.log` 的同时把这次运行的作用域证据落在同一目录（`toolchain/src/mcp/check.rs:269` 已经用同一个 `out_dir(root)`）。依据：①3 逐字；①1 的 `log …/target/xirang/out/check-default.log`；本树该目录当时的实际内容（只有 `check-default.log`）。
 3. **流程表把 `registry` 那一步写成"可选"**：①3 的信息已足够回答"源码在、发布不在"，`registry` 只在需要"派生树 vs 发布树"字面对照时才要（本题答案 ③ 引了它）。这能直接省掉我们侧 1 次（3 → 2，正好等于"1 次症状 + 1 次理想调用"的下界）。
 4. **（对 cg 类的能力缺口，解释差距用）**：`callers <face>::NODE_ID` 这种"宏生成名字"的查询以 **exit 0** 返回 "not found"（逐字），于是"图里没有宏展开"这件事在退出码上不可见；若要让这类 agent 少走弯路，schema 应把"宏生成的注册面名/计划文本"作为一等公民，或在 `node <file>` 的头部标注"此文件的宏调用内容未进图"。
 
@@ -207,7 +207,7 @@
 1. **信息差 #1（分支级事实的来源）**：我们 census 的 `branch-level` 栏是**一次调用给出的结构性判定**，还带"为什么按构造不可达"（私有枚举 ⇒ 树外也拼不出）；codegraph 没有分支/不可达概念，`callers`/`callees` 一次只答一个符号（本题 3 次图查询只覆盖 `zero_arm`/`postable` 两个名字），cg 只能用 **rustc 的 dead-code 警告**当替身——而那条警告需要**另建一个调用方 crate 去编译**（非桥 `scratch-h4`，答案 ④ 的 counter-proof 就是它）。
 2. **信息差 #2（测试是否覆盖该分支）**：这是数据流问题（`amount == 0` 从未被构造），图完全不表达；cg 的 `callees a_receipted_entry_posts` = 0 正好暴露图的这条缺口，它只能回读 `tests/postable.rs` 的人肉判断。
 3. **流程差（我们侧）**：本题的"红"在 `check --census` 的分支栏（spec 表格 H4 行逐字："默认面**绿**；红在 `check --face default --census` 的分支栏点名 `ZeroArm::Refuse`"），而**理想路径行只写 `digest --file` → `read`**。我们臂的两次调用正好是 `check --census` + `digest`（顺序与理想行相反），也就是说：理想行少了"红在哪"的那一次，而实际拿到答案靠的正是漏掉的那一次。
-4. **`census: true` 是隐式必需参数**：`toolchain/src/mcp/src/check.rs:310` 逐字 `const CENSUS_SAMPLE: usize = 5;`，抽样规则（同文件 325-372 的注释与实现）＝**每栏头 + 前 5 行 + 每栏的 `not covered` 行**；h4 那句 branch 明细行是 `branch-level:` 栏下的数据行、在表中位置靠后、不是栏头，默认会被 `… withheld …` 顶掉。我们臂这次显式带了它（`logs/h4-one-file-many-algorithms.jsonl` 第 1 条的 `request` 数组逐字含 `"--face","default","--census","true"`），才拿到那句。
+4. **`census: true` 是隐式必需参数**：`toolchain/src/mcp/check.rs:310` 逐字 `const CENSUS_SAMPLE: usize = 5;`，抽样规则（同文件 325-372 的注释与实现）＝**每栏头 + 前 5 行 + 每栏的 `not covered` 行**；h4 那句 branch 明细行是 `branch-level:` 栏下的数据行、在表中位置靠后、不是栏头，默认会被 `… withheld …` 顶掉。我们臂这次显式带了它（`logs/h4-one-file-many-algorithms.jsonl` 第 1 条的 `request` 数组逐字含 `"--face","default","--census","true"`），才拿到那句。
 5. **记账口径**：cg 的 9 次里有 4 次整文件 `node`（`lib.rs`/`model.rs`/`entry.rs`/`postable.rs`）——其中 `src/lib.rs`（5 行）与 `src/model/model.rs`（3 行）只是模块挂载，属定向开销；我们有等价的 shell 读（step 148 的 `grep -n ''`），不进日志。
 
 **代价**（README §三）：我们 2/4/3,873/10,554/1,175,936 · codegraph 9/2/3,695/8,429/339,328。

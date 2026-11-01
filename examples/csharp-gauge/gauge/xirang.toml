@@ -1,0 +1,8 @@
+# 构建期记录文件 + 生产者：构建在这一包里运行 Roslyn 生成器，把 `[Soil]` 声明写成版本 3 记录。
+# The build-time record file and its producer: the build runs the Roslyn generator in this package,
+# and it writes the `[Soil]` declarations as version-3 records.
+[record]
+file = "native/gauge.faces"
+language = "csharp"
+constants = "csharp/src/gauge/Faces.cs"
+command = ["sh", "csharp/build.sh"]

@@ -6,7 +6,7 @@
 
 ## 1. 装置
 
-- **题面**：由 `tools/xirang-chain-eval` 的注入器（种子驱动、程序化选站点、记录真值）在**旧 `base` ＋ 旧 `plan.json`** 上现做三套注入树：`/tmp/agent-sim/round-1`（d=1 `impl`，站点 `kernel/src/registry_core/source/calls.rs`）、`round-11`（d=4 `chain`，`toolchain/src/studio/src/studio/ui/ui.rs`）、`round-13`（d=5 `impl`，`kernel/src/registry_core/tree/graft_ops/overlay.rs`）。每轮另有 `-cg` 副本给对照组。真值只在队长手上（`truth/round-N.json`），成员不可读。
+- **题面**：由 `tools/xirang-chain-eval` 的注入器（种子驱动、程序化选站点、记录真值）在**旧 `base` ＋ 旧 `plan.json`** 上现做三套注入树：`/tmp/agent-sim/round-1`（d=1 `impl`，站点 `kernel/src/registry_core/source/calls.rs`）、`round-11`（d=4 `chain`，`toolchain/src/studio/studio/ui/ui.rs`）、`round-13`（d=5 `impl`，`kernel/src/registry_core/tree/graft_ops/overlay.rs`）。每轮另有 `-cg` 副本给对照组。真值只在队长手上（`truth/round-N.json`），成员不可读。
 - **队伍**：`debugger-mcp`（只用 `xirang-mcp` 桥，stdio JSON-RPC）、`debugger-codegraph`（只用 codegraph CLI 1.5.0 ＋它自己的 MCP `explore`）、`auditor`（不写源码、不跑 cargo）。7 个任务：三轮 × 两组按依赖串行，审计依赖全部六个。
 - **任务书硬约束**：你的工作树是唯一真相源；不许 `diff`/`cmp` 别的检出；不许读 `truth/**` 或 `/tmp/xirang-eval/**`；不许改断言、加 `#[ignore]`、加 `#[allow]` 让树变绿。
 - **判分（队长亲自做，不信成员自述）**：① 命中 = 定位的文件:行/符号是否等于真值；② 绿恢复 = 在该树里复跑测试；③ 最小性 = 与**原始树**逐字节 diff（排除 `target`/`.codegraph`）；④ 附带损伤 = 有没有动测试或加豁免。
@@ -37,7 +37,7 @@
 
 审计发现的要点：
 
-- **F2（高）**：cg-r1 报告"本树 `direct_calls` 只有测试在调用／无生产调用者"是**工具假阴性** ✗ —— `toolchain/src/mcp/src/source_index.rs:217` 就是生产调用者（跨 crate 全限定引用落在 codegraph DB 的 `unresolved_refs`，`status=failed`），而我们桥的 `callgraph callers(7)` **找到了它**。这一格是工具能力差，不是人的差。
+- **F2（高）**：cg-r1 报告"本树 `direct_calls` 只有测试在调用／无生产调用者"是**工具假阴性** ✗ —— `toolchain/src/mcp/source_index.rs:217` 就是生产调用者（跨 crate 全限定引用落在 codegraph DB 的 `unresolved_refs`，`status=failed`），而我们桥的 `callgraph callers(7)` **找到了它**。这一格是工具能力差，不是人的差。
 - **F6（中）**：三份驱动脚本的 BIN 指向**主检出**的 `target/debug/xirang-mcp`（HEAD `709fa6a`，pinned `a23be52b` 的后代；被测文件与 round 树修复态逐字节相同），而 round-N 树自己也有同名二进制 ⇒ r1-mcp 报告里「the defect corrupts the tool's own answer」作为**运行事实不成立**（跑的是干净的桥）。下轮应把 BIN 指向 round-N 自身构建，专门测"桥在剖析含自身畸形副本的仓库"这个形状。
 - **F7（中）**：可审计性不对称——MCP 组有逐条 JSON-RPC 日志（可机核，也是审计抓到 F1 的依据），codegraph 组 CLI 无日志，工具账只能部分用 `.codegraph` DB 反查。
 - **F1**：r1 报告写 `read`×2 而日志是 ×3 = **漏记**（漏 `whole:true` 整文件读；总数 5 正确，决定性调用不受影响）。

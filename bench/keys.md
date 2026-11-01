@@ -79,7 +79,7 @@ K4 `graft/src/button_fast.rs` 仍在且含 `ButtonFast`；K5 slider 文件与计
 ## 修正案 3（2026-10-03，S7 重跑后）：对照臂读了禁读区 ⇒ 成本轴作废 + 审计机械化
 
 **事实**：S7 重跑（t8）的对照臂在 **37/42** 次调用里把 codegraph 的 `-p/--path` **直接指向检出**
-（例：`cg node -p /home/nich/Moirai_N3/nichlink -f toolchain/src/runtime/src/lib.rs`），约 30 次用于
+（例：`cg node -p /home/nich/Moirai_N3/nichlink -f toolchain/src/runtime/lib.rs`），约 30 次用于
 "从工具链源码里挖 promote 的落地语义"。题面第 1 条明令禁读检出 ⇒ **它自己如实自报了 ✓，但那一次的
 成本读数作废** ✗（质量/交付物仍成立：8/8 判据通过，而且它是**自己推出**自嫁接口径的）。
 
@@ -395,7 +395,7 @@ churn 更小、且它在第 2 轮把 `cg sync -p` 被拒后**自己改正**（1 
    为拿成员值再发一次 `full: true`，不算"两次同族比较"**（ours 因此从"部分"回到通过）。
    按意图版复核：ours ✅ / cg ❌（explore 之前已批量 Read 三个面文件，其答案自述且会话工具序证实）。
 2. **S8 K3 作废（键缺陷，不是臂的行为）**：登记版要求 `# xirang-schema=` 头，而**两个写锁点**
-   （`toolchain/src/mcp/src/plugin.rs:274`、`toolchain/src/studio/.../mutations.rs:330`）都走
+   （`toolchain/src/mcp/plugin.rs:274`、`toolchain/src/studio/.../mutations.rs:330`）都走
    `PluginCatalog::with_record`（`kernel/.../catalog/catalog.rs:366`），**只追加记录、从不写头**；
    唯一合法头是 `# xirang-schema=v{IDENTITY_SCHEMA}`（`catalog.rs:180-188`，裸版本号也可读）。
    ⇒ 登记版是**假阴性机器**（只有手工塞工具不会写的字节才能过），放宽版是事后改判据 ⇒ **该键判为不可用**，

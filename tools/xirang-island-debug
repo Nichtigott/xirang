@@ -1,0 +1,974 @@
+#!/usr/bin/env python3
+"""Drive one **real host** end to end: initialize it, author a default parent and an island
+outside `src/`, edit the island, `cargo build`, assert the actual registration tree at run time,
+rename the island, and do it all again.
+
+驱动一个**真实宿主**走完整条路：初始化它，创作一个默认父面与一个 `src/` 之外的孤岛，编辑孤岛，
+`cargo build`，在运行期断言**实际**注册树，改名孤岛，然后再来一遍。
+
+Why this exists: the whole authoring path (source layout, record spelling, identity derivation,
+module mounting, the object ledger and the migration transaction) is split across four surfaces,
+and every wrong answer is invisible until a host compiles the *generated* code and runs it. The
+in-process tests can agree with each other and still disagree with the declaration macro: that is
+exactly the class of defect this gate exists against — a plan that hashed a file's absolute path
+while the macro hashed its package-relative one compiled nowhere.
+
+为什么需要它：整条创作路径（源码布局、记录拼写、身份推导、模块挂载、对象台账与迁移事务）横跨四个
+执行面，而每一个错误答案都要等宿主编译**生成的**代码并跑起来才看得见。进程内测试可以彼此自洽、却仍然
+与声明宏不一致——那正是本门禁针对的那一类缺陷：计划散列的是文件的绝对路径、而宏散列的是它的包内相对
+拼写，于是哪里都编译不过。
+
+Nothing here writes a registration declaration or a module mount: the faces, the `#[path]` mounts,
+the identity assertions and the `registrations()` table are the product's. This script only asks
+for faces and writes the *test* that checks the tree, plus the documented host wiring (a framework
+constant and the `host_registry!()` helper).
+
+这里不写任何注册声明或模块挂载：注册面、`#[path]` 挂载、身份断言与 `registrations()` 表都是产品的。
+本脚本只提出面的请求、写下检查那棵树的**测试**，以及文档化的宿主接线（一个框架常量与
+`host_registry!()` 助手）。
+
+Two layouts, because the source layout is two different answers:
+  1. **default** — the scan root and the identity base are both `src/`;
+  2. **custom library target** — `[lib] path = "host/lib.rs"`, the scan root is `host/` and the
+     identity base is the package root, which is where a face's recorded spelling stops being the
+     path below the scan root.
+
+两种布局，因为源码布局是两个不同的答案：
+  1. **默认**——扫描根与身份基准都是 `src/`；
+  2. **自定义库目标**——`[lib] path = "host/lib.rs"`，扫描根是 `host/`、身份基准是包根，而后者正是
+     面的记录拼写不再等于扫描根之下路径的地方。
+
+Usage:
+    tools/xirang-island-loop
+    XIRANG_ISLAND_LOOP_KEEP=1 tools/xirang-island-loop     # keep the fixtures
+    XIRANG_ISLAND_LOOP_CARGO_FLAGS="" tools/xirang-island-loop   # CI with a cold registry cache
+"""
+
+import hashlib
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+FIXTURES = ROOT / "tools" / "fixtures" / "island-loop"
+CARGO_FLAGS = os.environ.get("XIRANG_ISLAND_LOOP_CARGO_FLAGS", "--offline")
+KEEP = os.environ.get("XIRANG_ISLAND_LOOP_KEEP") == "1"
+
+
+def fail(message):
+    sys.stderr.write("xirang-island-loop: FAILED: " + message + "\n")
+    sys.exit(1)
+
+
+def run(command, cwd=None, env=None, stream=False):
+    """Run one command, failing with its output when it fails."""
+    merged = dict(os.environ)
+    if env:
+        merged.update(env)
+    result = subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        env=merged,
+        capture_output=not stream,
+        text=True,
+    )
+    if result.returncode != 0:
+        output = "" if stream else (result.stdout + result.stderr)
+        fail("command failed (%s): %s\n%s" % (result.returncode, " ".join(command), output[-4000:]))
+    return result
+
+
+def build_binaries():
+    """Build the two binaries this gate drives, from this checkout."""
+    feature = "cli,lang-cpp"
+    run(
+        ["cargo", "build"] + CARGO_FLAGS.split()
+        + ["-p", "xirang-toolchain", "--features", feature, "--bin", "xirang", "--bin", "xirang-mcp"],
+        cwd=ROOT,
+    )
+    cli = ROOT / "target" / "debug" / "xirang"
+    mcp = ROOT / "target" / "debug" / "xirang-mcp"
+    for binary in (cli, mcp):
+        if not binary.is_file():
+            fail("the build did not produce %s" % binary)
+    return cli, mcp
+
+
+class MCP:
+    """A minimal stdio JSON-RPC client for the bridge — the same protocol an agent speaks."""
+
+    def __init__(self, binary, root, namespace="e2e"):
+        env = dict(os.environ)
+        env["XIRANG_PACKAGE_ROOT"] = str(root)
+        env["XIRANG_NAMESPACE"] = namespace
+        self.process = subprocess.Popen(
+            [str(binary)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(ROOT),
+            env=env,
+        )
+        self.sequence = 0
+        self.request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "island-loop", "version": "1"},
+            },
+        )
+        self.notify("notifications/initialized")
+
+    def notify(self, method, params=None):
+        frame = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            frame["params"] = params
+        self.process.stdin.write(json.dumps(frame) + "\n")
+        self.process.stdin.flush()
+
+    def request(self, method, params):
+        self.sequence += 1
+        frame = {"jsonrpc": "2.0", "id": self.sequence, "method": method, "params": params}
+        self.process.stdin.write(json.dumps(frame) + "\n")
+        self.process.stdin.flush()
+        line = self.process.stdout.readline()
+        if not line:
+            fail("the bridge closed stdin before answering %s" % method)
+        return json.loads(line)
+
+    def tool(self, name, root, **arguments):
+        payload = dict(root=str(root), **arguments)
+        answer = self.request("tools/call", {"name": name, "arguments": payload})
+        result = answer.get("result", {})
+        text = "\n".join(item.get("text", "") for item in result.get("content", []))
+        return {"isError": result.get("isError", False), "text": text}
+
+    def close(self):
+        try:
+            self.process.terminate()
+            self.process.communicate(timeout=10)
+        except Exception:
+            self.process.kill()
+
+
+def apply(mcp, root, **arguments):
+    """One previewed-and-applied authoring request, with the reply checked."""
+    result = mcp.tool("xirang.apply", root, **arguments)
+    label = arguments.get("action", "apply")
+    if result["isError"]:
+        fail("%s was refused:\n%s" % (label, result["text"]))
+    return result["text"]
+
+
+def attempt(mcp, root, **arguments):
+    """One authoring request whose refusal is part of the test."""
+    result = mcp.tool("xirang.apply", root, **arguments)
+    return (not result["isError"], result["text"])
+
+
+def snapshot(host):
+    """Every fixture file's bytes, excluding build products and the revision we toxify on purpose."""
+    digest = {}
+    for path in sorted(host.rglob("*")):
+        if "target" in path.parts or path.name == "target":
+            continue
+        relative_dir = str(path.relative_to(host))
+        if (path.is_dir() and "xirang" not in path.parts and path.name != ".xirang"
+                and not relative_dir.startswith("xirang.objects.tsv")):
+            digest["dir:" + relative_dir] = "directory"
+            continue
+        if not path.is_file():
+            continue
+        relative = str(path.relative_to(host))
+        if (relative.startswith("xirang.objects.tsv") or relative.startswith(".xirang")
+                or relative in {"tests/support/expect.rs", "tests/registry.rs"}):
+            continue
+        if path.is_symlink():
+            digest["symlink:" + relative] = os.readlink(path)
+        else:
+            digest[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return digest
+
+
+def island_state(mcp, host):
+    """A parent, an island (own registry) and one inherited child."""
+    apply(mcp, host, action="add", apply=True,
+          fields={"module": "panel", "kind": "Panel", "needs_registry": True})
+    apply(mcp, host, action="add", apply=True, parent="root/panel",
+          file="components/reading/reading.rs",
+          fields={"module": "reading", "kind": "Reading", "needs_registry": True})
+    apply(mcp, host, action="add", apply=True, parent="root/panel/reading",
+          fields={"module": "gauge", "kind": "Gauge", "needs_registry": True})
+
+
+def island_faces(panel_source, after):
+    if not after:
+        return [
+            {"path": "root/panel", "kind": "Panel", "source": panel_source, "parent": ""},
+            {"path": "root/panel/reading", "kind": "Reading",
+             "source": "components/reading/reading.rs", "parent": "root/panel"},
+            {"path": "root/panel/reading/gauge", "kind": "Gauge",
+             "source": "components/reading/object/gauge/gauge.rs", "parent": "root/panel/reading"},
+        ]
+    return [
+        {"path": "root/panel", "kind": "Panel", "source": panel_source, "parent": ""},
+        {"path": "root/reading", "kind": "Reading", "source": "reading/reading.rs", "parent": ""},
+        {"path": "root/reading/gauge", "kind": "Gauge",
+         "source": "reading/object/gauge/gauge.rs", "parent": "root/reading"},
+    ]
+
+
+def island_objects(after, island_after_package="src/reading/reading.rs"):
+    if not after:
+        return [{
+            "created_at": "root/panel/reading", "path": "root/panel/reading",
+            "source": "components/reading/reading.rs", "directory": "components/reading",
+            "kind": "Reading", "instances": [],
+        }]
+    return [{
+        "created_at": "root/panel/reading", "path": "root/reading",
+        "source": island_after_package, "directory": "-", "kind": "Reading",
+        "instances": [("components/reading/reading.rs", "components/reading/reading.rs"),
+                      (island_after_package, "reading/reading.rs")],
+    }]
+
+
+def assert_unchanged(host, before, label):
+    now = snapshot(host)
+    if now != before:
+        missing = sorted(set(before) - set(now))
+        added = sorted(set(now) - set(before))
+        changed = sorted(k for k in before if k in now and before[k] != now[k])
+        fail("%s: the refused operation changed the tree (missing=%s added=%s changed=%s)"
+             % (label, missing, added, changed))
+
+
+def new_host(work, cli, custom_lib, lang_cpp=False):
+    """Initialize a host through the normal entry, then (for leg 2) move its library target."""
+    work.mkdir(parents=True, exist_ok=True)
+    host = work / "e2e"
+    run([str(cli), "new", "e2e", "--lib", "--path", str(ROOT)], cwd=work)
+    if lang_cpp:
+        # A host that declares a face in C++ carries the adapter feature on **both** halves: the
+        # build script compiles and registers the native source, the crate links it.
+        # 在 C++ 里声明面的宿主，两半都要带适配器特性：构建脚本编译并登记本地源码，crate 链接它。
+        manifest = host / "Cargo.toml"
+        text = manifest.read_text()
+        text = text.replace(
+            'version = "0.1.0" }',
+            'version = "0.1.0", features = ["lang-cpp"] }',
+        )
+        manifest.write_text(text)
+    if custom_lib:
+        manifest = host / "Cargo.toml"
+        text = manifest.read_text()
+        text = text.replace("[dependencies]", "[lib]\npath = \"host/lib.rs\"\n\n[dependencies]", 1)
+        manifest.write_text(text)
+        (host / "host").mkdir()
+        (host / "src" / "lib.rs").rename(host / "host" / "lib.rs")
+        (host / "src").rmdir()
+    # The documented host wiring comes from the fixture, not from the script text: it is part of
+    # what a host author writes, and it must be reviewable beside the assertions.
+    # 文档化的宿主接线来自 fixture 而不是脚本正文：它是宿主作者要写的一部分，必须能与断言并排评审。
+    entry = host / "src" / "lib.rs" if not custom_lib else host / "host" / "lib.rs"
+    entry.write_text(entry.read_text() + (FIXTURES / "host_entry.rs").read_text())
+    return host
+
+
+def quote(value):
+    return "&%s" % json.dumps(value)
+
+
+def write_expectations(host, faces, objects):
+    """Write what the gate asked for — never what the product answered."""
+    face_rows = ",\n    ".join(
+        "Face { path: %s, kind: %s, source: %s, parent: %s }"
+        % (quote(face["path"]), quote(face["kind"]), quote(face["source"]), quote(face["parent"]))
+        for face in faces
+    )
+    object_rows = ",\n    ".join(
+        "Object { created_at: %s, path: %s, source: %s, directory: %s, kind: %s, instances: &[%s] }"
+        % (
+            quote(obj["created_at"]),
+            quote(obj["path"]),
+            quote(obj["source"]),
+            quote(obj["directory"]),
+            quote(obj["kind"]),
+            ", ".join(
+                "(%s, %s)" % (quote(package), quote(record))
+                for package, record in obj["instances"]
+            ),
+        )
+        for obj in objects
+    )
+    text = (FIXTURES / "expect.rs").read_text()
+    text = text.replace("__FACES__", face_rows).replace("__OBJECTS__", object_rows)
+    tests = host / "tests"
+    (tests / "support").mkdir(parents=True, exist_ok=True)
+    (tests / "support" / "expect.rs").write_text(text)
+    (tests / "registry.rs").write_text((FIXTURES / "registry.rs").read_text())
+
+
+def cargo(host, *arguments):
+    command = ["cargo"] + CARGO_FLAGS.split() + list(arguments)
+    result = run(command, cwd=host)
+    return result.stdout + result.stderr
+
+
+def build_and_assert(host, faces, objects, label):
+    """Install the run-time assertion, build the host, and run it."""
+    write_expectations(host, faces, objects)
+    output = cargo(host, "test")
+    if "test result: ok" not in output:
+        fail("%s: the host's run-time assertion did not pass:\n%s" % (label, output[-4000:]))
+    for test in ("the_built_tree_is_exactly_what_the_requests_named",
+                 "the_ledger_keeps_one_object_per_face_across_every_move"):
+        if test not in output:
+            fail("%s: the run-time assertion `%s` did not run:\n%s" % (label, test, output[-4000:]))
+    return output
+
+
+def leg(work, cli, mcp_binary, label, custom_lib):
+    """One layout: a parent, an island with an inherited child and a nested override, then a move."""
+    print("== leg %s (%s layout)" % (label, "custom library target" if custom_lib else "default"))
+    host = new_host(work, cli, custom_lib)
+    if custom_lib:
+        panel_file = "host/panel/panel.rs"
+        panel_source = "host/panel/panel.rs"
+        island_before = "components/reading/reading.rs"
+        # The identity base is the package root here, so the record spelling and the file path
+        # coincide; in the default layout they do not (record spelling is below `src/`).
+        # 这里的身份基准是包根，因此记录拼写与文件路径重合；默认布局下两者不同（拼写在 `src/` 之下）。
+        island_after_file = island_after = island_package_after = "host/reading/reading.rs"
+        gauge_after_file = gauge_after = "host/reading/object/gauge/gauge.rs"
+    else:
+        panel_file, panel_source = "src/panel/panel.rs", "panel/panel.rs"
+        island_before = "components/reading/reading.rs"
+        island_after_file = "src/reading/reading.rs"
+        island_after = "reading/reading.rs"
+        # The ledger's third column is **package-relative**, not the identity spelling.
+        # 台账第三列是**包内相对**，不是身份拼写。
+        island_package_after = "src/reading/reading.rs"
+        gauge_after_file = "src/reading/object/gauge/gauge.rs"
+        gauge_after = "reading/object/gauge/gauge.rs"
+    gauge_before = "components/reading/object/gauge/gauge.rs"
+    needle_source = "components/needle/needle.rs"
+    needle_before = "root/panel/reading/gauge/needle"
+    # A nested mapping **inside** the island directory: discovery must dedupe it against the
+    # island's own walk (the island wins, the module chain is `reading::extra`) while placement still
+    # knows the deeper directory for its own descendants.
+    # 位于孤岛目录**之内**的嵌套映射：发现必须把它与孤岛自己的遍历去重（孤岛胜出，模块链是
+    # `reading::extra`），而落点仍为它自己的后代知道更深的目录。
+    extra_before = "components/reading/extra/extra.rs"
+    extra_before_path = "root/panel/reading/extra"
+    if custom_lib:
+        extra_after = extra_package_after = "host/reading/extra/extra.rs"
+    else:
+        extra_after = "reading/extra/extra.rs"
+        extra_package_after = "src/reading/extra/extra.rs"
+
+    mcp = MCP(mcp_binary, host)
+    try:
+        apply(mcp, host, action="add", apply=True,
+              fields={"module": "panel", "kind": "Panel", "needs_registry": True})
+        if not (host / panel_file).is_file():
+            fail("%s: the default parent is not at %s" % (label, panel_file))
+        # The island, an inherited child and a nested override: the shape the maintainer asked the
+        # discovery change for.
+        # 孤岛、继承子面与嵌套覆盖：也就是发现那项改动被要求覆盖的形状。
+        apply(mcp, host, action="add", apply=True, parent="root/panel",
+              file=island_before,
+              fields={"module": "reading", "kind": "Reading", "needs_registry": True})
+        apply(mcp, host, action="add", apply=True, parent="root/panel/reading",
+              fields={"module": "gauge", "kind": "Gauge", "needs_registry": True})
+        apply(mcp, host, action="add", apply=True, parent="root/panel/reading/gauge",
+              file=needle_source,
+              fields={"module": "needle", "kind": "Needle"})
+        apply(mcp, host, action="add", apply=True, parent="root/panel/reading",
+              file=extra_before,
+              fields={"module": "extra", "kind": "Extra"})
+        for path in (island_before, gauge_before, needle_source, extra_before):
+            if not (host / path).is_file():
+                fail("%s: the product did not write %s" % (label, path))
+
+        faces = [
+            {"path": "root/panel", "kind": "Panel", "source": panel_source, "parent": ""},
+            {"path": "root/panel/reading", "kind": "Reading", "source": island_before,
+             "parent": "root/panel"},
+            {"path": "root/panel/reading/gauge", "kind": "Gauge", "source": gauge_before,
+             "parent": "root/panel/reading"},
+            {"path": needle_before, "kind": "Needle", "source": needle_source,
+             "parent": "root/panel/reading/gauge"},
+            {"path": extra_before_path, "kind": "Extra", "source": extra_before,
+             "parent": "root/panel/reading"},
+        ]
+        objects = [
+            {"created_at": "root/panel/reading", "path": "root/panel/reading",
+             "source": island_before, "directory": "components/reading", "kind": "Reading",
+             "instances": []},
+            {"created_at": needle_before, "path": needle_before, "source": needle_source,
+             "directory": "components/needle", "kind": "Needle", "instances": []},
+            {"created_at": extra_before_path, "path": extra_before_path, "source": extra_before,
+             "directory": "components/reading/extra", "kind": "Extra", "instances": []},
+        ]
+        build_and_assert(host, faces, objects, label + " before the move")
+        print("   built; five faces (island + inherited child + two overlapping mappings) are in the tree")
+
+        # Move the island **parent object** to the logical root: the subtree follows it, the nested
+        # override keeps its own file and only its logical path moves.
+        # 把孤岛**父对象**搬到逻辑根：子树跟随，嵌套覆盖保住自己的文件、只有逻辑路径移动。
+        apply(mcp, host, action="move", apply=True, node="root/panel/reading", to="root")
+        for path in (island_after_file, gauge_after_file, needle_source):
+            if not (host / path).is_file():
+                fail("%s: the move did not leave %s on disk" % (label, path))
+        if (host / island_before).exists():
+            fail("%s: the move left the old island file in place" % label)
+        # The bridge's write path starts a background refresh; querying immediately can read the
+        # record from a state before the move. The CLI entry publishes deterministically, and the
+        # assertion is about the tree after it.
+        # 桥的写入路径会启动后台刷新；立刻查询可能读到搬动之前那份记录。CLI 入口确定性地发布，而断言要的是
+        # 它之后的那棵树。
+        run([str(cli), "check"], cwd=host)
+        registry = mcp.tool("xirang.registry", host, full=True)
+        if registry["isError"] or "faces 5" not in registry["text"]:
+            fail("%s: the tree does not read back as five faces after the move:\n%s"
+                 % (label, registry["text"]))
+        faces = [
+            {"path": "root/panel", "kind": "Panel", "source": panel_source, "parent": ""},
+            {"path": "root/reading", "kind": "Reading", "source": island_after, "parent": ""},
+            {"path": "root/reading/gauge", "kind": "Gauge", "source": gauge_after,
+             "parent": "root/reading"},
+            {"path": "root/reading/gauge/needle", "kind": "Needle", "source": needle_source,
+             "parent": "root/reading/gauge"},
+            {"path": "root/reading/extra", "kind": "Extra", "source": extra_after,
+             "parent": "root/reading"},
+        ]
+        objects = [
+            {"created_at": "root/panel/reading", "path": "root/reading",
+             "source": island_package_after, "directory": "-", "kind": "Reading",
+             "instances": [(island_before, island_before),
+                           (island_package_after, island_after)]},
+            {"created_at": needle_before, "path": "root/reading/gauge/needle",
+             "source": needle_source, "directory": "components/needle", "kind": "Needle",
+             "instances": [(needle_source, needle_source)]},
+            {"created_at": extra_before_path, "path": "root/reading/extra",
+             "source": extra_package_after, "directory": "-", "kind": "Extra",
+             "instances": [(extra_before, extra_before), (extra_package_after, extra_after)]},
+        ]
+        build_and_assert(host, faces, objects, label + " after the move")
+        print("   moved; one object per face, sources match disk, and the tree rebuilt green")
+
+        # **Another absolute work root.** Identities are hash(namespace, record spelling, kind), so a
+        # copy at a different absolute path must rebuild with the same tree; the run-time assertion
+        # recomputes every identity from the namespace and the spelling and would fail otherwise.
+        # **另一个绝对工作根。** 身份是 hash(命名空间, 记录拼写, kind)，因此复制到不同绝对路径后必须重建出
+        # 同一棵树；运行期断言从命名空间与拼写现算每个身份，否则就会失败。
+        relocated = work / "relocated"
+        shutil.copytree(host, relocated, ignore=shutil.ignore_patterns("target"))
+        output = cargo(relocated, "test")
+        if "test result: ok" not in output:
+            fail("%s: the relocated copy did not rebuild green:\n%s" % (label, output[-3000:]))
+        print("   relocated; the same identities rebuild from another absolute root")
+        return host
+    finally:
+        mcp.close()
+
+
+def cpp_leg(work, cli, mcp_binary):
+    """A face declared in C++ under a Rust parent, with a Rust child under the C++ parent.
+
+    C++ 父级下的 Rust 子面：外语面挂在 Rust 父面下，而那个外语父级又挂着一个 Rust 子面。
+    """
+    print("== leg cpp (Rust parent, C++ child, Rust grandchild)")
+    host = new_host(work, cli, custom_lib=False, lang_cpp=True)
+    area_source = "components/area/area.cpp"
+    gauge_source = "components/gauge/gauge.cpp"
+    sample_source = "src/components/area/object/sample/sample.rs"
+    mcp = MCP(mcp_binary, host)
+    try:
+        apply(mcp, host, action="add", apply=True,
+              fields={"module": "panel", "kind": "Panel", "needs_registry": True})
+        apply(mcp, host, action="add", apply=True, language="cpp", parent="root/panel",
+              file=area_source,
+              fields={"module": "area", "kind": "Area", "needs_registry": True})
+        # The Rust grandchild is authored **under the C++ parent**: if the foreign parent vanished
+        # from the Rust child's parsing context, this call (and every later one) would fail.
+        # Rust 孙面创作在 **C++ 父级** 之下：若外语父级从 Rust 子面的解析上下文中消失，这次调用
+        # （以及之后的每一次）都会失败。
+        # C++→C++: another declaration in the same language under the C++ parent.
+        # C++→C++：同一门语言里挂在 C++ 父级下的另一条声明。
+        apply(mcp, host, action="add", apply=True, language="cpp", parent="root/panel/Area",
+              file=gauge_source,
+              fields={"module": "gauge", "kind": "Gauge"})
+        # The registry root is one generated constant; a C++ face hangs under it like any other
+        # parent, with no placeholder Rust face and no hand-written identity bytes.
+        # 注册树根是一个生成常量；C++ 面像挂在其它父级下一样挂在它下面，没有占位 Rust 面、也不手写身份字节。
+        apply(mcp, host, action="add", apply=True, language="cpp",
+              file="native/top/top.cpp",
+              fields={"module": "top", "kind": "Top"})
+        apply(mcp, host, action="add", apply=True, language="rust", parent="root/panel/Area",
+              file=sample_source,
+              fields={"module": "sample", "kind": "Sample"})
+        faces = [
+            {"path": "root/panel", "kind": "Panel", "source": "panel/panel.rs", "parent": ""},
+            {"path": "root/panel/Area", "kind": "Area", "source": area_source,
+             "parent": "root/panel"},
+            {"path": "root/Top", "kind": "Top", "source": "native/top/top.cpp", "parent": ""},
+            {"path": "root/panel/Area/Gauge", "kind": "Gauge", "source": gauge_source,
+             "parent": "root/panel/Area"},
+            {"path": "root/panel/Area/sample", "kind": "Sample",
+             "source": "components/area/object/sample/sample.rs", "parent": "root/panel/Area"},
+        ]
+        objects = [{
+            "created_at": "root/panel/Area",
+            "path": "root/panel/Area",
+            "source": area_source,
+            "directory": "components/area",
+            "kind": "Area",
+            "instances": [],
+        }]
+        build_and_assert(host, faces, objects, "cpp parent")
+        print("   built; a root-level C++ face, C++→C++ and C++→Rust are all in the run-time tree")
+        return host
+    finally:
+        mcp.close()
+
+
+def failure_leg(work, cli, mcp_binary):
+    """Real filesystem failures on the move path, then the same move retried and rebuilt.
+
+    搬动路径上的真实文件系统失败，然后重试同一操作并重建。
+    """
+    print("== leg failure (real refusals on the move path)")
+
+    def host_with_state(name):
+        host = new_host(work / name, cli, custom_lib=False)
+        mcp = MCP(mcp_binary, host)
+        island_state(mcp, host)
+        return host, mcp
+
+    post_faces = island_faces("panel/panel.rs", after=True)
+    post_objects = island_objects(after=True)
+
+    # 1. The ledger cannot be read as a file: the move must refuse before anything is renamed.
+    # 1. 台账无法当文件读取：搬动必须在任何改名之前拒绝。
+    host, mcp = host_with_state("ledger")
+    try:
+        before = snapshot(host)
+        ledger = host / "xirang.objects.tsv"
+        kept = host / "xirang.objects.tsv.keep"
+        ledger.rename(kept)
+        ledger.mkdir()
+        ok, text = attempt(mcp, host, action="move", apply=True,
+                           node="root/panel/reading", to="root")
+        if ok:
+            fail("failure/ledger: the move succeeded with the ledger unreadable:\n%s" % text)
+        assert_unchanged(host, before, "failure/ledger")
+        ledger.rmdir()
+        kept.rename(ledger)
+        apply(mcp, host, action="move", apply=True, node="root/panel/reading", to="root")
+        if not (host / "src/reading/reading.rs").is_file():
+            fail("failure/ledger: the retried move did not land")
+        build_and_assert(host, post_faces, post_objects, "failure/ledger retried")
+        print("   ledger unreadable → refused with the tree untouched → retried and rebuilt")
+    finally:
+        mcp.close()
+
+    # 2. A child declaration cannot be rewritten: the transaction must restore the source subtree.
+    # 2. 子面声明写不进去：事务必须恢复源码子树。
+    host, mcp = host_with_state("child")
+    try:
+        before = snapshot(host)
+        child = host / "components/reading/object/gauge/gauge.rs"
+        child.chmod(0o444)
+        ok, text = attempt(mcp, host, action="move", apply=True,
+                           node="root/panel/reading", to="root")
+        child.chmod(0o644)
+        if ok:
+            fail("failure/child: the move succeeded with a read-only child:\n%s" % text)
+        assert_unchanged(host, before, "failure/child")
+        print("   (this refusal may happen before any write: it proves no side effects, not rollback)")
+        apply(mcp, host, action="move", apply=True, node="root/panel/reading", to="root")
+        build_and_assert(host, post_faces, post_objects, "failure/child retried")
+        print("   child rewrite refused → source subtree restored → retried and rebuilt")
+    finally:
+        mcp.close()
+
+    # 3. The migration record cannot be created: everything the move published comes back.
+    # 3. 迁移记录建不出来：搬动发布的一切都恢复。
+    host, mcp = host_with_state("record")
+    try:
+        # The record is published **inside** the move transaction, after the rename: a link inside the
+        # moved subtree has already been carried when this fails, so restoring it exercises rollback
+        # (not the preflight that the read-only child refuses).
+        # 记录发布在 move 事务**之内**、改名之后：这次失败时被搬子树里的链接已经被带走，因此恢复它考的是
+        # 回滚（而不是只读子面那种预检拒绝）。
+        (host / "note-target.txt").write_text("the link target\n")
+        os.symlink("../../note-target.txt", host / "components/reading/note.txt")
+        before = snapshot(host)
+        (host / ".xirang").mkdir(exist_ok=True)
+        (host / ".xirang/moves").write_text("// a file where the record directory would be\n")
+        ok, text = attempt(mcp, host, action="move", apply=True,
+                           node="root/panel/reading", to="root")
+        if ok:
+            fail("failure/record: the move succeeded with the record directory blocked:\n%s" % text)
+        assert_unchanged(host, before, "failure/record")
+        link = host / "components/reading/note.txt"
+        if not link.is_symlink():
+            fail("failure/record: the link is no longer a link")
+        if os.readlink(link) != "../../note-target.txt":
+            fail("failure/record: the link target changed")
+        if (host / "note-target.txt").read_text() != "the link target\n":
+            fail("failure/record: the link target's content changed")
+        (host / ".xirang/moves").unlink()
+        apply(mcp, host, action="move", apply=True, node="root/panel/reading", to="root")
+        if not (host / "src/reading/note.txt").is_symlink():
+            fail("failure/record: the retried move lost the link")
+        if os.readlink(host / "src/reading/note.txt") != "../../note-target.txt":
+            fail("failure/record: the retried move changed the link target")
+        build_and_assert(host, post_faces, post_objects, "failure/record retried")
+        print("   record refused after the rename → link/readlink/target/dirs restored → retried and rebuilt")
+    finally:
+        mcp.close()
+
+
+def source_hashes(root):
+    """Every source file of one crate, by package-relative path."""
+    return {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "target" not in path.parts
+    }
+
+
+def graft_leg(work, cli, mcp_binary):
+    """A third-party graft across a crate boundary, whose target a real move relocates.
+
+    跨 crate 边界的第三方 graft，其目标被一次真实 move 搬走。
+    """
+    print("== leg graft (third-party graft target moved across a crate boundary)")
+    host = work / "host"
+    graft = work / "graft"
+    shutil.copytree(ROOT / "examples" / "control-button", host,
+                    ignore=shutil.ignore_patterns("target"))
+    shutil.copytree(ROOT / "examples" / "control-button-graft", graft,
+                    ignore=shutil.ignore_patterns("target"))
+    for crate in (host, graft):
+        manifest = crate / "Cargo.toml"
+        text = manifest.read_text()
+        text = text.replace('path = "../../toolchain"',
+                            'path = "%s"' % (ROOT / "toolchain"))
+        text = text.replace('path = "../control-button-graft"',
+                            'path = "%s"' % graft)
+        manifest.write_text(text)
+    # The committed fixture must be genuine before the move: its own 25 tests run against the real
+    # generated plan, so a broken copy fails here rather than after the rewrite.
+    # 搬动之前先证明夹具是真的：它自己的 25 条测试对着真实生成计划运行，坏副本在这里就红，而不是在改写后。
+    baseline = cargo(host, "test", "--test", "registry")
+    if "test result: ok" not in baseline:
+        fail("graft: the committed graft fixture is not green before the move:\n%s" % baseline[-3000:])
+
+    mcp = MCP(mcp_binary, host)
+    try:
+        registry = mcp.tool("xirang.registry", host, full=True)
+        old_id = None
+        for line in registry["text"].splitlines():
+            if "root/control/button" in line:
+                parts = line.split()
+                if len(parts) >= 4:
+                    old_id = parts[-1]
+        if not old_id:
+            fail("graft: the fixture tree does not report root/control/button:\n%s" % registry["text"])
+        before_third_party = source_hashes(graft)
+
+        result = mcp.tool("xirang.apply", host, action="move", apply=True,
+                          node="root/control/button", to="root", rebind_grafts=True)
+        if result["isError"]:
+            fail("graft: the move of a third-party graft target was refused:\n%s" % result["text"])
+        if "rebound" not in result["text"] or "crate::catalog::BUTTON" not in result["text"]:
+            fail("graft: the move did not report the typed-catalog rewrite:\n%s" % result["text"])
+        record = list((host / ".xirang").rglob("move.plan"))
+        if not record or old_id not in record[0].read_text():
+            fail("graft: the migration record does not carry the old identity")
+
+        after_third_party = source_hashes(graft)
+        if after_third_party != before_third_party:
+            fail("graft: the third-party crate changed during the move")
+
+        gate_test = """use control_button::{base_registry, builtin_static_plan};
+use control_button_graft::button_fast;
+
+#[test]
+fn a_moved_graft_target_still_builds_and_keeps_its_third_party_replacement() {
+    let plan = builtin_static_plan();
+    assert_eq!(plan.faces().len(), 3);
+    assert_eq!(plan.grafts().len(), 2);
+    assert_eq!(
+        plan.grafts()[0].cut().id(),
+        Some(control_button::button::NODE_ID),
+        "the typed catalog cut follows the moved face"
+    );
+    assert_eq!(
+        plan.grafts()[0].graft().id(),
+        Some(button_fast::NODE_ID),
+        "the replacement identity is unchanged"
+    );
+    let registry = base_registry();
+    assert_eq!(
+        registry.path_for(control_button::button::NODE_ID).as_deref(),
+        Some("root/button"),
+        "the moved host face is registered at its new path"
+    );
+    assert_eq!(
+        registry.path_for(control_button::control::object::slider::NODE_ID).as_deref(),
+        Some("root/control/slider")
+    );
+    let external = control_button_graft::external_registry();
+    assert_eq!(
+        external.path_for(button_fast::NODE_ID).as_deref(),
+        Some("root/button_fast")
+    );
+}
+"""
+        (host / "tests").mkdir(exist_ok=True)
+        (host / "tests" / "gate_graft.rs").write_text(gate_test)
+        output = cargo(host, "test", "--test", "gate_graft")
+        if "test result: ok" not in output:
+            fail("graft: the moved host does not build/assert green:\n%s" % output[-4000:])
+        print("   moved; catalog cut rewritten, host built, third-party crate byte-identical")
+    finally:
+        mcp.close()
+
+
+def partition_copy(work, name):
+    """A fresh control-button host plus its third-party graft crate, both buildable."""
+    host = work / name / "host"
+    graft = work / name / "graft"
+    shutil.copytree(ROOT / "examples" / "control-button", host,
+                    ignore=shutil.ignore_patterns("target"))
+    shutil.copytree(ROOT / "examples" / "control-button-graft", graft,
+                    ignore=shutil.ignore_patterns("target"))
+    for crate in (host, graft):
+        manifest = crate / "Cargo.toml"
+        text = manifest.read_text()
+        text = text.replace('path = "../../toolchain"',
+                            'path = "%s"' % (ROOT / "toolchain"))
+        text = text.replace('path = "../control-button-graft"',
+                            'path = "%s"' % graft)
+        manifest.write_text(text)
+    return host, graft
+
+
+PARTITION_TEST = """use xirang_example_control_button_facade::{XIRANG_NAMESPACE, registrations};
+use xirang_toolchain::run_method::host_registry::host_registry;
+
+fn kind_at(registry: &xirang_toolchain::Registry, path: &str) -> String {
+    registry
+        .depth_first()
+        .into_iter()
+        .find(|info| registry.path_for(info.id).as_deref() == Some(path))
+        .map(|info| info.kind.clone())
+        .unwrap_or_else(|| panic!("the partitioned tree has `{path}`"))
+}
+
+#[test]
+fn the_same_move_and_partition_produce_the_same_tree_in_either_order() {
+    let registry = host_registry(control_button::FRAMEWORK, XIRANG_NAMESPACE, &registrations())
+        .expect("the partitioned faces register");
+    assert_eq!(kind_at(&registry, "root/control"), "Control");
+    assert_eq!(kind_at(&registry, "root/control/slider"), "Slider");
+    assert_eq!(kind_at(&registry, "root/button"), "Button");
+    assert_eq!(
+        registry.path_for(control_button::button::NODE_ID).as_deref(),
+        Some("root/button"),
+        "the moved face keeps its identity and lives in the host"
+    );
+    let plan = xirang_example_control_button_facade::BUILTIN_STATIC_PLAN;
+    assert_eq!(plan.faces().len(), 3);
+    assert_eq!(plan.grafts().len(), 2);
+    assert_eq!(
+        plan.grafts()[0].cut().id(),
+        Some(control_button::button::NODE_ID),
+        "the graft target is compiled by the host after the move"
+    );
+    assert_eq!(
+        plan.grafts()[1].cut().id(),
+        Some(
+            xirang_example_control_button_objects::control::object::slider::NODE_ID
+        ),
+        "the un-moved sibling is still compiled by the objects crate"
+    );
+    assert_eq!(
+        plan.grafts()[0].graft().id(),
+        Some(control_button_graft::button_fast::NODE_ID)
+    );
+    assert_eq!(
+        control_button_graft::external_registry()
+            .path_for(control_button_graft::button_fast::NODE_ID)
+            .as_deref(),
+        Some("root/button_fast")
+    );
+}
+"""
+
+
+def partition_leg(work, cli, mcp_binary):
+    """The same move and partition, in both orders, compared on the built tree.
+
+    同一个 move 与同一个分区，按两种顺序执行，比较构建出的树。
+    """
+    print("== leg partition (same move/partition in both orders)")
+    facts = {}
+    for order in ("move-first", "partition-first"):
+        host, graft = partition_copy(work, order)
+        before_third_party = source_hashes(graft)
+        mcp = MCP(mcp_binary, host, namespace="xirang-example-control-button")
+        try:
+            if order == "move-first":
+                apply(mcp, host, action="move", apply=True, node="root/control/button",
+                      to="root", rebind_grafts=True)
+                run([str(cli), "check"], cwd=host)
+                apply_declaration(mcp, host, "objects", "crate::control::SUBTREE")
+                run([str(cli), "crates", "--write"], cwd=host)
+            else:
+                run([str(cli), "check"], cwd=host)
+                apply_declaration(mcp, host, "objects", "crate::control::SUBTREE")
+                run([str(cli), "crates", "--write"], cwd=host)
+                apply(mcp, host, action="move", apply=True, node="root/control/button",
+                      to="root", rebind_grafts=True)
+                run([str(cli), "check"], cwd=host)
+                run([str(cli), "crates", "--write"], cwd=host)
+            build = cargo(host, "build", "--workspace")
+            if "Finished" not in build:
+                fail("partition/%s: workspace build failed:\n%s" % (order, build[-3000:]))
+            (host / "crates/xirang-example-control-button-facade/tests").mkdir(parents=True,
+                                                                                  exist_ok=True)
+            (host / "crates/xirang-example-control-button-facade/tests/gate_partition.rs").write_text(
+                PARTITION_TEST)
+            output = cargo(host, "test", "-p", "xirang-example-control-button-facade",
+                           "--test", "gate_partition")
+            if "test result: ok" not in output:
+                fail("partition/%s: runtime assertions failed:\n%s" % (order, output[-4000:]))
+            after_third_party = source_hashes(graft)
+            if after_third_party != before_third_party:
+                fail("partition/%s: the third-party crate changed" % order)
+            # A move rooted at the **generated** package must be refused before writing: its bytes
+            # are regenerated from the host, so accepting it would silently lose the edit.
+            # 以**生成包**为根的 move 必须在写入前拒绝：它的字节会从宿主重生成，接受它等于静默丢掉修改。
+            generated = host / "crates/xirang-example-control-button-objects"
+            before = source_hashes(generated)
+            bad = MCP(mcp_binary, generated, namespace="xirang-example-control-button")
+            try:
+                refusal = bad.tool("xirang.apply", generated, action="move", apply=True,
+                                   node="root/control/slider", to="root")
+            finally:
+                bad.close()
+            if not refusal["isError"] or "generated partition package" not in refusal["text"]:
+                fail("partition/%s: a move inside a generated package was not refused:\n%s"
+                     % (order, refusal["text"]))
+            if source_hashes(generated) != before or (generated / ".xirang/moves").exists():
+                fail("partition/%s: the refused generated-package move changed files or wrote a record"
+                     % order)
+            registry = mcp.tool("xirang.registry", host, full=True)
+            facts[order] = registry_facts(registry["text"])
+        finally:
+            mcp.close()
+    if facts["move-first"] != facts["partition-first"]:
+        fail("partition: the two orders report different trees:\n--- move-first\n%s\n--- "
+             "partition-first\n%s" % (facts["move-first"], facts["partition-first"]))
+    print("   both orders built; same tree, identities, graft endpoints, third-party bytes")
+
+
+def registry_facts(text):
+    """The face rows of one registry answer, independent of freshness and fingerprint lines."""
+    facts = []
+    for line in text.splitlines():
+        if "logical_path=root" not in line:
+            continue
+        fields = {}
+        for token in line.split():
+            if "=" in token:
+                key, value = token.split("=", 1)
+                fields[key] = value
+        parts = line.split()
+        facts.append((fields.get("logical_path"), fields.get("kind"), parts[2] if len(parts) > 2 else "",
+                      fields.get("parent"), parts[1] if len(parts) > 1 else ""))
+    return sorted(facts)
+
+
+def apply_declaration(mcp, host, name, subtree):
+    """Declare one generated crate through the bridge (the same call the CLI makes)."""
+    result = mcp.tool("xirang.crates", host, action="declare", crate=name,
+                      subtree=subtree, apply=True)
+    if result["isError"]:
+        fail("crates declare failed:\n%s" % result["text"])
+
+
+def collision_leg(work, cli, mcp_binary):
+    """Two declarations whose identity inputs coincide must be refused, not silently merged.
+
+    两条身份输入重合的声明必须被拒绝，而不是静默合并。
+    """
+    print("== leg collision (same record spelling, same kind, two files)")
+    host = new_host(work / "collision", cli, custom_lib=False)
+    mcp = MCP(mcp_binary, host)
+    try:
+        apply(mcp, host, action="add", apply=True,
+              fields={"module": "panel", "kind": "Panel", "needs_registry": True})
+        apply(mcp, host, action="add", apply=True, parent="root/panel",
+              file="components/reading/reading.rs",
+              fields={"module": "reading", "kind": "Reading"})
+        # `src/components/reading/reading.rs` has the **same record spelling**
+        # (`components/reading/reading.rs`) and the same kind, so its identity is the island's: the
+        # tool must refuse the second declaration instead of mounting one identity twice.
+        # `src/components/reading/reading.rs` 的记录拼写与 kind 都与孤岛相同，因此身份也相同：工具必须
+        # 拒绝第二条声明，而不是把同一个身份挂两遍。
+        ok, text = attempt(mcp, host, action="add", apply=True, parent="root",
+                           file="src/components/reading/reading.rs",
+                           fields={"module": "reading", "kind": "Reading"})
+        if not ok and ("duplicate" in text.lower() or "already" in text.lower()):
+            print("   second declaration refused by identity/path collision")
+        else:
+            fail("collision: the second declaration was not refused as a duplicate:\n%s" % text)
+    finally:
+        mcp.close()
+
+
+def main():
+    work = pathlib.Path(tempfile.mkdtemp(prefix="xirang-island-loop-"))
+    if KEEP:
+        print("fixture work directory: %s" % work)
+    try:
+        cli, mcp_binary = build_binaries()
+        only = os.environ.get("XIRANG_ISLAND_LOOP_LEG")
+        if only in (None, "", "default"):
+            leg(work / "default", cli, mcp_binary, "default", custom_lib=False)
+        if only in (None, "", "custom-lib"):
+            leg(work / "custom-lib", cli, mcp_binary, "custom-lib", custom_lib=True)
+        if only in (None, "", "cpp"):
+            cpp_leg(work / "cpp", cli, mcp_binary)
+        if only in (None, "", "failure"):
+            failure_leg(work / "failure", cli, mcp_binary)
+        if only in (None, "", "collision"):
+            collision_leg(work / "collision", cli, mcp_binary)
+        if only in (None, "", "graft"):
+            graft_leg(work / "graft", cli, mcp_binary)
+        if only in (None, "", "partition"):
+            partition_leg(work / "partition", cli, mcp_binary)
+        print("xirang-island-loop: ok (2 layouts with an island tree and a move, relocation to "
+              "another absolute root, a root-level C++ face plus a Rust/C++ parent chain, real "
+              "move failures retried, an identity collision refused, and a moved third-party "
+              "graft target rebuilt with its replacement)")
+    finally:
+        if not KEEP:
+            shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,6 @@
+# 一个 Zig 声明面的最小宿主：一个 Zig 面挂在注册树根下，构建期编译进同一棵树。
+# A minimal host for a Zig-declared face: one Zig face under the registry root, compiled into the same
+# tree by the build step.
+[workspace]
+resolver = "3"
+members = ["gauge", "crates/gauge-facade", "crates/gauge-panel", "verify"]

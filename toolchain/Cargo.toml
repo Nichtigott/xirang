@@ -36,9 +36,22 @@ plugins = ["run", "dep:arc-swap", "dep:ed25519-dalek"]              # module plu
 wasm = ["plugins", "dep:wasmi"]
 process-tools = ["plugins", "dep:tempfile"]
 node-graph = ["dep:rataflow"]
-studio = ["build", "run", "authoring", "evidence", "dep:crossterm", "dep:notify", "dep:ratatui", "dep:serde_json"]
-mcp = ["build", "run", "authoring", "evidence", "dep:serde_json"]
+studio = ["build", "run", "authoring", "evidence", "dep:crossterm", "dep:notify", "dep:ratatui", "dep:serde_json", "xirang-multilang/production"]
+mcp = ["build", "run", "authoring", "evidence", "dep:serde_json", "xirang-multilang/production", "xirang-multilang/semantics", "native-record"]
 cli = ["build", "run", "studio", "mcp", "dep:serde_json"]  # umbrella: xirang-toolchain's closure
+
+# ── Language implementations (opt-in, one feature per language)
+# ── 语言实现（可选，每种语言一个特性）
+lang-cpp = ["xirang-multilang/lang-cpp", "native-record"]
+lang-python = ["xirang-multilang/lang-python"]
+lang-zig = ["xirang-multilang/lang-zig", "native-record"]
+lang-c = ["xirang-multilang/lang-c", "native-record"]
+lang-js = ["xirang-multilang/lang-js"]
+lang-ts = ["xirang-multilang/lang-ts"]
+lang-go = ["xirang-multilang/lang-go"]
+lang-java = ["xirang-multilang/lang-java"]
+lang-csharp = ["xirang-multilang/lang-csharp"]
+native-record = ["xirang-multilang/native-record"]
 
 # ── Workspace-only (never in the published surface)
 # ── 仅工作区（不进发布面）
@@ -77,6 +90,7 @@ proc-macro2 = { optional = true, version = "1", features = ["span-locations"] }
 serde_json = { version = "1", optional = true }
 syn = { version = "2", features = ["full", "parsing", "visit"], optional = true}
 xirang-macro = { workspace = true, optional = true }
+xirang-multilang = { workspace = true }
 petgraph = { version = "0.8", optional = true }
 tracing = { version = "0.1", optional = true }
 inventory = { version = "0.3.24", optional = true }
@@ -92,6 +106,10 @@ rataflow = { version = "0.1", optional = true, default-features = false, feature
 wat = "1"
 
 [[test]]
+name = "plan_spelling_shapes"
+path = "tests/plan_spelling_shapes.rs"
+
+[[test]]
 name = "build_method_missing_source_tree"
 path = "tests/build_method_missing_source_tree.rs"
 
@@ -100,8 +118,28 @@ name = "build_method_outside_src_layout"
 path = "tests/build_method_outside_src_layout.rs"
 
 [[test]]
+name = "face_island_cli"
+path = "tests/face_island_cli.rs"
+required-features = ["cli"]
+
+[[test]]
 name = "mcp_client"
 path = "tests/mcp_client.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "managed_execution"
+path = "tests/managed_execution.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "mcp_plan_resume"
+path = "tests/mcp_plan_resume.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "mcp_candidate_dependencies"
+path = "tests/mcp_candidate_dependencies.rs"
 required-features = ["mcp"]
 
 [[test]]
@@ -158,6 +196,15 @@ path = "tests/runtime_face_arm_defaults.rs"
 name = "runtime_face_fields"
 path = "tests/runtime_face_fields.rs"
 
+# H/A2e's acceptance in miniature: one declaration written both ways must yield one `RegistrationInfo`.
+# It carries no `required-features` for the same reason `runtime_face_fields` does not — the macros, the
+# identity types and the assembly are all reachable under the default features and under none of them.
+# H/A2e 的袖珍验收：同一份声明的两种拼法必须产出同一份 `RegistrationInfo`。它和不带 `required-features`
+# 的 `runtime_face_fields` 同理——宏、身份类型与拼装，在默认特性下与一个特性都不开时都可达。
+[[test]]
+name = "face_forms_agree"
+path = "tests/face_forms_agree.rs"
+
 # The declaration macros read `crate::XIRANG_NAMESPACE` (audit `M7`, P3.3), so this target proves
 # they read the constant rather than the package name. It carries **no** `required-features`: the
 # macros and `NodeId` are reachable under the default features *and* under none of them, and naming a
@@ -188,5 +235,154 @@ path = "examples/scale_audit.rs"
 #  is an IDE-only gate the runtime surface already carried; declare it so
 #  (unexpected_cfgs) stays clean.
 #  是该执行面原有的仅 IDE 门控；在此登记，使 clippy 的 unexpected_cfgs 保持为 0。
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rust_analyzer)'] }
+[[test]]
+name = "native_declarations"
+path = "tests/native_declarations.rs"
+
+[[test]]
+name = "multilang_cpp"
+path = "tests/multilang_cpp.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_reuse"
+path = "tests/multilang_reuse.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_report"
+path = "tests/multilang_report.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_history"
+path = "tests/multilang_history.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_log"
+path = "tests/multilang_log.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_sources"
+path = "tests/multilang_sources.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_git_sources"
+path = "tests/multilang_git_sources.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_install"
+path = "tests/multilang_install.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_package"
+path = "tests/multilang_package.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_sign"
+path = "tests/multilang_sign.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_registry"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_registry_fetch"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_registry_auth"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_queue"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_declaration"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_schema"
+path = "tests/multilang_schema.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_bindings"
+path = "tests/multilang_bindings.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_remote"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_update"
+path = "tests/multilang_update.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_cache"
+path = "tests/multilang_cache.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_plan"
+path = "tests/multilang_plan.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_move"
+path = "tests/multilang_move.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_add"
+path = "tests/multilang_add.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_host"
+path = "tests/multilang_host.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_obligations"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_lock"
+path = "tests/multilang_lock.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_graph"
+path = "tests/multilang_graph.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_backend_delegation"
+path = "tests/multilang_backend_delegation.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_backends"
+path = "tests/multilang_backends.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_gc"
+path = "tests/multilang_gc.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "multilang_external"
+path = "tests/multilang_external.rs"
+required-features = ["cli"]

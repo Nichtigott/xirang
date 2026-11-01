@@ -68,7 +68,7 @@
   - ② **新增**「命名专项里的模式化文件名」（`meta.nam_pattern_tokens` 17 条，如 `<x>/<x>.rs`、`app/<module>.rs`、`*_tests.rs`）：**合理且已声明**——它们是谓词 P1–P8 的输入**模式**，不是路径；而且这类 token 多数没有行号，本来就不会被门禁当锚点。抽查该清单与命名节里的用法一致。
   - ③ **新增**「§8 条目里少数文件级定位（`path:1`）」：**目前是空集**——我在正文里没有找到"指向目录的 `:1` 锚点"这一类形状（我的全量扫描里没有这类失败）；也就是说 ③ 只是预防性声明，既没有隐藏真锚点、也没有可指认的实例。建议要么删掉 ③，要么给出它实际覆盖的那几条 id（否则读者无法核）。
   - **结论**：扩大**没有掩盖本轮那条真缺陷**（我的扫描在排除项之外仍然抓到了 `:1339`），因此不属于"用排除项洗白"。
-- **随机 10 条 `file`/`line`**（seed=20260928）：`NAM-19`→`studio/src/studio/app/tests/project.rs:1`、`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`NAM-20`→`mcp/src/index.rs:1`、`LGC-LG-09`→`build_method/src/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/src/studio/app/writers.rs:1`、`STU-S-06`→`studio/src/studio/app/search_queries.rs:74`、`NAM-01`→`studio/src/studio/app/support.rs:1`：**10/10 命中且行号在界内**。
+- **随机 10 条 `file`/`line`**（seed=20260928）：`NAM-19`→`studio/studio/app/tests/project.rs:1`、`GTE-G-09`→`tools/xirang-publish:101`、`KRN-C-10`→`core/src/registry_core/mir/model.rs:28`、`NAM-20`→`mcp/index.rs:1`、`LGC-LG-09`→`build_method/pipeline.rs:155`、`KRN-K-15`→`core/src/registry_core/mir/jsonl.rs:111`、`LGC-LG-25`→`conventions/src/release_workflow.rs:96`、`STU-C-02`→`studio/studio/app/writers.rs:1`、`STU-S-06`→`studio/studio/app/search_queries.rs:74`、`NAM-01`→`studio/studio/app/support.rs:1`：**10/10 命中且行号在界内**。
 
 ## 6. HTML —— **通过**
 

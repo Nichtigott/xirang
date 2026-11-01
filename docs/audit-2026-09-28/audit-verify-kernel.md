@@ -78,7 +78,7 @@
 
 - 复核结论：**证实**。
 - 证据（同一支探针，`/tmp/nk-probe/target/debug/nk-probe K02`）：`[probe] K02.merged.runtime_checks = [FiniteNumber]`——编译期 `[FiniteNumber]` + 作者侧 `[NonEmptyText]` 经 `merge_authored` 后仍是前者。
-- 作者所述的注入点也核对了：`merge_authored`（`core/src/registry_core/declaration/owned.rs:280-315`）在 19 个字段逐项搬移后不碰 `runtime_checks`；唯一调用点 `run_method/src/authoring/operations/operations.rs:352`（`existing.clone().merge_authored(authored)`）随后把合并结果送去 `validate_snapshot_replacement`——即被丢弃的值连校验都不到（代码阅读佐证）。
+- 作者所述的注入点也核对了：`merge_authored`（`core/src/registry_core/declaration/owned.rs:280-315`）在 19 个字段逐项搬移后不碰 `runtime_checks`；唯一调用点 `run_method/authoring/operations/operations.rs:352`（`existing.clone().merge_authored(authored)`）随后把合并结果送去 `validate_snapshot_replacement`——即被丢弃的值连校验都不到（代码阅读佐证）。
 - 严重度：**维持 MAJOR**。
 - 备注：作者的对照（`flow` 有“作者侧非空即应用”）成立，我在 `owned.rs:300-315` 读到同一处。
 
@@ -189,7 +189,7 @@
 [probe] K09.string_list(handle_traits) = None
 ```
 
-  带逗号的泛型实参让 `path_list` 直接 `None`（`syn::parse2::<syn::Path>` 在两段碎片上都失败 → `collect::<Result<_>>().ok()` 吞掉），`string_list("handle_traits")` 因没有显式标签而同样 `None`；下游 `unwrap_or_default()` 会把它们变成空列表（`build_method/src/contracts.rs` 与 `run_method/src/authoring/manifest/parse/parse.rs:141-146`，代码阅读佐证）。
+  带逗号的泛型实参让 `path_list` 直接 `None`（`syn::parse2::<syn::Path>` 在两段碎片上都失败 → `collect::<Result<_>>().ok()` 吞掉），`string_list("handle_traits")` 因没有显式标签而同样 `None`；下游 `unwrap_or_default()` 会把它们变成空列表（`build_method/contracts.rs` 与 `run_method/authoring/manifest/parse/parse.rs:141-146`，代码阅读佐证）。
 - 严重度：**维持 MAJOR**。
 - 备注（探针写法提醒）：注册宏必须是**条目位置**（`syn::ItemMacro`）才会被访问；写在 `fn f() { … }` 里会得到 `Ok(None)` 而掩盖结论。作者报告第 127 行的探针文本与 K-23 的探针文本都写成函数内嵌，**幸好结论方向对**。
 
@@ -226,9 +226,9 @@ fatal runtime error: stack overflow, aborting
 | K-14 | `K14.split_face_fields.count = 2`；`K14.baseline_without_comparison.count = 3` | **部分证实**：吞字段成立，数字错（见 §4） |
 | K-15 | `K15.from_jsonl(glued_records) = Ok(functions=["a"], calls=0)` | 证实（第二条记录 `b` 消失且无错） |
 | K-16 | `K16.mask_length_and_utf8_invariant = true` | 部分证实：不变量在我的样本上恒成立 ⇒ 兜底当前不可达，与作者自述一致；这条是“未来可能变坏”的防线 |
-| K-17 | `K17.registration_kinds(let kind: String) = ["String"]` | 证实（唯一调用方 `mcp/src/tools.rs:344` 已核对） |
+| K-17 | `K17.registration_kinds(let kind: String) = ["String"]` | 证实（唯一调用方 `mcp/tools.rs:344` 已核对） |
 | K-18 | `K18.duplicate_id_diagnostics = 0` | 证实（重复身份在静态拓扑检查里零诊断） |
-| K-19 | `K19.source_file_matches(mixed_case_needle) = false` | 证实（另半支 `is_face_source` 为代码阅读佐证：`syntax/face.rs:169-171` 的标记行短路 + 调用点 `run_method/src/authoring/operations/operations.rs:293`） |
+| K-19 | `K19.source_file_matches(mixed_case_needle) = false` | 证实（另半支 `is_face_source` 为代码阅读佐证：`syntax/face.rs:169-171` 的标记行短路 + 调用点 `run_method/authoring/operations/operations.rs:293`） |
 | K-20 / C-04 | `grep "Split decision" core/src = 4`；`grep "B3a" core/src = 10` | **部分证实**：类别成立（4 处同义说明、10 处历史叙事），数字错（见 §4） |
 | K-23 | `K23.parse_face(widget_object) = Ok(Some(macro=widget_object, kind=None))` | 证实（非 XiRang 的 `*_object` 宏被当成注册面） |
 | K-24 | `grep -c leak_code = 2`，测试体四条断言全为否定（`None` / `is_empty`） | 证实（名字与断言相反） |
@@ -279,8 +279,8 @@ fatal runtime error: stack overflow, aborting
 
 ## 5. 跨片提示复核
 
-- **`flow_provider` 缺 `guard_nesting`（作者列为最要紧的跨片提示）——证实。** `run_method/src/authoring/manifest/face/face.rs:140-143` 直接 `syn::parse_str::<syn::Path>(value)` 且没有守卫；内核同名渲染入口 `core/src/registry_core/authoring/parse/flow.rs:107` 之前有 `guard_nesting(value)`，其注释明确写着“没有这道守卫时，一条 542 字节的类型路径会以栈溢出 abort 进程”。同一份不可信值（清单/编辑器）在两条入口上一条有守卫一条没有——这不是风格问题，是把内核已经付过代价的教训漏在了执行面。**建议在最终报告里保留并升级为独立条目**（我这一路没有执行面片区的复核权限，只做交叉确认）。
-- `build_method/src/contracts.rs` 与 `run_method/src/authoring/manifest/parse/parse.rs:141-146` 用 `unwrap_or_default()` 消费 `FaceSyntax::string_list`：确认（代码阅读佐证），这正是 K-09 的 `None` 会退化成“空标签列表”的链路。
+- **`flow_provider` 缺 `guard_nesting`（作者列为最要紧的跨片提示）——证实。** `run_method/authoring/manifest/face/face.rs:140-143` 直接 `syn::parse_str::<syn::Path>(value)` 且没有守卫；内核同名渲染入口 `core/src/registry_core/authoring/parse/flow.rs:107` 之前有 `guard_nesting(value)`，其注释明确写着“没有这道守卫时，一条 542 字节的类型路径会以栈溢出 abort 进程”。同一份不可信值（清单/编辑器）在两条入口上一条有守卫一条没有——这不是风格问题，是把内核已经付过代价的教训漏在了执行面。**建议在最终报告里保留并升级为独立条目**（我这一路没有执行面片区的复核权限，只做交叉确认）。
+- `build_method/contracts.rs` 与 `run_method/authoring/manifest/parse/parse.rs:141-146` 用 `unwrap_or_default()` 消费 `FaceSyntax::string_list`：确认（代码阅读佐证），这正是 K-09 的 `None` 会退化成“空标签列表”的链路。
 
 ---
 

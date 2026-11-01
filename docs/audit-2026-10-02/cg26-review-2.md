@@ -192,7 +192,7 @@ cg26 的 `fc.md` ②③ 写：该记录的指纹"**不是文件字节的 sha256*
 
 **我用独立手段否掉它**：内核把这件事做成了一个**公开函数**——
 `kernel/src/registry_core/adoption/adoption.rs:200 pub fn adoption_fingerprint(files: &[(String, String)]) -> String`
-（写入路径的调用点：`toolchain/src/mcp/src/adopted.rs:329`）。它的输入就是"每个被覆盖文件的 `(路径, 内容文本)`"，
+（写入路径的调用点：`toolchain/src/mcp/adopted.rs:329`）。它的输入就是"每个被覆盖文件的 `(路径, 内容文本)`"，
 拼法 = `路径 ++ 0x00 ++ 内容**字节长度** ++ 0x00 ++ 内容 ++ 0x00`，再 sha256。我在 fc 的树里一条命令复现：
 
 ```

@@ -1,0 +1,57 @@
+#!/bin/sh
+# Gate: a face declared in a build-time record file really lands in the runtime registration tree.
+# 门禁：构建期记录文件里声明的面真的落进了运行期注册树。
+#
+#   tools/xirang-record-file
+#
+# Why it exists: the section carrier (C, C++, Zig) has a compiler placing the record. A JVM
+# annotation processor, a `go run` generator or a Roslyn source generator cannot place a section, so
+# it writes the same records to a file the build reads. This gate proves the **carrier**: the
+# committed record is reproducible from its producer, a real cargo build reads it, and the runtime
+# tree has the face. The producer here is a stand-in script (no JVM/CLR/Go toolchain is wired in this
+# checkout); what is gated is the file format, its reader and the build integration, not Java.
+# 为什么需要它：段载体（C、C++、Zig）有编译器替它放记录。JVM 注解处理器、`go run` 生成器或 Roslyn 源生成器
+# 放不下段，因此把同样的记录写进构建读取的文件。本门禁证明的是**载体**：入库的记录能由它的生产者复现、
+# 真实 cargo 构建会读它、运行期树里有那个面。这里没有 JVM/CLR/Go 工具链）。被门禁的是文件格式、它的读取器
+# 与构建接线，而不是 Java。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+python=${XIRANG_PYTHON:-}
+if [ -z "$python" ]; then
+    python=$(command -v python3 || true)
+fi
+if [ -z "$python" ]; then
+    echo "xirang-record-file: no python3; the producer stand-in cannot be re-run" >&2
+    exit 2
+fi
+
+example="$root/examples/record-gauge/gauge"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/xirang-record-file-XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# 1. The committed record is what its producer writes, byte for byte.
+# 1. 入库的记录与它的生产者写出的逐字节相同。
+"$python" "$example/native/write_faces.py" "$tmp/gauge.faces" >/dev/null
+if ! cmp -s "$tmp/gauge.faces" "$example/native/gauge.faces"; then
+    echo "xirang-record-file: the committed record differs from what its producer writes;" >&2
+    echo "                    regenerate it with native/write_faces.py instead of editing bytes" >&2
+    exit 1
+fi
+
+# 2. A real build reads the file and the runtime tree has the face.
+# 2. 真实构建读取该文件，运行期树里有那个面。
+cd "$root/examples/record-gauge"
+CARGO_NET_OFFLINE=true cargo test --offline
+
+# 3. The decoder and the file reader keep their refusals (layout versions, missing source, empty
+#    file, truncation) — those are the half that keeps a bad producer from becoming a wrong tree.
+# 3. 解码器与文件读取器保住它们的拒绝（布局版本、缺源码、空文件、截断）——正是这一半让坏生产者不会变成
+#    一棵错的树。
+cd "$root"
+CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features native-record --offline --lib \
+    -- record::record_tests
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,native-record --offline --lib \
+    -- record_file
+
+echo "xirang-record-file: ok (a record-file face is in the runtime tree, and its producer is reproducible)"

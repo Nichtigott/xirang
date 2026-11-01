@@ -59,14 +59,14 @@ xirang_toolchain::run_method::__control_object! { collector: development, kind: 
 **作者写路径,机器推标签。** 路径是承重的:
 
 - `handle_contracts` / `part_contracts` 里的每个 `path` 会进
-  `run_method/src/macros/face_helpers.rs::__assert_impls!`,展开为
+  `run_method/macros/face_helpers.rs::__assert_impls!`,展开为
   `fn assert_impl<T: Trait>()` 的编译期断言——路径写错,编译失败。
 - `handle_traits` / `part_traits` 是**搜索用标签**,由路径按同一条规则取末段。这条规则有三个
   读取方,共用一份实现:
   1. 文件视图:`core/src/registry_core/syntax/fields.rs::FaceSyntax::string_list`
      (委托 `authoring::parse::trait_names_from_paths`);
   2. 过程宏前端:`xirang_toolchain::run_method::__face_trait_labels_or!`(`macro/src/lib.rs`);
-  3. 写入方:`run_method/src/authoring/operations/face_write.rs::apply_trait_contract`。
+  3. 写入方:`run_method/authoring/operations/face_write.rs::apply_trait_contract`。
 
 因此编译进的注册信息、构建期契约检查、创作解析器与 Studio 不可能对标签各说一套。**只写标签、
 不写路径**仍然合法,但那是一个未经编译器校验的声明;三个外置替换面
@@ -75,14 +75,14 @@ xirang_toolchain::run_method::__control_object! { collector: development, kind: 
 ## 4. 输出对已删除,改成跨面类型断言
 
 作者过去写的 `expected_output` / `actual_output` 只在两处与**自己**比较
-(`core/src/registry_core/release/release.rs`、`build_method/src/contracts.rs::check_output`),
+(`core/src/registry_core/release/release.rs`、`build_method/contracts.rs::check_output`),
 从未描述真实类型:button 面写着 `"ControlFrame"`,而它的 `NoPreset`/`NoParts` 输出是 `()`。
 今天这件事由类型证明,分两层:
 
 - 每个面:`__registration_face!` 发射 `assert_contract::<$preset, $parts>()`;编译进
   `RegistrationInfo` 的 `contract` 只有 `required_parts`(来自 preset 的 trait)与
   `provided_parts`(来自 parts 的 trait)两个由类型读出的值。
-- 每个**有类型的嫁接切口**:`build_method/src/renderer/pass.rs` 在 `BUILTIN_GRAFT_CUTS` 旁发出
+- 每个**有类型的嫁接切口**:`build_method/renderer/pass.rs` 在 `BUILTIN_GRAFT_CUTS` 旁发出
   `assert_contract::<{cut}::__Preset, {graft}::__Parts>()`,因此替换面的 parts 不提供被替换
   preset 要求的 parts 时,构建失败。
 

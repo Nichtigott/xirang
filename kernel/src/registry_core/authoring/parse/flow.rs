@@ -66,11 +66,23 @@ fn parse_compact_flow(value: &str) -> Result<Option<CompactFlow<'_>>, FaceParseE
 /// Render the editor's `id|version|input|output` form as a Rust expression.
 /// 将编辑器中的 `id|version|input|output` 形式渲染为 Rust 表达式。
 pub fn render_flow_expression(value: &str) -> Result<String, FaceParseError> {
+    let expression = flow_contract_expression(value)?;
+    if expression.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(format!("    flow: {expression},\n"))
+}
+
+/// Render the compact form as just the `FlowContract::new(…)` expression, which is what a field written as
+/// `flow: Some(…)` needs. One implementation, two call sites: a field line and a wrapped value.
+/// 把紧凑形式渲染成 `FlowContract::new(…)` 这一个表达式本身——写成 `flow: Some(…)` 的字段要的就是它。
+/// 一份实现、两个调用点：整行字段与包在 `Some(…)` 里的值。
+pub fn flow_contract_expression(value: &str) -> Result<String, FaceParseError> {
     let Some(flow) = parse_compact_flow(value)? else {
         return Ok(String::new());
     };
     Ok(format!(
-        "    flow: crate::FlowContract::new(crate::ContractId::new(\"{}\"), {}, \"{}\", \"{}\"),\n",
+        "crate::FlowContract::new(crate::ContractId::new(\"{}\"), {}, \"{}\", \"{}\")",
         rust_string(flow.id),
         flow.version,
         rust_string(flow.input),
@@ -108,6 +120,30 @@ pub fn render_flow_provider(value: &str) -> Result<String, FaceParseError> {
     syn::parse_str::<syn::Path>(value)
         .map_err(|_| "flow_provider must be a Rust type path".to_owned())?;
     Ok(format!("    flow_provider: {value},\n"))
+}
+
+/// Read the `flow` field of a declaration, accepting **either** spelling it is written in: the editor's
+/// compact `id|version|input|output` form, or a Rust expression. Both normalize to the compact form, which is
+/// what the manifest side consumes.
+/// 读声明里的 `flow` 字段，**两种**它可能被写成的拼法都收：编辑器用的紧凑 `id|version|input|output` 形式，
+/// 或一条 Rust 表达式。两者都归一成紧凑形式，也就是清单那一侧消费的东西。
+pub fn parse_flow_field(value: &str) -> Result<String, FaceParseError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    // A `Registration` literal writes a Rust expression; a manifest or the editor writes the compact form.
+    // Try the expression first, then fall back to the compact form — the same order as the `path`-then-
+    // `string` reader next door, and for the same reason: one field, two spellings.
+    // `Registration` 字面量写的是 Rust 表达式；清单或编辑器写的是紧凑形式。先试表达式、再退紧凑——与隔壁
+    // `path` 再退 `string` 的读法同序，理由也一样：一个字段、两种拼法。
+    if let Ok(compact) = parse_flow_expression(trimmed) {
+        return Ok(compact);
+    }
+    if parse_compact_flow(trimmed)?.is_some() {
+        return Ok(trimmed.to_owned());
+    }
+    Ok(String::new())
 }
 
 /// Parse a flow expression back into the editor's compact form.
@@ -251,3 +287,24 @@ mod tests {
 #[cfg(test)]
 #[path = "flow_tests.rs"]
 mod flow_tests;
+
+/// A manifest or the editor writes the compact `id|version|input|output` value into the same field a
+/// `Registration` literal fills with a Rust expression, so the field reader has to accept both spellings.
+/// 清单或编辑器会把紧凑的 `id|version|input|output` 写进那个字段，而 `Registration` 字面量往同一个字段里写的是
+/// Rust 表达式——因此读那个字段的人必须两种拼法都收。
+#[test]
+fn a_compact_flow_field_reads_back_as_the_same_compact_value() {
+    let compact = "panel.render.v1|1|PanelInput|PanelFrame";
+    assert_eq!(
+        parse_flow_field(compact).expect("the editor's own form is accepted"),
+        compact,
+        "the compact form comes back unchanged"
+    );
+    let expression = "crate::FlowContract::new(crate::ContractId::new(\"panel.render.v1\"), 1, \"PanelInput\", \"PanelFrame\")";
+    assert_eq!(
+        parse_flow_field(expression).expect("a literal face's expression is accepted"),
+        compact,
+        "the Rust expression normalizes to the same compact value"
+    );
+    assert_eq!(parse_flow_field("").expect("empty is legal"), "");
+}

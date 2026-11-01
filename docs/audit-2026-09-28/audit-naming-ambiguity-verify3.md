@@ -79,7 +79,7 @@ reverse  rc=0 -> 同上（逐字相同）
 - **已登记**：`:527` `ALLOWED_PAIRS={("app","application")}  # V40-01：两侧都是好名字，登记豁免（理由见报告）`；理由在修订记录 `:36`（"两侧都是好名字、分属不同层级/crate，不是同一概念的两个拼法"）✓。
 - **验收词已改写**：`:725` R-4c 行 → "违规对数 = 0（改名落在更短/更泛的一侧，**或** 已登记且附一行理由）" ✓（与我 t40 的建议一致）。
 - **登记是外科式的**（这点必须实测，防"顺手放过真违规"）：真实树实跑 → 违规对 **6**（`app↔apply`、`ide↔identity`、`json↔jsonl`、`lex↔lexicon`、`mir↔mirror`、`render↔renderer`）、**登记豁免 1**（`app↔application`）、单复数豁免 7 ✓。即：只有被登记的那一对被放过，其余 6 对与 7 对单复数族一个不少。
-- 路径核实：`app`@`studio/src/studio/studio.rs:5`，`application`@`core/src/registry_core/syntax/entries.rs:13`——两侧都确实存在且是好名字 ✓。
+- 路径核实：`app`@`studio/studio/studio.rs:5`，`application`@`core/src/registry_core/syntax/entries.rs:13`——两侧都确实存在且是好名字 ✓。
 
 ## 3. V40-02：归因半句 —— **已关闭**
 

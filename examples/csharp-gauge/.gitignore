@@ -1,0 +1,6 @@
+# 构建期生成物：记录文件、dotnet 的 bin/obj、构建写的常量类。
+# Build-time artifacts: the record file, dotnet's bin/obj, and the build-written constants class.
+gauge/native/gauge.faces
+gauge/csharp/bin/
+gauge/csharp/obj/
+gauge/csharp/src/gauge/Faces.cs

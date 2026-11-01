@@ -355,7 +355,7 @@ schema 两处同步。
 
 **"什么算同一个会话"这个设计决定先定下来**：单位是**服务一个客户端的那一个进程**——stdio 服务活一条
 连接，"已经说过"= "已经对这个客户端说过"；一次性 `--call` 是它自己的进程，因此永远是第一次（它没有更早
-的答案可回指）。新增 `mcp/src/session.rs`（进程级 `static`，键里带根 ⇒ 两棵树各有自己的第一次，测试的
+的答案可回指）。新增 `mcp/session.rs`（进程级 `static`，键里带根 ⇒ 两棵树各有自己的第一次，测试的
 临时目录不会互相污染）。接上两处常量块：`consistency` 的两支共用 `consistency-bounds:<root>`；
 写入路径的 `consequences` 用 `apply-consequences:<project>`。
 
@@ -699,7 +699,7 @@ target and path alone, so those plans keep pointing where they point and gain th
 **写后家族判定（`outliers: x of N`）**。本轮落的是 **③**（验收"零写后回查"的那一半）。
 
 **改动**：`report()` 现在把**家族判定**搭在每条写入回复上（预览与落盘都有）——新增
-`mcp/src/apply_family.rs`，它在**变更之后的树**上（预览＝副本）取"该面所在父级的孩子们"，按**形状信号**的
+`mcp/apply_family.rs`，它在**变更之后的树**上（预览＝副本）取"该面所在父级的孩子们"，按**形状信号**的
 字段名集合跑 `consistency` 自己的多数派算术（`deviations`），给出：
 
 ```
@@ -1436,7 +1436,7 @@ faces **0.64 s**）· `source_half 0.06 s` ⇒ 合计 4.4 s，而墙钟 **7.9 s*
 
 **一句话**：把散落在 `pruning_manifest.tsv` / `file_manifest.tsv` 与读者各自的重新推导里的图事实，变成**一个带节点数、边数与内容摘要的产物**——而且它和记录是**同一次计算的两个视图**，因此两份文件不可能对一个面产生分歧。
 
-**改法**：① 新增 `toolchain/src/build_method/src/graph.rs`：`write_graph_manifest(out_dir, rows, file_rows, grafts)`；② 记录写入方**把行交回来**（`write_pruning_manifest` 与 `write_file_manifest` 现在返回它们发布的行）：图是同一批行的第二个视图，而把清单读回来建图要付同一批五万行的第二次解析——这正是本批一直在去掉的"算出来了却不交出来"，只是方向相反；③ 管线在记录之后、指纹之前写图（载荷全部落地才写指纹，因此**半份图不会被当成完整的**）。
+**改法**：① 新增 `toolchain/src/build_method/graph.rs`：`write_graph_manifest(out_dir, rows, file_rows, grafts)`；② 记录写入方**把行交回来**（`write_pruning_manifest` 与 `write_file_manifest` 现在返回它们发布的行）：图是同一批行的第二个视图，而把清单读回来建图要付同一批五万行的第二次解析——这正是本批一直在去掉的"算出来了却不交出来"，只是方向相反；③ 管线在记录之后、指纹之前写图（载荷全部落地才写指纹，因此**半份图不会被当成完整的**）。
 
 **产物形状**（`# graph\txirang-build-graph` / `# nodes` / `# edges` / `# digest` / `# from\tto\tkind`）：
 
@@ -1527,11 +1527,11 @@ pub const SHAPE: Shape = Shape {
 | 件 | 位置 | 钉了什么 |
 | --- | --- | --- |
 | 规则（唯一一份） | `kernel/src/registry_core/shape/shape.rs` | 边界是**整个 `::` 段**（`control` 含 `control::object`、不含 `control_extra`）；重叠/嵌套/重名/空名/空前缀各**点名**拒绝。5 条钉子 |
-| 函数面 | `toolchain/src/run_method/src/shape.rs` | `Subtree` / `Crate` / `Shape` / `add_crates(&Shape)`；宿主自己的 crate 装载时校验。2 条钉子 |
-| 构建期读者 | `toolchain/src/build_method/src/shape_decl.rs` | 读包根那份文件（**文本**，不链接宿主），只认 `Crate::named(…).at(&[…::SUBTREE])`，别的拼写**点名拒绝**；写 `add-crates.lock`（声明身份 + 每 crate 的子树与面集合身份 + 留在宿主的面数）。6 条钉子 |
-| 渲染器 | `build_method/src/renderer/tree.rs` | 每个**生成的内联模块**发一个 `pub const SUBTREE: Subtree = Subtree::new(module_path!())` |
+| 函数面 | `toolchain/src/run_method/shape.rs` | `Subtree` / `Crate` / `Shape` / `add_crates(&Shape)`；宿主自己的 crate 装载时校验。2 条钉子 |
+| 构建期读者 | `toolchain/src/build_method/shape_decl.rs` | 读包根那份文件（**文本**，不链接宿主），只认 `Crate::named(…).at(&[…::SUBTREE])`，别的拼写**点名拒绝**；写 `add-crates.lock`（声明身份 + 每 crate 的子树与面集合身份 + 留在宿主的面数）。6 条钉子 |
+| 渲染器 | `build_method/renderer/tree.rs` | 每个**生成的内联模块**发一个 `pub const SUBTREE: Subtree = Subtree::new(module_path!())` |
 | 词汇表 | `kernel/src/registry_core/lexicon/lexicon.rs` | `ADD_CRATES_FILE` / `ADD_CRATES_LOCK_FILE` / `ADD_CRATES_MARKER` |
-| 管线 | `build_method/src/pipeline.rs` | 树干净时校验声明；不成立 ⇒ `add-crates` 诊断，且**发布任何产物之前**失败。没有声明 = 一个 crate 的包（不是错误） |
+| 管线 | `build_method/pipeline.rs` | 树干净时校验声明；不成立 ⇒ `add-crates` 诊断，且**发布任何产物之前**失败。没有声明 = 一个 crate 的包（不是错误） |
 
 **端到端实测**（真的在 `examples/control-button` 上加了声明 + 一行 `#[path]` 挂载，跑完已还原）：`cargo build` 过 ✓；CLI `check` 写出
 
@@ -2123,14 +2123,14 @@ error[E0433]: cannot find `frame` in `panel`
 
 **登记要成套**（四条表缺一不可，钉子会当场点名）：目录 `tools()` 的一句话 + `advertised_schema` 的 schema 臂 + `DISPATCH` 的顺序（与目录同序）+ `effect`（`Effect::Rewrite` ⇒ 自动 `destructiveHint: true`，因为 `revert` 真的会把包拿走）+ `ownership::subject` 归到 `Subject::Write` + `READ_KEYS` 行（`action`/`apply`）+ 写者名单与 destructive 名单各一行 + `next_hint` 一句话。**顺带把特性门放宽到 mcp**：`partition_view`/`crate_write`/`crate_release`/`crate_facade`/`crate_members` 与 `crate_plan::relative_walk` 的门从 `any(cli, studio)` 变成 `any(cli, studio, mcp)`——桥要用同一批写入方，而它此前根本够不到它们。
 
-**实测（真二进制、真调用）**：`xirang-mcp --list crates` 列出 `keys: action, apply, root` ✓；`--call xirang.crates --root <fixture> --action plan` 打出分区 + "no action taken" + 双语说明 + `next` 提示 + 可引用的 `evidence` 行 ✓；`--action release`（不带 apply）**磁盘上什么都没变** ✓；`--action release --apply true` 写下 **9 个文件**，`Cargo.toml` 里 `shape = "release"`，读回的行变成 `on disk release · … 6 file(s), 2.0 KiB` ✓；`--action revert --apply true` 把包收回去 ✓。**钉子 5 条**（`mcp/src/crates_tests.rs`）：无声明的宿主被告知声明在哪 · `plan` 不写任何东西 · 不带 `apply` 的动作不改变磁盘 · `apply` 写下发布形状后 `revert` 收回 · 未知动作按名字被拒并列出存在的四个 ✓。**门禁**：fmt ✓ · clippy 两面 exit 0 ✓ · 发布表 ✓ · 十面见提交说明。
+**实测（真二进制、真调用）**：`xirang-mcp --list crates` 列出 `keys: action, apply, root` ✓；`--call xirang.crates --root <fixture> --action plan` 打出分区 + "no action taken" + 双语说明 + `next` 提示 + 可引用的 `evidence` 行 ✓；`--action release`（不带 apply）**磁盘上什么都没变** ✓；`--action release --apply true` 写下 **9 个文件**，`Cargo.toml` 里 `shape = "release"`，读回的行变成 `on disk release · … 6 file(s), 2.0 KiB` ✓；`--action revert --apply true` 把包收回去 ✓。**钉子 5 条**（`mcp/crates_tests.rs`）：无声明的宿主被告知声明在哪 · `plan` 不写任何东西 · 不带 `apply` 的动作不改变磁盘 · `apply` 写下发布形状后 `revert` 收回 · 未知动作按名字被拒并列出存在的四个 ✓。**门禁**：fmt ✓ · clippy 两面 exit 0 ✓ · 发布表 ✓ · 十面见提交说明。
 
 ### §M7.45 把 CI 推绿（2026-10-07）：1.99 的两条新 lint + 六个只在 macOS/Windows 上成立的路径假设
 
 首次推送（64 个提交）后 CI 七个作业红。**归因先行**：与上一次 main 上的运行（`37242219783`，2026-10-04）逐作业对比——`release-audit`、`features`、`ubuntu-latest stable`、`windows-latest` 两个 `Tests` 在两次里都红（继承），而两个 **Documentation** 失败这次**变绿**（§M7.44 那批 rustdoc 修复生效 ✓），macOS 两个作业则从"更早的步骤就红"变成"Tests 红"（先前被 Clippy/Documentation 挡住，**新可见**而不是新引入）。⇒ 四条真实缺陷：
 
 ① **clippy 1.99 的两条新 lint**（本机 1.96 根本看不到，所以本地门禁全绿而 CI 红）：
-`clippy::single_element_loop` @ `toolchain/src/run_method/src/authoring/manifest/parse.rs:59`（`for key in ["registry_rule_path"]` ⇒ 展平成一个 `if let`）；`Some(x).filter(|_| predicate)` @ `toolchain/src/mcp/src/check.rs:776`（谓词不看值 ⇒ `(!path.is_empty()).then(|| …)`）。这两条也是 `release-audit` 作业失败的原因（它同样跑 lint）。
+`clippy::single_element_loop` @ `toolchain/src/run_method/authoring/manifest/parse.rs:59`（`for key in ["registry_rule_path"]` ⇒ 展平成一个 `if let`）；`Some(x).filter(|_| predicate)` @ `toolchain/src/mcp/check.rs:776`（谓词不看值 ⇒ `(!path.is_empty()).then(|| …)`）。这两条也是 `release-audit` 作业失败的原因（它同样跑 lint）。
 ② **macOS：`/var` 是 `/private/var` 的符号链接** ⇒ 我的 P3 测试把 `canonicalize()` 过的路径与原始 `temp_dir()` 路径逐字比较，左边 `/private/var/…` 右边 `/var/…` ✗。
 ③ **Windows：分隔符与 `\\?\` 前缀** ⇒ `starts_with('/')`、`ends_with("host/src/")`、`spec.contains("/checkout/toolchain")`、以及"报告里含 `lock.display()`"这四条断言在 `\` 拼写的路径上全假 ✗。
 ④ **`a_gone_holders_lock_is_taken_over` 在 macOS/Windows 上本来就不该成立**：`process_is_alive` 只在 Linux 经 `/proc` 回答，其它平台**有意**回答"假定活着"（宁可让陈旧锁把下一次发布推迟到 `STALE_AGE`，也不从活写者手里夺锁）——这是产品里写明并带理由的设计，错的是**测试**：它在没有 `/proc` 的平台上断言了一次该平台做不到的接管 ✗。

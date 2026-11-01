@@ -20,6 +20,9 @@ pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 /// Must match the host framework; `overlay` rejects a foreign tree.
 pub const FRAMEWORK: FrameworkId = FrameworkId::new("xirang.example.control-button");
 
+mod shared;
+pub use shared::{ControlFrame, ControlHandle};
+
 pub mod button_fast;
 pub mod control_fast;
 pub mod slider_fast;

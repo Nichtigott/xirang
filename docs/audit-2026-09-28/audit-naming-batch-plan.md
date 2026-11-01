@@ -19,17 +19,17 @@
 
 | # | 文件（SHIMS 条目） | 与哪条改名相关 |
 | --- | --- | --- |
-| 1–2 | `run_method/src/lib.rs` | —（crate 根） |
-| 3–4 | `run_method/src/registry/registry.rs` | NAM-10（shim 族）、NAM-11（`registry` 保留词） |
-| 5 | `run_method/src/authoring/face_manifest.rs` | **NAM-09** |
-| 6 | `run_method/src/authoring/parse/parse.rs` | **NAM-10** |
-| 7 | `run_method/src/authoring/validation/validation.rs` | **NAM-03** |
-| 8 | `run_method/src/runtime/runtime.rs` | — |
-| 9–11 | `run_method/src/runtime/trace/trace.rs` | NAM-08/NAM-11（`trace` 面） |
-| 12 | `run_method/src/runtime/evidence.rs` | NAM-11（`evidence` 保留词） |
-| 13–14 | `run_method/src/plugin/plugin.rs` | AMB-20（shim 家族） |
-| 15 | `build_method/src/syntax.rs` | **NAM-40/43**（挂载名 `registry_syntax`） |
-| 16–17 | `build_method/src/identity.rs` | **NAM-40/43**（挂载名 `registry_identity`） |
+| 1–2 | `run_method/lib.rs` | —（crate 根） |
+| 3–4 | `run_method/registry/registry.rs` | NAM-10（shim 族）、NAM-11（`registry` 保留词） |
+| 5 | `run_method/authoring/face_manifest.rs` | **NAM-09** |
+| 6 | `run_method/authoring/parse/parse.rs` | **NAM-10** |
+| 7 | `run_method/authoring/validation/validation.rs` | **NAM-03** |
+| 8 | `run_method/runtime/runtime.rs` | — |
+| 9–11 | `run_method/runtime/trace/trace.rs` | NAM-08/NAM-11（`trace` 面） |
+| 12 | `run_method/runtime/evidence.rs` | NAM-11（`evidence` 保留词） |
+| 13–14 | `run_method/plugin/plugin.rs` | AMB-20（shim 家族） |
+| 15 | `build_method/syntax.rs` | **NAM-40/43**（挂载名 `registry_syntax`） |
+| 16–17 | `build_method/identity.rs` | **NAM-40/43**（挂载名 `registry_identity`） |
 
 **硬事实（本仓行为，不是推测）**：`conventions/src/shims.rs:120` 的 `missing_shims` 对列表里的文件做 `fs::read_to_string(...).expect()`——**文件被改名/搬走时门禁不是报一条 finding，而是 panic（`cannot read <path>`）**。所以：
 - 凡改这些**文件路径**，SHIMS 条目必须在**同一次提交**里改掉（这是一次被记录的决策：棘轮"可以增长，但不因疏忽而缩短"）；
@@ -52,7 +52,7 @@
 | `tools/**` | 零命中（`tools/xirang-publish` 只认 crate 名与版本，不认这些模块路径） | §7 R-3 |
 | `.github/workflows/**` | 零命中（CI 用 `-p <crate>`，不用模块路径） | `grep -rnF '<old>' .github/` |
 | 测试叶子名 | **模块改名的连带效应**：`cargo test -p <crate> -- --list` 里的模块前缀会变（如 `studio::app::support::…` → `studio::app::project_context::…`），**叶子名（函数名）不变**。执行时按 G4b 的口径逐名单对比（t82 的做法：`--list` diff 为空） | §7 R-4 |
-| 挂载名与文件 stem 不一致（NAM-40/43） | 现算四族：① 历史 shim 2 处（`build_method/src/{identity,syntax}.rs`）② CLI 命令 5 处（`cli/src/commands/*.rs`）③ `explain` 子模块 3 处 ④ 测试模块 4 处（`cli/src/lib_tests.rs`、`core/.../{lexicon/lexicon_tests,source/source_tests,syntax/face_tests}.rs`） | §7 R-5 |
+| 挂载名与文件 stem 不一致（NAM-40/43） | 现算四族：① 历史 shim 2 处（`build_method/{identity,syntax}.rs`）② CLI 命令 5 处（`cli/commands/*.rs`）③ `explain` 子模块 3 处 ④ 测试模块 4 处（`cli/lib_tests.rs`、`core/.../{lexicon/lexicon_tests,source/source_tests,syntax/face_tests}.rs`） | §7 R-5 |
 | 身份红线（`file!()` → `NodeId`） | NAM-07 的收平会让被移动的文件改 `file!()` ⇒ **只许动发布面 26–28 处，`examples/**` 与 `studio/tests/fixtures/**` 的 6–9 处一律不动**（§4 G4b 的硬约束） | §7 R-6 |
 
 ## 2. B7（30 条）逐条
@@ -64,9 +64,9 @@
 
 | id | 现状（file:line） | 目标名（fix_hint） | 站点（命令 + 改前计数） | 显式/注入 | 横切面 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **NAM-01** | `studio/src/studio/app/support.rs`（挂载 `studio/src/studio/app/app.rs:47 mod support;`） | `app/project_context.rs`；几何→`app/hot_zones.rs`；编辑器入口→`app/editor_launch.rs` | 判别性：`grep -rnE '::support(::|[^a-zA-Z_])|mod support;' studio/src` = **15**（mod 1 + refs 14，散在 **12** 个文件） | 全部**显式**（`use super::support…`/`use support::host_manifest`）。无宏注入 | 无 SHIMS；活文档 0；测试叶子名前缀变；`app.rs` 挂载行 | **部分已应用**：`app/project_context.rs` 已在、`app/support.rs` 已缩成"Historical path"2 行 shim。剩余＝几何/编辑器归位 + shim 去留（建议随 G1 一次收口并保留 shim 一个批次） |
-| **NAM-02** | ~~`studio/src/studio/app/state/misc.rs`~~（已不存在） | 拆 `state/call_tree_view.rs` + `state/reload.rs` + `state/overlays.rs` | 判别性：`grep -rnE 'misc' studio/src` 只余 **0** 处模块形态（`::misc`/`mod misc;` 均 0） | — | — | **已应用**（三个新文件都在；`source_path_for` 已归 `project_context.rs:275`）。本批只需在 §8 记账，不再动 |
-| **NAM-06** | ~~`studio/src/studio/app/writers.rs`~~（已不存在） | `app/write_guard.rs` | 判别性：`grep -rnE 'mod writers;' studio/src` = **0**；负钉子 `studio/src/studio/app/tests/b5_studio.rs:114` 断言旧名已消失 | — | — | **已应用**（现挂载 `app/app.rs` 的 `#[path = "write_guard.rs"] mod write_guard;`）。不再动 |
+| **NAM-01** | `studio/studio/app/support.rs`（挂载 `studio/studio/app/app.rs:47 mod support;`） | `app/project_context.rs`；几何→`app/hot_zones.rs`；编辑器入口→`app/editor_launch.rs` | 判别性：`grep -rnE '::support(::|[^a-zA-Z_])|mod support;' studio/src` = **15**（mod 1 + refs 14，散在 **12** 个文件） | 全部**显式**（`use super::support…`/`use support::host_manifest`）。无宏注入 | 无 SHIMS；活文档 0；测试叶子名前缀变；`app.rs` 挂载行 | **部分已应用**：`app/project_context.rs` 已在、`app/support.rs` 已缩成"Historical path"2 行 shim。剩余＝几何/编辑器归位 + shim 去留（建议随 G1 一次收口并保留 shim 一个批次） |
+| **NAM-02** | ~~`studio/studio/app/state/misc.rs`~~（已不存在） | 拆 `state/call_tree_view.rs` + `state/reload.rs` + `state/overlays.rs` | 判别性：`grep -rnE 'misc' studio/src` 只余 **0** 处模块形态（`::misc`/`mod misc;` 均 0） | — | — | **已应用**（三个新文件都在；`source_path_for` 已归 `project_context.rs:275`）。本批只需在 §8 记账，不再动 |
+| **NAM-06** | ~~`studio/studio/app/writers.rs`~~（已不存在） | `app/write_guard.rs` | 判别性：`grep -rnE 'mod writers;' studio/src` = **0**；负钉子 `studio/studio/app/tests/b5_studio.rs:114` 断言旧名已消失 | — | — | **已应用**（现挂载 `app/app.rs` 的 `#[path = "write_guard.rs"] mod write_guard;`）。不再动 |
 
 ### A② 名字与父目录重复（NAM-07）
 
@@ -78,44 +78,44 @@
 
 | id | 现状（file:line） | 目标名 | 站点（命令 + 改前计数） | 显式/注入 | 横切面 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **NAM-03** | `run_method/src/authoring/validation/validation.rs`；挂载 `run_method/src/authoring/authoring.rs:32-33`（`#[path = "validation/validation.rs"] pub mod validation;`） | `authoring/context.rs`（模块名 `validation`→`context`） | 判别性：`grep -rnE '::validation(::|[^a-zA-Z_])|mod validation;\|path = "[^"]*validation\.rs"' run_method/src` = **17**（mod 1 + path 1 + refs 15，**11 个文件**） | 站内全部**显式**；但**公开路径是注入面**：下游宿主写的 `xirang_run_method::authoring::validation::*` 不在本仓文本里（SHIMS 表就是它的代表） | **SHIMS `:50`（同 commit 必改）**；`docs/roadmap-1.0.md:157` 锚点；`run_method/README*.md` | 待做·**非纯改名**（公开面 ⇒ 保旧路径 + 加新名） |
-| **NAM-04** | `build_method/src/cache.rs`；挂载 `build_method/src/lib.rs:27 mod cache;` | `discovery_cache.rs`（只留 3 个缓存函数）；`write_if_changed` → 新建 `run_method/src/runtime/trace/artifact/io.rs` 或并入 `build_method/src/manifests.rs`；作用域函数 → `build_method/src/scope.rs` | 判别性：`grep -rnE 'mod cache;\|::cache(::|[^a-zA-Z_])' build_method/src` = **1（mod）+ refs**；`write_if_changed` 调用方 `grep -rnF 'write_if_changed' build_method/src cli/src mcp/src` = **7**（`pipeline.rs` 3、`manifests.rs` 5 处的子集，现算为准） | 显式 | `write_if_changed` 的文档已按 t64/SUR-C8 补齐"原子写"不变量（改名前先读那段，别把它拆丢）；无 SHIMS | 待做·**拆分型**（一拆三 + 跨 crate 搬函数）⇒ 若把 `write_if_changed` 搬进 `run_method`，会与 G4a 的文件重叠：**本批建议只留在 `build_method/manifests.rs`**，跨 crate 搬迁另开条 |
-| **NAM-05** | `mcp/src/evidence.rs`；挂载 `mcp/src/lib.rs:82 mod evidence;` | `mcp/src/build_evidence.rs` | 判别性：`grep -rnE 'mod evidence;\|::evidence(::|[^a-zA-Z_])' mcp/src` = **7**（mod 1 + refs 6，**7 个文件**） | 显式 | 无 SHIMS；与 NAM-11③ 同一条改名（**不要两处各改一次**）；`mcp/README*.md` 0 命中 | 待做·纯改名 |
-| **NAM-17** | `build_method/src/faces.rs`；挂载 `build_method/src/lib.rs:41 mod faces;` | `scope_faces.rs` | 判别性：`grep -rnE 'mod faces;\|::faces(::|[^a-zA-Z_])' build_method/src` = **3**（mod 1 + refs 2，**3 个文件**） | 显式 | 无 SHIMS；与 NAM-21 同族（一次收敛更省） | 待做·纯改名 |
-| **NAM-18** | `build_method/src/node.rs`（`lib.rs:51 mod node;`）与 `node_id.rs`（`:53 mod node_id;`） | `discovery_node.rs` / `node_identity.rs` | 判别性：`mod node;` 1 + `::node` refs **6**（**7 文件**）；`mod node_id;` 1 + `::node_id` refs **11**（**5 文件**） | 显式 | 无 SHIMS；`build_method/README*.md` 0 命中 | 待做·纯改名（两条同时做，避免中间态） |
+| **NAM-03** | `run_method/authoring/validation/validation.rs`；挂载 `run_method/authoring/authoring.rs:32-33`（`#[path = "validation/validation.rs"] pub mod validation;`） | `authoring/context.rs`（模块名 `validation`→`context`） | 判别性：`grep -rnE '::validation(::|[^a-zA-Z_])|mod validation;\|path = "[^"]*validation\.rs"' run_method/src` = **17**（mod 1 + path 1 + refs 15，**11 个文件**） | 站内全部**显式**；但**公开路径是注入面**：下游宿主写的 `xirang_run_method::authoring::validation::*` 不在本仓文本里（SHIMS 表就是它的代表） | **SHIMS `:50`（同 commit 必改）**；`docs/roadmap-1.0.md:157` 锚点；`run_method/README*.md` | 待做·**非纯改名**（公开面 ⇒ 保旧路径 + 加新名） |
+| **NAM-04** | `build_method/cache.rs`；挂载 `build_method/lib.rs:27 mod cache;` | `discovery_cache.rs`（只留 3 个缓存函数）；`write_if_changed` → 新建 `run_method/runtime/trace/artifact/io.rs` 或并入 `build_method/manifests.rs`；作用域函数 → `build_method/scope.rs` | 判别性：`grep -rnE 'mod cache;\|::cache(::|[^a-zA-Z_])' build_method/src` = **1（mod）+ refs**；`write_if_changed` 调用方 `grep -rnF 'write_if_changed' build_method/src cli/src mcp/src` = **7**（`pipeline.rs` 3、`manifests.rs` 5 处的子集，现算为准） | 显式 | `write_if_changed` 的文档已按 t64/SUR-C8 补齐"原子写"不变量（改名前先读那段，别把它拆丢）；无 SHIMS | 待做·**拆分型**（一拆三 + 跨 crate 搬函数）⇒ 若把 `write_if_changed` 搬进 `run_method`，会与 G4a 的文件重叠：**本批建议只留在 `build_method/manifests.rs`**，跨 crate 搬迁另开条 |
+| **NAM-05** | `mcp/evidence.rs`；挂载 `mcp/lib.rs:82 mod evidence;` | `mcp/build_evidence.rs` | 判别性：`grep -rnE 'mod evidence;\|::evidence(::|[^a-zA-Z_])' mcp/src` = **7**（mod 1 + refs 6，**7 个文件**） | 显式 | 无 SHIMS；与 NAM-11③ 同一条改名（**不要两处各改一次**）；`mcp/README*.md` 0 命中 | 待做·纯改名 |
+| **NAM-17** | `build_method/faces.rs`；挂载 `build_method/lib.rs:41 mod faces;` | `scope_faces.rs` | 判别性：`grep -rnE 'mod faces;\|::faces(::|[^a-zA-Z_])' build_method/src` = **3**（mod 1 + refs 2，**3 个文件**） | 显式 | 无 SHIMS；与 NAM-21 同族（一次收敛更省） | 待做·纯改名 |
+| **NAM-18** | `build_method/node.rs`（`lib.rs:51 mod node;`）与 `node_id.rs`（`:53 mod node_id;`） | `discovery_node.rs` / `node_identity.rs` | 判别性：`mod node;` 1 + `::node` refs **6**（**7 文件**）；`mod node_id;` 1 + `::node_id` refs **11**（**5 文件**） | 显式 | 无 SHIMS；`build_method/README*.md` 0 命中 | 待做·纯改名（两条同时做，避免中间态） |
 | **NAM-21** | `discovery.rs`（`lib.rs:33`）、`registration_check.rs`（`:59`）、`validation.rs`（`:75`） | `source_walk.rs` / `registration_phase.rs` / `face_syntax_check.rs` | 判别性：`discovery` **15 refs / 11 文件** + mod 1；`registration_check` **1 ref / 2 文件** + mod 1；`validation` **5 refs / 6 文件** + mod 1 | 显式 | 无 SHIMS；与 NAM-17/18 同批做（同一文件 `lib.rs` 的挂载区） | 待做·纯改名（三条一起，改 `lib.rs` 一次） |
-| **NAM-22** | `mcp/src/nodes.rs`（`mcp/src/lib.rs:73 mod nodes;`） | `mcp/src/resolve.rs` | 判别性：`grep -rnE 'mod nodes;\|::nodes(::|[^a-zA-Z_])' mcp/src` = **11**（mod 1 + refs 10，**9 文件**） | 显式 | 无 SHIMS；与 `studio/src/studio/ui/graph/nodes.rs`（绘图）**同名不同义，别一起改** | 待做·纯改名 |
+| **NAM-22** | `mcp/nodes.rs`（`mcp/lib.rs:73 mod nodes;`） | `mcp/resolve.rs` | 判别性：`grep -rnE 'mod nodes;\|::nodes(::|[^a-zA-Z_])' mcp/src` = **11**（mod 1 + refs 10，**9 文件**） | 显式 | 无 SHIMS；与 `studio/studio/ui/graph/nodes.rs`（绘图）**同名不同义，别一起改** | 待做·纯改名 |
 
 ### A④ 同名不同职责 / 保留词（NAM-08/09/10/11/12）
 
 | id | 现状 | 目标 | 站点 | 显式/注入 | 横切面 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **NAM-08** | `run_method/src/runtime/trace/locals/call_trace.rs` | `locals/recording.rs` | 判别性：`grep -rnE 'mod call_trace;\|path = "[^"]*call_trace\.rs"' run_method/src` = **4**（两个挂载点：`runtime/trace/trace.rs:6-7` 与 `runtime/trace/locals/locals.rs:4-5`）——**注意同一个文件被挂两次**，只改 locals 那一处 | 显式 | 无 SHIMS | 待做·纯改名（只动 locals 挂载，`trace.rs` 那处保持） |
-| **NAM-09** | `run_method/src/authoring/face_manifest.rs` | `authoring/face_file.rs`（或 `face_store.rs`） | 判别性：`grep -rnE 'mod face_manifest;\|path = "[^"]*face_manifest\.rs"' run_method/src` = **4**（`authoring/authoring.rs:20-21` 与 `authoring/manifest/manifest.rs:6-7`），refs **2** | 显式 | **SHIMS `:42`（该文件正是 shim）** ⇒ 改文件名必须同 commit 改 SHIMS；活文档 0 | 待做·**非纯改名** |
+| **NAM-08** | `run_method/runtime/trace/locals/call_trace.rs` | `locals/recording.rs` | 判别性：`grep -rnE 'mod call_trace;\|path = "[^"]*call_trace\.rs"' run_method/src` = **4**（两个挂载点：`runtime/trace/trace.rs:6-7` 与 `runtime/trace/locals/locals.rs:4-5`）——**注意同一个文件被挂两次**，只改 locals 那一处 | 显式 | 无 SHIMS | 待做·纯改名（只动 locals 挂载，`trace.rs` 那处保持） |
+| **NAM-09** | `run_method/authoring/face_manifest.rs` | `authoring/face_file.rs`（或 `face_store.rs`） | 判别性：`grep -rnE 'mod face_manifest;\|path = "[^"]*face_manifest\.rs"' run_method/src` = **4**（`authoring/authoring.rs:20-21` 与 `authoring/manifest/manifest.rs:6-7`），refs **2** | 显式 | **SHIMS `:42`（该文件正是 shim）** ⇒ 改文件名必须同 commit 改 SHIMS；活文档 0 | 待做·**非纯改名** |
 | **NAM-10** | `authoring/parse/parse.rs`、`registry/registry.rs`、`plugin/plugin.rs`、`runtime/evidence.rs`（7–12 行 shim 族） | fix_hint **推荐不改名**，改为"模块文档**第一行**写明 Shim/历史路径" | 计数用：`grep -rnF 'this shim' run_method/src` / 逐文件读首行 | 显式 | 这些文件的公开路径被 **SHIMS** 钉住（`:45/:46/:13-14/:12`）⇒ 改名＝动公开面 | 待做·**文书型**（写首行声明，不改名）⇒ 无身份/路径风险 |
-| **NAM-11** | ① `mcp/src/index.rs` ② `run_method/src/runtime/trace/artifact/` ③ `mcp/src/evidence.rs` ④ `mcp/src/registry.rs`（保留） | ① → `source_index.rs` 命名（照 studio）；② 目录 → `snapshot/`、文件 → `snapshot.rs`；③ 按 NAM-05；④ 保留 | ① 判别性：`grep -rnE 'mod index;\|::index(::|[^a-zA-Z_])' mcp/src` = **7**；② 计数用：`grep -rnF 'trace::artifact' run_method/src` = **1** + `pub use runtime::trace::artifact::{…}` 在 `run_method/src/lib.rs:63`（公开面！）；③ 同 NAM-05 | ② 是**公开面**：`run_method/src/lib.rs:63-65` 重导出 `TraceArtifact` 等（不在 SHIMS 表里，但属于已发布路径） | ② 改目录名 ⇒ 公开路径 `xirang_run_method::runtime::trace::artifact` 变化 ⇒ **需保旧路径别名**；SHIMS 目前**没有**这一条（可加一条进棘轮，正是"可以增长"的用法） | 待做·①③纯改名、②**非纯改名** |
-| **NAM-12** | `studio/src/studio/ui/search.rs`（入口 1 fn）与 `ui/search/`（3 子模块） | 只加模块文档首行"搜索页入口（见 search/ 子模块）" | 计数用：`head -2 studio/src/studio/ui/search.rs` | — | 无 | 待做·文书型 |
+| **NAM-11** | ① `mcp/index.rs` ② `run_method/runtime/trace/artifact/` ③ `mcp/evidence.rs` ④ `mcp/registry.rs`（保留） | ① → `source_index.rs` 命名（照 studio）；② 目录 → `snapshot/`、文件 → `snapshot.rs`；③ 按 NAM-05；④ 保留 | ① 判别性：`grep -rnE 'mod index;\|::index(::|[^a-zA-Z_])' mcp/src` = **7**；② 计数用：`grep -rnF 'trace::artifact' run_method/src` = **1** + `pub use runtime::trace::artifact::{…}` 在 `run_method/lib.rs:63`（公开面！）；③ 同 NAM-05 | ② 是**公开面**：`run_method/lib.rs:63-65` 重导出 `TraceArtifact` 等（不在 SHIMS 表里，但属于已发布路径） | ② 改目录名 ⇒ 公开路径 `xirang_run_method::runtime::trace::artifact` 变化 ⇒ **需保旧路径别名**；SHIMS 目前**没有**这一条（可加一条进棘轮，正是"可以增长"的用法） | 待做·①③纯改名、②**非纯改名** |
+| **NAM-12** | `studio/studio/ui/search.rs`（入口 1 fn）与 `ui/search/`（3 子模块） | 只加模块文档首行"搜索页入口（见 search/ 子模块）" | 计数用：`head -2 studio/studio/ui/search.rs` | — | 无 | 待做·文书型 |
 
 ### A⑤/A⑥ + C 族（NAM-19/20/23/40/41/43）
 
 | id | 现状 | 目标 | 站点 | 横切面 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| **NAM-19** | `studio/src/studio/app/tests/*.rs`（**已漂移**：现 18 个文件，报告点名的 `project.rs` 等已重组） | 每个测试文件首行加"covers `app/<module>.rs`（+ …）"，**不重命名** | 计数用：`for f in studio/src/studio/app/tests/*.rs; do sed -n 1p $f; done`（现 18 行，其中 `b4/b5/b6_studio.rs` 已带批次说明、`misc` 已拆） | 无 | 待做·文书型（**执行前先按现清单重算**，报告里的 11 个文件名已不成立） |
-| **NAM-20** | `mcp/src` 平铺 39 文件 | 拆 `tools/` + `source/`（结构） | 计数用：`ls mcp/src/*.rs \| wc -l` | 与结构报告 `audit-boundary-refactor-plan.md` 重叠 ⇒ **不要在本批做**（归结构批次，本批只落 NAM-11 的保留词表） | 挂账·结构批次 |
+| **NAM-19** | `studio/studio/app/tests/*.rs`（**已漂移**：现 18 个文件，报告点名的 `project.rs` 等已重组） | 每个测试文件首行加"covers `app/<module>.rs`（+ …）"，**不重命名** | 计数用：`for f in studio/studio/app/tests/*.rs; do sed -n 1p $f; done`（现 18 行，其中 `b4/b5/b6_studio.rs` 已带批次说明、`misc` 已拆） | 无 | 待做·文书型（**执行前先按现清单重算**，报告里的 11 个文件名已不成立） |
+| **NAM-20** | `mcp/src` 平铺 39 文件 | 拆 `tools/` + `source/`（结构） | 计数用：`ls mcp/*.rs \| wc -l` | 与结构报告 `audit-boundary-refactor-plan.md` 重叠 ⇒ **不要在本批做**（归结构批次，本批只落 NAM-11 的保留词表） | 挂账·结构批次 |
 | **NAM-23** | `plugin-host/src/lazy_wasm.rs:24` 别名 `ValidationChannel` | 文档首行写明"等价于 `PluginChannel`（历史路径）" | 计数用：`sed -n '18,26p' plugin-host/src/lazy_wasm.rs` | — | **已应用**（`lazy_wasm.rs:20-23` 已写"定义本体在 kernel 的 `plugin` 模块；本别名保留历史路径"）⇒ 只记账 |
 | **NAM-40** | 挂载名 ≠ 文件 stem 的 14 处（四族） | 把四族写进挂载约定；不再引用"394/394 一致" | 判别性（现算四族，§7 R-5）：历史 shim 2、CLI 命令 5、`explain` 子模块 3、测试模块 4 | `AGENTS.md`（挂载约定）；测试模块那 4 处改了会变**测试叶子名的模块前缀** | 待做·文书+4 处小改（G4b） |
 | **NAM-41** | 全仓 4 处 `pub use … as …` | 别名纪律写进共识（同名同义或首行写明历史理由） | 计数用：`grep -rn 'pub use .* as ' */src \| wc -l` | 3 处有理由、1 处（NAM-23）已补文档 | 待做·文书型 |
-| **NAM-43** | 同 NAM-40 的第 4 族 | 统一"`mod tests` vs `mod <name>_tests`"二选一 | 现算（§7 R-5）：`*_tests.rs` 39 个文件，其中挂 `mod tests;` 的 4 处（`cli/src/lib_tests.rs`、`core/.../lexicon_tests.rs`、`source_tests.rs`、`face_tests.rs`）——**审计值 44/40/4 与现算 39/35/4 有差（树已变动）** | 改挂载名会变测试叶子名前缀；`conventions/src/size.rs` 的 `is_mounted_as_test` 认 `#[cfg(test)]` 挂载，不认名字 ⇒ 安全 | 待做·文书+4 处小改（G4b） |
+| **NAM-43** | 同 NAM-40 的第 4 族 | 统一"`mod tests` vs `mod <name>_tests`"二选一 | 现算（§7 R-5）：`*_tests.rs` 39 个文件，其中挂 `mod tests;` 的 4 处（`cli/lib_tests.rs`、`core/.../lexicon_tests.rs`、`source_tests.rs`、`face_tests.rs`）——**审计值 44/40/4 与现算 39/35/4 有差（树已变动）** | 改挂载名会变测试叶子名前缀；`conventions/src/size.rs` 的 `is_mounted_as_test` 认 `#[cfg(test)]` 挂载，不认名字 ⇒ 安全 | 待做·文书+4 处小改（G4b） |
 
 ### B 族：函数/方法名（NAM-30/31/32/33/34/35/36/37）
 
 | id | 现状（file:line） | 目标名 | 站点（命令 + 改前计数） | 可否纯改名 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| **NAM-30** | `build_method/src/manifests.rs:169 collect_pruning_symbols`、`:242 parse_pruning_item` | `scan_pruning_probe_markers`（或让符号列真从注册面读） | 判别性：`grep -rnF 'collect_pruning_symbols' build_method/src` = 现算 2（定义 + 调用）；`parse_pruning_item` 同 | **否**：名字改对≠行为可接受（LG-15 假实现）⇒ 与行为修复同批 | 待做·**非纯改名** |
-| **NAM-31** | `run_method/src/authoring/operations/face_write.rs:207 apply_trait_label`（**已改名**） | — | 判别性：`grep -rnF 'apply_trait_contract' run_method/src cli/src mcp/src` = **0**（旧名已 0 ⇒ 该 row 的改名半已完成，只剩 LG-21 行为半） | — | **命名半已应用**；行为半归 LG-21 |
+| **NAM-30** | `build_method/manifests.rs:169 collect_pruning_symbols`、`:242 parse_pruning_item` | `scan_pruning_probe_markers`（或让符号列真从注册面读） | 判别性：`grep -rnF 'collect_pruning_symbols' build_method/src` = 现算 2（定义 + 调用）；`parse_pruning_item` 同 | **否**：名字改对≠行为可接受（LG-15 假实现）⇒ 与行为修复同批 | 待做·**非纯改名** |
+| **NAM-31** | `run_method/authoring/operations/face_write.rs:207 apply_trait_label`（**已改名**） | — | 判别性：`grep -rnF 'apply_trait_contract' run_method/src cli/src mcp/src` = **0**（旧名已 0 ⇒ 该 row 的改名半已完成，只剩 LG-21 行为半） | — | **命名半已应用**；行为半归 LG-21 |
 | **NAM-32** | 24 行裸动词清单（`run`/`load`/`find`/`build`/…；WL 4 行 + 违规 20 行） | 见报告"判定"列（入口类保留） | 判别性（逐名）：`grep -rnE '^\s*pub(\(crate\))? (const )?fn (load\|find)\b' */src` | **否（多条）**：`RuntimeCheckSpec::run`（core 公开）、`Registry::find`（core 公开）等是公开面 ⇒ 保旧名 + 加新名 | 待做·混合（多数纯改名，公开面那几条按"保旧+加新"） |
 | **NAM-33** | 动词收敛表（`collect` 39 / `parse` 38 / `render` 38 / `resolve` 20 / `read` 17 / `load` 16 …；`query`/`lookup`/`fetch` 为 0） | 写成**规则**（D-4 词表） | 计数用：`grep -rhoE '^\s*pub(\(crate\))? (const )?fn [a-z_]+' */src \| awk '{print $NF}' \| cut -d_ -f1 \| sort \| uniq -c \| sort -rn` | 主体是**规则**（不改名）；只有 `get` vs `find` 那对触发 NAM-37/36 | 待做·文书型（写进共识） |
-| **NAM-34** | 8 个 `_owned`/`_strings` 名（如 `core/.../parse/parse.rs:258 split_csv_owned`、`parse_admission_owned`、`parse_requirements_owned`、`parse_registration_rule_owned`、`quoted_strings`、`build_method/src/contracts.rs:193 rule_method_strings`、`cli/src/lib.rs:107 argv_strings`、`run_method/.../paths.rs:41 is_xirang_owned_source`） | 见报告"建议"列（`parse_field_list`、`read_string_literals`、`rule_method_calls`…） | 判别性（逐名）：`grep -rnF '<old>' <crate>/src` —— 其中 `parse_requirements_owned`/`parse_admission_owned` 是 **core 公开 API**（`pub fn`） | **否（4 条公开）**：保旧名 + 加新名；其余纯改名 | 待做·混合 |
+| **NAM-34** | 8 个 `_owned`/`_strings` 名（如 `core/.../parse/parse.rs:258 split_csv_owned`、`parse_admission_owned`、`parse_requirements_owned`、`parse_registration_rule_owned`、`quoted_strings`、`build_method/contracts.rs:193 rule_method_strings`、`cli/lib.rs:107 argv_strings`、`run_method/.../paths.rs:41 is_xirang_owned_source`） | 见报告"建议"列（`parse_field_list`、`read_string_literals`、`rule_method_calls`…） | 判别性（逐名）：`grep -rnF '<old>' <crate>/src` —— 其中 `parse_requirements_owned`/`parse_admission_owned` 是 **core 公开 API**（`pub fn`） | **否（4 条公开）**：保旧名 + 加新名；其余纯改名 | 待做·混合 |
 | **NAM-35** | `core/.../release/release.rs:191 pub const fn full`、`core/.../source/walk.rs:54 fn skips`、`core/.../plugin/contracts/contracts.rs:460 pub fn targets` | `is_full` / `skips_path` / `targets_framework` | 判别性：`grep -rnE '\.full\(\)\|fn full\(' core/src` 等（现算 191 行存在 ✓） | `full` 是 **pub const fn**、`targets` 是 **pub** ⇒ 公开面 | 待做·**非纯改名**（公开面三条） |
 | **NAM-36** | `core/.../tree/query/query.rs:80 pub fn find`；内部 `:105 collect_node_path`、`:164 collect_kind`、`:183 collect_depth_first` | `find_by_id`；内部 helper → `visit_*`/`walk_*` | 判别性：`grep -rnE '\.find\(\|fn find\(' core/src cli/src mcp/src studio/src`（现算 `find` 仍是 80 行 ✓） | **否**：`Registry::find` 是**公开 API**（AMB-20 也用）⇒ 保旧 + 加新 | 待做·**非纯改名** |
 | **NAM-37** | `core/.../entry_pages/entry_pages.rs:39 pub fn get`、`:74 pub fn remove` | `entry` / `remove_entry`（`get_mut` 保留） | 判别性：`grep -rnE 'fn get\(&self\|fn remove\(' core/src/registry_core/tree/entry_pages/`（现算 `get`/`remove` 仍在 ✓） | **否**：两者都是 **pub** | 待做·**非纯改名** |
@@ -127,13 +127,13 @@
 | id | 现状名（file:line） | 歧义点 | 裁定（来源行） | 本批动作 | 与 9→3 合并耦合 |
 | --- | --- | --- | --- | --- | --- |
 | **AMB-01** | `core/` + lib `xirang`（`core/Cargo.toml:32`） | `core` = std crate 名；`xirang` 一名三角色（项目/lib/bin） | 证实，MAJOR 维持（verify.md:62） | 保留 + README 首段"kernel here = 纯协议词汇与纯方法" | **是**（合并方案 `:38/:53` 已定 `kernel/`）⇒ 留给合并批次 |
-| **AMB-02** | `build_method/`（`build_method/src/pipeline.rs:55`） | `method` 读作"类型上的函数"；`build` 与 Cargo 同词 | 证实，MAJOR 维持（:63） | 保留 + 一行说明；**模块 `build` → `build_time`** 是合并方案的改名 | **是**（合并方案 `:17`） |
-| **AMB-03** | `run_method/`（`run_method/src/lib.rs:27`） | `run` 与 `cargo run`/入口 `run()` 同词 | 证实，MAJOR 维持（:64） | **留给合并批次**（crate 改名 + `lexicon.rs:28` 的 `RUN_METHOD_CRATE` 四处引用） | **是**（任务书点名的例子） |
+| **AMB-02** | `build_method/`（`build_method/pipeline.rs:55`） | `method` 读作"类型上的函数"；`build` 与 Cargo 同词 | 证实，MAJOR 维持（:63） | 保留 + 一行说明；**模块 `build` → `build_time`** 是合并方案的改名 | **是**（合并方案 `:17`） |
+| **AMB-03** | `run_method/`（`run_method/lib.rs:27`） | `run` 与 `cargo run`/入口 `run()` 同词 | 证实，MAJOR 维持（:64） | **留给合并批次**（crate 改名 + `lexicon.rs:28` 的 `RUN_METHOD_CRATE` 四处引用） | **是**（任务书点名的例子） |
 | **AMB-04** | `plugin-host/`（`plugin-host/src/verifier.rs:10`） | 方案模块名 `plugins` 与 `.xirang/plugins`（`admission.rs:38`）同词反义 | 证实，MAJOR 维持（:65）；**队长"应叫 plugin-runtime"的猜测被证伪** | crate 保留；方案模块名改 `plugin_host` | **是**（合并方案 `:19`） |
 | **AMB-05** | `core/.../tree/registry.rs:18 pub struct Registry` | `registry` 在 Cargo 生态是包索引 | 证实，MAJOR 维持（:66）：修法是**限定/词表登记**，不必强改公开类型 | 写进保留词表 + 文档限定 | 部分（类型名不改） |
 | **AMB-06** | 顶层 `examples/`（`Cargo.toml:2`） | 读者以为 `cargo run --example` | 部分证伪、**降 MINOR**（:67）：根清单是虚拟清单、成员显式列出 | 保留 + README 一行"这里的 `examples/` 是两个示例宿主包，不是 cargo example target" | 否（但 `examples/**` 是 NAM-07 的身份豁免区） |
 | **AMB-07** | `debug_method/`（`debug_method/src/lib.rs:26`） | 与 `debug_assertions` 同词头 | 证实（:77）；合并后 crate 名消失（并入模块 `call_evidence`） | **无需额外动作** | **是**（合并方案 `:42`） |
-| **AMB-08** | bin `xirang-dev` + feature `dev-supervisor`（`studio/src/bin/xirang-dev.rs:1`） | 读者以为它是 studio 的开发版二进制 | 证实（:78）；**已拍板保留**（合并方案 `:24`） | 保留（README 已解释 `required-features`） | **是**（拍板已落文书） |
+| **AMB-08** | bin `xirang-dev` + feature `dev-supervisor`（`studio/bin/xirang-dev.rs:1`） | 读者以为它是 studio 的开发版二进制 | 证实（:78）；**已拍板保留**（合并方案 `:24`） | 保留（README 已解释 `required-features`） | **是**（拍板已落文书） |
 | **AMB-09** | 顶层 `picture/`（`README.md:3`） | 读者按 `assets/`/`images/` 找图 | 证实但**判为优雅问题**（:79） | 保留 + 一句"品牌与界面截图资源"（或移出发现清单） | 否 |
 | **AMB-10** | `docs/ROADMAP.md` 与 `docs/roadmap-1.0.md` | 只差大小写 | 证实，**跨平台 FS 风险**（:80） | 保留 + 加一句"大小写不敏感 FS 上会互覆"；**改名成本高（活文档锚点全覆盖）**，本批只文书 | 否 |
 | **AMB-11** | 内核模块 `syntax` + feature `syntax` | 读者以为解析 `.rs` 文法 | 证实（:81）：同名同物不构成歧义 | 写进词表/共识（不改名） | 否 |
@@ -141,37 +141,37 @@
 | **AMB-13** | 内核模块 `release`（`release/release.rs:9`） | 与 release 构建配置同词 | 同上 | 文书登记 | 否（NAM-07 的 A1 会收平该目录 ⇒ 与 G4b 有文件重叠，**顺序上 G4b 在后**） |
 | **AMB-14** | 内核模块 `requirements`（`requirements/requirements.rs:17`） | 读者按 pip 清单理解 | 同上 | 文书登记 | 否（同上，A1 涉及） |
 | **AMB-15** | 内核模块 `source`（`source/source.rs:23`） | `source` 一名四义（源码/依赖来源/…） | 证实（:82） | 文书登记 + 保留词表 | 否 |
-| **AMB-16** | 类型层 `artifact` 一名四义（`mcp/src/mir.rs:20`） | 插件工件 vs trace 快照 | 证实（verify.md 表内） | 与 NAM-11② 同批：`trace/artifact/` → `snapshot/` | 否 |
-| **AMB-17** | `index` 一名三义（`core/.../tree/index/index.rs:13`、`mcp/src/lib.rs:76`、`Registry::index()`） | 注册树索引 / 源码索引 / crates.io index | 证实（:83） | NAM-11① + 文书 | 否（A1 涉及 `tree/index/`） |
+| **AMB-16** | 类型层 `artifact` 一名四义（`mcp/mir.rs:20`） | 插件工件 vs trace 快照 | 证实（verify.md 表内） | 与 NAM-11② 同批：`trace/artifact/` → `snapshot/` | 否 |
+| **AMB-17** | `index` 一名三义（`core/.../tree/index/index.rs:13`、`mcp/lib.rs:76`、`Registry::index()`） | 注册树索引 / 源码索引 / crates.io index | 证实（:83） | NAM-11① + 文书 | 否（A1 涉及 `tree/index/`） |
 | **AMB-18** | `host` 一名两义（`plugin-host/src/lib.rs:1`） | 宿主应用 vs 插件宿主 | 同上 | 文书登记（README 已分写） | 部分 |
 | **AMB-19** | feature 名与模块/包名重名（`macro/Cargo.toml:20` 等） | 8 个 feature 里 4 个与模块同名 | 证实（:84），并明确 `AGENTS.md` 说"feature 名是公开 API、不要为对齐改名" | **只加 README 对照表 + 一段"同名是有意的"** | **是**（合并方案 `:23`） |
-| **AMB-20** | 13 个公开名"整名就是别处既有词"（`cli/src/lib.rs:94 pub fn main`、`build_method/src/lib.rs:137 pub fn run`、`mcp/src/protocol.rs:71`、`RuntimeCheckSpec::run`（`declaration/runtime_checks.rs:345`）…） | 与 NAM-32/33 同规则（D-5：裸动词只许入口位） | 证实（:85，抽核 4 处行号全中） | 与 NAM-32/33 合并成**一张**登记表，按对象去重（避免同一名字被数两次） | 部分 |
+| **AMB-20** | 13 个公开名"整名就是别处既有词"（`cli/lib.rs:94 pub fn main`、`build_method/lib.rs:137 pub fn run`、`mcp/protocol.rs:71`、`RuntimeCheckSpec::run`（`declaration/runtime_checks.rs:345`）…） | 与 NAM-32/33 同规则（D-5：裸动词只许入口位） | 证实（:85，抽核 4 处行号全中） | 与 NAM-32/33 合并成**一张**登记表，按对象去重（避免同一名字被数两次） | 部分 |
 
 ## 4. 批次切分与派发建议
 
 **切分原则**：① 组内文件不重叠；② 共享文件（`conventions/src/shims.rs`、`AGENTS.md`、`docs/roadmap-1.0.md`）只在尾段动；③ 每组自带 inScope 与验证命令；④ 每组的"红侧"= 该组自己的 `grep` 判据由 >0 变 0。
 
 ### G1 · studio（可并行，纯 studio 文件）
-- **inScope**：`studio/src/studio/app/**`（含 `tests/**`）
+- **inScope**：`studio/studio/app/**`（含 `tests/**`）
 - **条目**：`NAM-01`（剩余：几何→`hot_zones.rs`、编辑器入口→`editor_launch.rs`、`support.rs` shim 去留）、`NAM-12`（`ui/search.rs` 首行）、`NAM-19`（18 个测试文件首行加 covers，**先按现清单重算**）
 - **不做**：`NAM-02`/`NAM-06`（已应用）
 - **顺序**：先 `NAM-01` 的搬函数，再文档两条（避免文档指向移动中的文件）
 - **验证**：`cargo test -p xirang-studio --offline`、`cargo test -p xirang-studio --offline --features prototype-fixtures`、`cargo test -p xirang-conventions --offline`
 
 ### G2 · mcp（可并行，纯 mcp 文件）
-- **inScope**：`mcp/src/**`
+- **inScope**：`mcp/**`
 - **条目**：`NAM-05`（`evidence.rs`→`build_evidence.rs`）、`NAM-22`（`nodes.rs`→`resolve.rs`）、`NAM-11①③`（`index.rs` 命名 + 保留词表）
 - **不做**：`NAM-20`（结构批次）
 - **验证**：`cargo test -p xirang-mcp --offline`
 
 ### G3 · build_method（可并行，纯 build_method 文件）
-- **inScope**：`build_method/src/**`
+- **inScope**：`build_method/**`
 - **条目**：`NAM-17`、`NAM-18`、`NAM-21`（三条一起，只改一次 `lib.rs` 挂载区）、`NAM-04`（**只在本 crate 内**：`cache.rs`→`discovery_cache.rs` + 作用域函数→`scope.rs`；`write_if_changed` 暂留本 crate，跨 crate 搬迁另开条）
 - **不做**：`NAM-30`（与 LG-15 行为同批）
 - **验证**：`cargo test -p xirang-build-method --offline`、`cargo test -p xirang-example-control-button --offline --test registry`（身份红线）
 
 ### G4a · run_method（可并行，但与 G4b 串行——它动 SHIMS 条目）
-- **inScope**：`run_method/src/**` + `docs/roadmap-1.0.md`（NAM-03 的锚点）+ `conventions/src/shims.rs`（**只改 NAM-03/09 两行条目**）
+- **inScope**：`run_method/**` + `docs/roadmap-1.0.md`（NAM-03 的锚点）+ `conventions/src/shims.rs`（**只改 NAM-03/09 两行条目**）
 - **条目**：`NAM-03`（保旧路径 + 新名）、`NAM-08`、`NAM-09`（保旧路径 + 新名）、`NAM-10`（首行声明，不改名）、`NAM-11②`（`artifact/`→`snapshot/`，**含新别名**）、`NAM-23`/`NAM-31`（只记账，无改动）
 - **顺序**：先改文件与挂载 → 再改 SHIMS 条目 → 再改活文档锚点（一次提交内）
 - **验证**：`cargo test -p xirang-run-method --offline --features authoring`、`cargo test --workspace --offline`、`cargo test -p xirang-conventions --offline`
@@ -193,7 +193,7 @@
 | `NAM-07` | 移动文件＝改 `file!()`＝改 `NodeId`（宏注入，grep 不到）；豁免区一动就伤落盘 graft 记录 |
 | `NAM-09` | 该文件本身是 SHIMS 钉住的 shim（`:42`） |
 | `NAM-10` | 改文件名＝改公开路径 ⇒ fix_hint 本身就建议**只写首行声明** |
-| `NAM-11②` | 公开面 `run_method/src/lib.rs:63` 的重导出（建议新增一条 SHIMS 条目保旧路径） |
+| `NAM-11②` | 公开面 `run_method/lib.rs:63` 的重导出（建议新增一条 SHIMS 条目保旧路径） |
 | `NAM-30` | 名字改对≠行为可接受（LG-15 假实现） |
 | `NAM-31` | 命名半已完成；余下是 LG-21 行为 |
 | `NAM-32/34/35/36/37` | 其中多条是 **pub** API（`Registry::find`、`EntryPages::get/remove`、`Release::full`、`parse_*_owned`） |
@@ -220,7 +220,7 @@
 
 | 漂移 | 实证 |
 | --- | --- |
-| `NAM-02` / `NAM-06` **已应用** | `studio/src/studio/app/state/misc.rs`、`studio/src/studio/app/writers.rs` 均已不存在；替代文件 `state/{call_tree_view,reload,overlays}.rs`、`app/write_guard.rs` 在；`b5_studio.rs:114` 有负钉子 |
+| `NAM-02` / `NAM-06` **已应用** | `studio/studio/app/state/misc.rs`、`studio/studio/app/writers.rs` 均已不存在；替代文件 `state/{call_tree_view,reload,overlays}.rs`、`app/write_guard.rs` 在；`b5_studio.rs:114` 有负钉子 |
 | `NAM-01` **部分应用** | `app/project_context.rs` 在、`app/support.rs` 只剩 2 行历史 shim、`app.rs:42/:47` 两个挂载并存 |
 | `NAM-31` **命名半已应用** | `apply_trait_label`（`face_write.rs:207`）在，`apply_trait_contract` **0 命中** |
 | `NAM-23` **已应用** | `plugin-host/src/lazy_wasm.rs:20-23` 已写明"定义本体在 kernel，本别名保留历史路径" |

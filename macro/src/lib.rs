@@ -50,14 +50,10 @@ use xirang_kernel::lexicon;
 use xirang_kernel::registry_core::declaration::FACE_FIELD_ORDER;
 use xirang_kernel::registry_core::syntax::split_face_fields;
 
-use crate::front_end::{error_at, render, splice, split_mirror_fields, split_semicolons};
-use crate::mirror::{Field, mirror_item, punct};
+use crate::front_end::{Field, error_at, punct, render, splice, split_semicolons};
 
 #[path = "front_end.rs"]
 mod front_end;
-#[path = "mirror.rs"]
-mod mirror;
-
 /// Rewrite one face declaration's field list into its accepted order, with
 /// tolerant separators and spanned diagnostics.
 /// 把一条注册面声明的字段列表改写成它接受的顺序，容忍分隔符差异并给出带 span 的诊断。
@@ -109,32 +105,20 @@ pub fn face_rule_or(input: TokenStream) -> TokenStream {
         .map(|token| token.to_string())
         .collect::<String>();
     if owns_registry == "true" {
-        // The canonical sibling path is relative, and the IDE's view of a nested
-        // face is a crate-root shadow — rust-analyzer applies `#[path]` only at
-        // the top level, which is why the shadow exists at all — so `super` is
-        // the crate root there and no `registry_rule` module is in scope. A block
-        // that picks the real path for `rustc` and the caller's fallback for the
-        // IDE keeps the mirror type-correct without changing what `rustc`
-        // compiles; the fallback tokens are spliced in verbatim so their
-        // `$crate` keeps the hygiene the caller gave it.
-        // 规范的同目录路径是相对路径，而嵌套面在 IDE 眼里的视图是 crate 根影子——
-        // rust-analyzer 只在顶层应用 `#[path]`，影子正因此存在——那里 `super` 就是 crate
-        // 根，作用域内没有 `registry_rule` 模块。用一个块为 `rustc` 选真实路径、为 IDE 选
-        // 调用方的兜底值，即可让镜像保持类型正确，同时不改变 `rustc` 编译的东西；兜底 token
-        // 原样拼接，因此它的 `$crate` 保留调用方给的卫生性。
-        // The template parses as a whole; the caller's fallback is spliced in for
-        // the placeholder, so nothing about its tokens is rewritten.
-        // 模板整体可解析；调用方的兜底值被拼进占位符的位置，因此它的 token 一个字节都没有被
-        // 改写。
-        // `let` rather than `use`: the fallback is a struct's associated constant,
-        // and `use` cannot import one. A `let` binding in a const initializer needs
-        // no type annotation, which is what keeps this template free of a type the
-        // resolver would have to name.
-        // 用 `let` 而不是 `use`：兜底值是结构体的关联常量，而 `use` 导不进来。const 初始化
-        // 器里的 `let` 绑定不需要类型标注，这正是让模板不必说出一个解析器无从命名的类型的原因。
-        let template: Tokens = "{ #[cfg(not(rust_analyzer))] let __xirang_rule = super::registry_rule::REGISTRATION_RULE; #[cfg(rust_analyzer)] let __xirang_rule = __XIRANG_IDE_FALLBACK; __xirang_rule }"
-            .parse()
-            .expect("the derived rule template is static");
+        // The IDE arm this used to carry is gone with the mirror (step ⑤ of A2e): the cfg splice existed
+        // only so an editor's crate-root shadow could still compile a nested face's derived rule path.
+        // `rustc` has always taken the real path, so removing the arm changes nothing it compiles.
+        // 它过去带的 IDE 那一支已随镜像一并退役（A2e 第⑤步）：那条 cfg 拼接只为让编辑器看到的 crate 根
+        // 影子仍能编译嵌套面的推导规则路径。`rustc` 一直走真实路径，因此去掉该支不改变它编译的任何东西。
+        // A `let` rather than a `use`: the binding is a struct's associated constant, and `use` cannot
+        // import one. A `let` binding in a const initializer needs no type annotation, which is what keeps
+        // this template free of a type the resolver would have to name.
+        // 用 `let` 而不是 `use`：绑定的是结构体的关联常量，而 `use` 导不进来。const 初始化器里的 `let`
+        // 绑定不需要类型标注，这正是让模板不必说出一个解析器无从命名的类型的原因。
+        let template: Tokens =
+            "{ let __xirang_rule = super::registry_rule::REGISTRATION_RULE; __xirang_rule }"
+                .parse()
+                .expect("the derived rule template is static");
         return splice(template, "__XIRANG_IDE_FALLBACK", &fallback).into();
     }
     fallback.into()
@@ -298,7 +282,6 @@ pub(crate) fn normalise(input: Tokens) -> Result<Tokens, Tokens> {
         fields.push(Field {
             key: name.to_string(),
             span: name.span(),
-            value_span: tokens.get(1).map_or_else(|| name.span(), TokenTree::span),
             tokens: tokens.into_iter().collect(),
         });
     }
@@ -361,7 +344,7 @@ pub(crate) fn normalise(input: Tokens) -> Result<Tokens, Tokens> {
         ));
     }
 
-    let mut output = mirror_item(&fields);
+    let mut output = Tokens::new();
     output.extend([
         punct(':', Spacing::Joint),
         punct(':', Spacing::Alone),
@@ -381,23 +364,50 @@ pub(crate) fn normalise(input: Tokens) -> Result<Tokens, Tokens> {
     Ok(output)
 }
 
-/// The editor-only field mirror for a declaration the caller already split.
-/// 为调用方已切分好的声明生成仅供编辑器的字段镜像。
-///
-/// The generated alias reaches this through `face_fields_mirror!`, because its
-/// token tree is opaque to an editor and the alias may be written with `;` or in
-/// any order. Unlike the full front end it tolerates a field the author has not
-/// finished (`kind:` with no value) and never re-dispatches to the runtime.
-/// 生成的别名通过 `face_fields_mirror!` 走到这里：它的 token 树对编辑器不透明，而且别名
-/// 可能用 `;` 或任意顺序书写。与完整前端不同，它容忍作者还没写完的字段（`kind:` 后面
-/// 还没有值），也绝不回派到运行期。
+#[path = "native.rs"]
+mod native;
+
+/// Register a native Rust Soil const without an editor-only mirror.
+/// 注册原生 Rust Soil 常量，不生成编辑器专用镜像。
+#[proc_macro_attribute]
+pub fn soil(args: TokenStream, input: TokenStream) -> TokenStream {
+    let input = Tokens::from(input);
+    match native::expand(args.into(), input.clone()) {
+        Ok(output) => output.into(),
+        Err(error) => {
+            // Keep the real incomplete declaration visible to ordinary Rust completion.
+            // 保留真实的未完成声明，让普通 Rust 补全仍能看到它。
+            let diagnostic = error.to_compile_error();
+            quote::quote!(#input #diagnostic).into()
+        }
+    }
+}
+
+/// Compatibility entry for the original `xirang_macro::face` attribute.
+/// 原 `xirang_macro::face` 属性的兼容入口。
+#[doc(hidden)]
+#[proc_macro_attribute]
+pub fn face(args: TokenStream, input: TokenStream) -> TokenStream {
+    soil(args, input)
+}
+
+/// Check trait implementations and return their registration labels.
+/// 检查 trait 实现并返回注册标签。
 #[proc_macro]
-pub fn face_fields_mirror(input: TokenStream) -> TokenStream {
-    match split_mirror_fields(Tokens::from(input)) {
-        Ok(fields) => mirror_item(&fields).into(),
-        // A declaration this cannot split is one the runtime ladder will report
-        // on its own; the mirror stays silent rather than adding a second error.
-        // 切分不了的声明由运行期阶梯自己报错；镜像保持沉默，不再添一个错误。
-        Err(_) => Tokens::new().into(),
+pub fn contracts(input: TokenStream) -> TokenStream {
+    match xirang_kernel::syntax::contract_paths(input.into()) {
+        Ok((ty, paths)) => {
+            let labels = paths
+                .iter()
+                .map(|p| p.segments.last().unwrap().ident.to_string())
+                .collect::<Vec<_>>();
+            quote::quote!({
+                fn __check<T: #(#paths)+*>() {}
+                let _ = __check::<#ty>;
+                &[#(#labels),*]
+            })
+            .into()
+        }
+        Err(error) => error.to_compile_error().into(),
     }
 }

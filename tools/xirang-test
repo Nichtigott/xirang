@@ -46,14 +46,31 @@ run_face() {
   shift
   list="$work/$label.list"
   log="$work/$label.log"
+  face_started=$(date +%s)
 
+  # `--no-fail-fast` on both invocations is load-bearing, not tidiness: cargo's default stops at the
+  # first failing **target**, so a failing crate near the front of the workspace (this checkout's
+  # `conventions` crate) used to end the face after 167 of 1053 tests while the table still printed a
+  # number — "listed" was being read as "ran", which is exactly what this gate exists to prevent.
+  # 两次调用都带 `--no-fail-fast` 是关键而不是整洁：cargo 默认会在第一个失败的 **target** 处停下，因此
+  # 工作区前部一个失败的 crate（本检出的 `conventions`）过去会让这个面在 1053 条里只跑完 167 条，而表里
+  # 仍印出一个数——"被列出"被当成了"跑过"，而那正是本门禁要防的事。
+  # The nesting census walks and parses every source file; it is a property of the sources, not of a
+  # feature combination, so one face runs it and the others say why they skipped. Without this the
+  # three whole-workspace faces each paid the walk (measured 2026-10-28: 1145/1047/698 s).
+  # 嵌套普查遍历并解析每个源文件；它是源码的性质而不是特性组合的性质，因此一个面跑它、其余面说明为何
+  # 跳过。缺了这一步，三个全工作区面各付一次遍历（2026-10-28 实测 1145/1047/698 秒）。
+  case "$label" in
+    default) census_flag=1 ;;
+    *) census_flag=0 ;;
+  esac
   list_exit=0
-  cargo test "$@" --offline -- --list >"$list" 2>"$work/$label.list.err" || list_exit=$?
+  XIRANG_NESTING_CENSUS=$census_flag cargo test --no-fail-fast "$@" --offline -- --list >"$list" 2>"$work/$label.list.err" || list_exit=$?
   listed=$(grep -c ': test$' "$list" || true)
   [ -n "$listed" ] || listed=0
 
   run_exit=0
-  cargo test "$@" --offline >"$log" 2>&1 || run_exit=$?
+  XIRANG_NESTING_CENSUS=$census_flag cargo test --no-fail-fast "$@" --offline >"$log" 2>&1 || run_exit=$?
   # libtest prints `test result: ok. 147 passed; 0 failed; …`, so the counters carry the
   # semicolon. Matching the bare word silently reported `0 passed` for every face.
   # libtest 打印的是 `test result: ok. 147 passed; 0 failed; …`，因此计数词带着分号。
@@ -70,7 +87,13 @@ run_face() {
   passed=${totals%% *}
   failed=${totals##* }
 
-  printf '%s|%s|%s|%s|%s\n' "$label" "$listed" "$passed" "$failed" "$run_exit" \
+  # The face's wall time, recorded so "why does this gate take so long" is answered by the gate
+  # itself rather than by a stopwatch run afterwards (measured 2026-10-18: 711 s of test execution
+  # across the ten faces, of which `all-features` alone is 208 s).
+  # 这个面的墙钟时间。记下来之后，"这道门禁为什么这么久"由门禁自己回答，而不必事后再掐秒表
+  # （2026-10-18 实测：十个面合计 711 s 测试执行，其中 `all-features` 一面就占 208 s）。
+  elapsed=$(( $(date +%s) - face_started ))
+  printf '%s|%s|%s|%s|%s|%s\n' "$label" "$listed" "$passed" "$failed" "$run_exit" "$elapsed" \
     >>"$work/table"
   if [ "$list_exit" -ne 0 ] || [ "$run_exit" -ne 0 ] || [ "$failed" -ne 0 ]; then
     exit_code=1
@@ -226,10 +249,11 @@ done <"$work/rust-files"
 
 # ---- report -----------------------------------------------------------------
 # ---- 报告 -------------------------------------------------------------------
-echo "face                                      listed   passed   failed   exit"
-while IFS='|' read -r label listed passed failed run_exit; do
-  printf '%-40s %8s %8s %8s %6s\n' "$label" "$listed" "$passed" "$failed" "$run_exit"
+echo "face                                      listed   passed   failed   exit   seconds"
+while IFS='|' read -r label listed passed failed run_exit elapsed; do
+  printf '%-40s %8s %8s %8s %6s %9s\n' "$label" "$listed" "$passed" "$failed" "$run_exit" "$elapsed"
 done <"$work/table"
+echo "  (the total is the sum of these; a chain also spends time in clippy and the conventions gates)"
 
 # A face that ran nothing is a face that proved nothing, and it reads exactly like a green one:
 # libtest prints `test result: ok. 0 passed; 0 failed`, and the conclusion line already said OK
@@ -244,7 +268,7 @@ done <"$work/table"
 # 忘掉的规则。今天最低的面跑 155 条，因此这条不拒绝任何合法存在的东西——新检查必须先对着干净树跑，因为假阳性正是
 # 让检查被关掉的原因。
 empty_faces=0
-while IFS='|' read -r label listed passed failed run_exit; do
+while IFS='|' read -r label listed passed failed run_exit _elapsed; do
   if [ "$passed" -eq 0 ]; then
     empty_faces=$((empty_faces + 1))
     printf '  %s: listed %s, ran 0 — `0 passed` means nothing ran, not "nothing failed"\n' \

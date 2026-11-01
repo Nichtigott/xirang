@@ -64,6 +64,43 @@ mod tests {
             "/elsewhere/face.rs"
         );
         assert_eq!(manifest_relative_source("/home/me/proj", ""), "");
+        // A face compiled by another package arrives as an absolute path (a partition fragment mounts
+        // the host's file that way), and the plan's identity is the owning package's `src/` tail — so
+        // the tail is what has to come back, or the fragment's face hashes where the checkout happens
+        // to live. Measured: a fragment's `widget` face hashed `/tmp/…/app/src/…` and disagreed with
+        // the plan, failing `assert_static_identity` with `E0080`.
+        // 由另一个包编译的面是以绝对路径到来的（分区碎片就是这样挂宿主的文件的），而计划里的身份是
+        // **属主包** `src/` 之后那一段——所以必须取回那一段，否则碎片的那个面哈希的是检出恰好在哪。
+        // 实测：碎片里那个 `widget` 面哈希了 `/tmp/…/app/src/…`，与计划不一致，`assert_static_identity`
+        // 以 `E0080` 失败。
+        assert_eq!(
+            manifest_relative_source(
+                "/tmp/build/crates/app-widgets",
+                "/tmp/build/app/src/panel/object/frame/object/widget/widget.rs"
+            ),
+            "panel/object/frame/object/widget/widget.rs"
+        );
+        // A **relative** spelling is not a mount: rustc hands one to a crate compiled inside this
+        // workspace, and rewriting it would change identities that were never in question (measured:
+        // `toolchain/src/call_evidence/tests/collector_integration.rs` must stay itself).
+        // **相对**拼法不是挂载：它是本工作区内编译的 crate 从 rustc 那里拿到的拼法，改写它会动到本来没有
+        // 疑问的身份（实测：`toolchain/src/call_evidence/tests/collector_integration.rs` 必须原样）。
+        assert_eq!(
+            manifest_relative_source(
+                "/tmp/build/crates/app-widgets",
+                "toolchain/src/call_evidence/tests/collector_integration.rs"
+            ),
+            "toolchain/src/call_evidence/tests/collector_integration.rs"
+        );
+        // The host itself may live under a directory named `src`; the nearest `src/` is the owner's.
+        // 宿主自己可能住在叫 `src` 的目录下；**最近**的那个 `src/` 才是属主的。
+        assert_eq!(
+            manifest_relative_source(
+                "/tmp/build/crates/app-widgets",
+                "/home/me/src/proj/src/panel/frame.rs"
+            ),
+            "panel/frame.rs"
+        );
     }
 
     /// Windows reports the manifest directory with backslashes while the build

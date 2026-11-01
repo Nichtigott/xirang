@@ -2,7 +2,7 @@
 
 **对象**：作者 `studio-auditor` 交付的 B4-studio 批次——9 条修复
 （`LGC-LG-50`、`STU-S-02/03/05/08`、`STU-C-01/02/03/04`）、新增钉子
-`studio/src/studio/app/tests/b4_studio.rs`（6 条），以及"第 10 条 `STU-S-06` 需内核入口、
+`studio/studio/app/tests/b4_studio.rs`（6 条），以及"第 10 条 `STU-S-06` 需内核入口、
 本轮不修"的结论。
 **验证者**：`logic-adversary`（t35，非作者），装置**全部自建**：8 条行为断言 + 8 处变异反证，
 都跑在 `/tmp/t35-verify`（`tar` 副本，`CARGO_TARGET_DIR=/tmp/t35-target`）里；本检出只读，
@@ -11,18 +11,18 @@
 **被验对象的哈希（跑门禁前后逐字节相同，`diff` 为空）**：
 
 ```
-102b3b108db0cbeb5d5a416c73980b6e  studio/src/studio/app/writers.rs
-705e2ef598c8d208447adc13a344929d  studio/src/studio/app/search_queries.rs
-f32bbf6a3f7d39ff82f22a646a600612  studio/src/studio/app/support.rs
-5568563b1ebc34367dadf339b89858d1  studio/src/studio/app/navigation.rs
-70ffece4aa2d3e117ed98fa0b30f38ff  studio/src/studio/app/lifecycle.rs
-3a465aabf607152493353378d338a8db  studio/src/studio/app/graft.rs
-b1c12e9a2153549afca1f36a14843d8a  studio/src/studio/app/trace.rs
-faca8e1e28e6b6ec98d3e97ddc0bf283  studio/src/studio/app/mutations.rs
-e087bfcb849e8f592322e261bb1c5260  studio/src/studio/app/app.rs
-31fb35b803ce9646192133d766111816  studio/src/studio/app/state/search.rs
-914aad0987debace06cd06af705f304a  studio/src/studio/app/tests/b4_studio.rs
-bae1696fe2a611cbc94d5a05fe2efbad  studio/src/studio/ui/panels.rs
+102b3b108db0cbeb5d5a416c73980b6e  studio/studio/app/writers.rs
+705e2ef598c8d208447adc13a344929d  studio/studio/app/search_queries.rs
+f32bbf6a3f7d39ff82f22a646a600612  studio/studio/app/support.rs
+5568563b1ebc34367dadf339b89858d1  studio/studio/app/navigation.rs
+70ffece4aa2d3e117ed98fa0b30f38ff  studio/studio/app/lifecycle.rs
+3a465aabf607152493353378d338a8db  studio/studio/app/graft.rs
+b1c12e9a2153549afca1f36a14843d8a  studio/studio/app/trace.rs
+faca8e1e28e6b6ec98d3e97ddc0bf283  studio/studio/app/mutations.rs
+e087bfcb849e8f592322e261bb1c5260  studio/studio/app/app.rs
+31fb35b803ce9646192133d766111816  studio/studio/app/state/search.rs
+914aad0987debace06cd06af705f304a  studio/studio/app/tests/b4_studio.rs
+bae1696fe2a611cbc94d5a05fe2efbad  studio/studio/ui/panels.rs
 bf46752b4deb2039ebc55dc7255ed552  core/src/registry_core/source/items.rs
 7dcfa50f1761fb8e871cf46a97ce5686  core/src/registry_core/source/source.rs
 ```
@@ -102,7 +102,7 @@ mine_the_renderer_draws_every_row_of_the_list
   `pub(crate) fn detail_rows`、`pub(crate) type SearchMemo`、`pub(crate) use search::SearchMemo`、
   `pub(super) fn rejudge_evidence`、以及 `panels.rs` 里的 `pub(super)` 项。作者的主张在本批范围内
   **成立**。
-- **全工作树 diff：另有 3 处新增公开面，都不属本批**：`build_method/src/face_view.rs` 的
+- **全工作树 diff：另有 3 处新增公开面，都不属本批**：`build_method/face_view.rs` 的
   `pub fn face_views_and_unreadable`、`core/src/registry_core/authoring/parse/rules.rs` 的
   `pub fn try_parse_requirements_owned`（t32 的 LG-28 严格兄弟入口）、以及
   `core/src/registry_core/source/source.rs:23` 的 `pub use items::*;`（t36 的 `item_symbols`）。
@@ -123,7 +123,7 @@ mine_the_renderer_draws_every_row_of_the_list
    `pub fn item_symbols(source: &str) -> Vec<SourceItem>`（新文件，`git status` 为 `??`，mtime
    **21:09**），在 `source.rs:22-23` 挂载并 `pub use items::*;` 导出 ⇒ 可达路径
    `xirang::source::item_symbols`（正是 finding 的 fix_hint 要的那份"声明/符号清单"）。
-2. **Studio 侧前缀词表已 0 残留**：`studio/src/studio/app/search_queries.rs` 里旧的关键字前缀表
+2. **Studio 侧前缀词表已 0 残留**：`studio/studio/app/search_queries.rs` 里旧的关键字前缀表
    0 命中（`grep -c 'strip_prefix("pub\|"struct" | "enum"\|INTRODUCERS'` → 0）；该文件（mtime
    **21:30**，晚于作者 20:44 的钉子）第 7 行 `use xirang_run_method::source::item_symbols;`，
    `source_rows_for_text` 直接 `for item in item_symbols(text)` 渲染（`:122`），注释明写"声明词表
@@ -175,7 +175,7 @@ mine_the_renderer_draws_every_row_of_the_list
 **并发红的作废与重跑记录**（都落在本批文件之外，按队规作废）：
 
 1. 首轮（21:56:42）：clippy/conventions 101 —— `conventions/src/release_workflow.rs:117 cannot find
-   release_action_pin in crate`（他人在飞）；fmt 1 —— `mcp/src/apply_tests.rs`、`mcp/src/mir_tests.rs`。
+   release_action_pin in crate`（他人在飞）；fmt 1 —— `mcp/apply_tests.rs`、`mcp/mir_tests.rs`。
 2. 22:02:43：clippy/conventions 仍 101（`doc list item without indentation`，同一批在飞文件）；fmt 已 0。
 3. 22:06:21：三条全部 0（clippy / conventions / fmt）。
 4. 22:07:12：workspace 101 与 conventions 101 —— `size::size_tests::the_size_ceiling_holds_except_for_

@@ -1,0 +1,1232 @@
+#!/usr/bin/env python3
+"""A shared, source-level call-graph matrix for XiRang and CodeGraph.
+同一组源码级调用图夹具上的 XiRang / CodeGraph 对照矩阵。
+
+What this measures, and what it does not
+----------------------------------------
+This is a **deterministic tool-output comparison**, not a model or agent benchmark. It writes one
+small fixture per case, asks each tool the same question, and scores the *answer content* against
+truth that comes from the language's own semantics — never from either tool's output.
+
+Measured per case, per side:
+
+* `claim`      — direct call edges the answer states as definite `caller -> callee`. A synthetic
+                 dispatch edge is not a call-site claim and is recorded separately (`synthetic`):
+                 it is attached to the interface declaration, not the call site, and one side
+                 having such a feature is not the other side's error.
+* `recall`     — fraction of the case's true definite edges that the answer states.
+* `precision`  — hits / claims about the case's asked-about symbols. Claims about other callees of
+                 the same function are not scored: a `callees` answer lists everything the caller
+                 calls, and the fixture's truth pins only the edges under test. An `ambiguous`
+                 claim (a bare leaf where two owners compete) counts against precision but not as
+                 a false certainty.
+* `forbidden` — claims the language semantics do not support (a dynamic target, an overload, a
+                 replaced binding, a virtual override). This is the direction a reader acts on, so
+                 it is counted separately from a miss.
+* `unknown`   — of the case's call sites whose target is *not* statically known, the fraction for
+                 which the answer made no forbidden claim.
+* `candidates`— fraction of the true candidate implementations named in the part of the answer that
+                 resolves the unknown call site (XiRang: the `unresolved:` lines of the queried
+                 caller; CodeGraph: the call entries of the queried caller).
+* `must_find` — definition rows (qualified name, file, line) the answer must contain, for rows the
+                 issued queries cover. This catches a template pattern reported at the wrong line,
+                 or two same-named types collapsed into one identity.
+* `steps`     — tool invocations issued for the case's question set. XiRang accepts up to eight
+                 `function` names in one call, so a two-symbol question is one invocation;
+                 CodeGraph's `callers`/`callees` take one symbol each, so it is two. Indexing
+                 (`codegraph init`) is setup, not a query step.
+* `bytes`     — total stdout bytes of those invocations. A context-cost proxy, not a token claim:
+                 no model is involved, so no token number is invented.
+
+Truth is written by hand from the language semantics of each fixture (what a correct tool must say),
+and each case names the reason. CodeGraph's `references` edges are not calls and are ignored. Where
+one side has no concept at all (CodeGraph has no candidate set), the dimension is `null`, not zero:
+a missing concept is not a wrong answer.
+
+Usage
+-----
+    tools/xirang-callgraph-matrix                 # human summary
+    tools/xirang-callgraph-matrix --json-out docs/callgraph-matrix-YYYY-MM-DD.json
+    tools/xirang-callgraph-matrix --strict        # non-zero when XiRang claims a forbidden edge,
+                                                  # misses a true edge, or loses a covered
+                                                  # `must_find` row
+    tools/xirang-callgraph-matrix --only rust-dynamic,cpp-virtual
+"""
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+MCP = ROOT / "target/debug/xirang-mcp"
+CG = pathlib.Path(
+    os.environ.get(
+        "CODEGRAPH_BIN", "/home/nich/.codegraph/versions/v1.6.1/bin/codegraph"
+    )
+)
+
+# ---------------------------------------------------------------------------------------------
+# Fixtures and truth
+# ---------------------------------------------------------------------------------------------
+#
+# Layout of one case:
+#   name        stable id (also the fixture directory name)
+#   lang        rust | cpp | python
+#   files       relative path -> source text
+#   ask_callee  the definition whose *callers* the answer must give
+#   ask_caller  the definition whose *callees* / unknown-call resolution the answer must give
+#   defs        every definition the case reasons about: (qualified, file, line). This is also how
+#               a side's file:line entries are canonicalised, so the matrix reads the names the
+#               fixture declares instead of guessing them.
+#   claim       true definite edges `(caller, callee)` — the recall denominator
+#   forbid      edges the language semantics do not support — a claim here is a false certainty
+#   mention     candidate implementations the answer must name where it resolves the unknown call
+#   find        definition rows the answer must contain — (qualified, file, line), a subset of defs
+#   unknown_site  true when the call site's target is not statically knowable at all (dynamic
+#               dispatch, a function pointer, `getattr`, a replaced binding), so unknown-rate
+#               honesty has something to measure
+#   note        why the truth above is what it is
+CASES = [
+    {
+        "name": "rust-same-name",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub struct Entry;\n"
+                "pub struct Store;\n"
+                "impl Entry { pub fn new() -> Self { Self } }\n"
+                "impl Store { pub fn new() -> Self { Self } }\n"
+                "pub fn caller() { Entry::new(); }\n"
+            ),
+        },
+        "ask_callee": "Entry::new",
+        "ask_caller": "caller",
+        "defs": [
+            ("Entry::new", "src/lib.rs", 3),
+            ("Store::new", "src/lib.rs", 4),
+            ("caller", "src/lib.rs", 5),
+        ],
+        "claim": [("caller", "Entry::new")],
+        "forbid": [("caller", "Store::new")],
+        "mention": [],
+        "find": [("Entry::new", "src/lib.rs", 3)],
+        "note": "the call writes `Entry::new`; `Store::new` is a different owner and must stay out",
+    },
+    {
+        "name": "rust-dynamic",
+        "unknown_site": True,
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub trait Runner { fn run(&self); }\n"
+                "pub struct Fast;\n"
+                "pub struct Slow;\n"
+                "impl Runner for Fast { fn run(&self) {} }\n"
+                "impl Runner for Slow { fn run(&self) {} }\n"
+                "pub fn caller(value: &dyn Runner) { value.run(); }\n"
+            ),
+        },
+        "ask_callee": "Fast::run",
+        "ask_caller": "caller",
+        "defs": [
+            ("Fast::run", "src/lib.rs", 4),
+            ("Slow::run", "src/lib.rs", 5),
+            ("caller", "src/lib.rs", 6),
+        ],
+        "claim": [],
+        "forbid": [("caller", "Fast::run"), ("caller", "Slow::run")],
+        "mention": ["Fast::run", "Slow::run"],
+        "find": [],
+        "note": (
+            "a trait-object call has no statically known implementation; naming either impl is "
+            "false certainty. CodeGraph models interface dispatch at the trait declaration, which "
+            "is recorded as a synthetic edge, not as a call-site claim"
+        ),
+    },
+    {
+        "name": "rust-fn-pointer",
+        "unknown_site": True,
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub fn alpha() {}\n"
+                "pub fn caller(action: fn()) { action(); }\n"
+            ),
+        },
+        "ask_callee": "alpha",
+        "ask_caller": "caller",
+        "defs": [("alpha", "src/lib.rs", 1), ("caller", "src/lib.rs", 2)],
+        "claim": [],
+        "forbid": [("caller", "alpha")],
+        "mention": [],
+        "find": [],
+        "note": "the callee is a parameter; `alpha` is never named at the call site",
+    },
+    {
+        "name": "rust-macro",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub fn normalize(x: i32) -> i32 { x }\n"
+                "pub fn caller() { assert_eq!(normalize(1), 1); }\n"
+            ),
+        },
+        "ask_callee": "normalize",
+        "ask_caller": "caller",
+        "defs": [("normalize", "src/lib.rs", 1), ("caller", "src/lib.rs", 2)],
+        "claim": [("caller", "normalize")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "the macro's tokens name `normalize`, and the call really happens when it expands",
+    },
+    {
+        "name": "rust-generic",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub fn identity<T>(x: T) -> T { x }\n"
+                "pub fn caller() { let _ = identity(1); }\n"
+            ),
+        },
+        "ask_callee": "identity",
+        "ask_caller": "caller",
+        "defs": [("identity", "src/lib.rs", 1), ("caller", "src/lib.rs", 2)],
+        "claim": [("caller", "identity")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "a generic function called by name; the callee identity does not depend on the instantiation",
+    },
+    {
+        "name": "rust-cross-module",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": ("mod a;\npub fn caller() { a::Entry::make(); }\n"),
+            "src/a.rs": ("pub struct Entry;\nimpl Entry { pub fn make() -> Self { Self } }\n"),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [("Entry::make", "src/a.rs", 2), ("caller", "src/lib.rs", 2)],
+        "claim": [("caller", "Entry::make")],
+        "forbid": [],
+        "mention": [],
+        "find": [("Entry::make", "src/a.rs", 2)],
+        "note": "the definition lives in another module file; the call writes the owner path",
+    },
+    {
+        "name": "rust-typed-receiver",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub struct Fast;\n"
+                "impl Fast { pub fn run(&self) {} }\n"
+                "pub fn caller(fast: Fast) { fast.run(); }\n"
+            ),
+        },
+        "ask_callee": "Fast::run",
+        "ask_caller": "caller",
+        "defs": [("Fast::run", "src/lib.rs", 2), ("caller", "src/lib.rs", 3)],
+        "claim": [("caller", "Fast::run")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "the receiver's type is written in the parameter list, so the syntax states the owner; a call on it is a definite edge",
+    },
+    {
+        "name": "rust-type-path-call",
+        "lang": "rust",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "src/lib.rs": (
+                "pub struct Fast;\n"
+                "impl Fast { pub fn run(&self) {} }\n"
+                "pub fn caller(fast: Fast) { Fast::run(&fast); }\n"
+            ),
+        },
+        "ask_callee": "Fast::run",
+        "ask_caller": "caller",
+        "defs": [("Fast::run", "src/lib.rs", 2), ("caller", "src/lib.rs", 3)],
+        "claim": [("caller", "Fast::run")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "the same target written as a type path instead of a method call",
+    },
+    {
+        "name": "cpp-overload",
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "fair.cpp": (
+                "struct Entry { static Entry make(int); static Entry make(); };\n"
+                "Entry Entry::make(int) { return Entry{}; }\n"
+                "Entry Entry::make() { return Entry{}; }\n"
+                "void caller() { Entry::make(1); }\n"
+            ),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [("Entry::make", "fair.cpp", 2), ("caller", "fair.cpp", 4)],
+        "claim": [("caller", "Entry::make(int)")],
+        "forbid": [("caller", "Entry::make")],
+        "mention": [],
+        "find": [],
+        "note": "clang resolved the call to one overload; the signature keeps the two identities apart. Claiming the bare name does not say which overload, so it is still recorded as forbidden",
+    },
+    {
+        "name": "cpp-template-pattern",
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "t.cpp": (
+                "template<typename T> T pick(T x) { return x; }\n"
+                "void caller() { pick(1); }\n"
+            ),
+        },
+        "ask_callee": "pick",
+        "ask_caller": "caller",
+        "defs": [("pick", "t.cpp", 1), ("pick<int>", "t.cpp", 1), ("caller", "t.cpp", 2)],
+        "claim": [("caller", "pick<int>")],
+        "forbid": [("caller", "pick")],
+        "mention": [],
+        "find": [("pick", "t.cpp", 1)],
+        "note": "`pick(1)` instantiates `pick<int>`; the pattern itself is not what runs, and its line is 1",
+    },
+    {
+        "name": "cpp-template-instance",
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "t.cpp": (
+                "template<typename T> T pick(T x) { return x; }\n"
+                "struct Widget {};\n"
+                "template<> Widget pick<Widget>(Widget w) { return w; }\n"
+                "void caller() { pick(1); }\n"
+                "void caller2() { pick(Widget{}); }\n"
+            ),
+        },
+        "ask_callee": "pick",
+        "ask_caller": "caller",
+        "defs": [
+            ("pick", "t.cpp", 1),
+            ("pick<int>", "t.cpp", 1),
+            ("pick<Widget>", "t.cpp", 3),
+            ("caller", "t.cpp", 4),
+            ("caller2", "t.cpp", 5),
+        ],
+        "claim": [("caller", "pick<int>"), ("caller2", "pick<Widget>")],
+        "forbid": [("caller", "pick"), ("caller2", "pick")],
+        "mention": [],
+        "find": [("pick<Widget>", "t.cpp", 3)],
+        "note": "an implicit instantiation and an explicit specialization are different targets; collapsing both onto the pattern is false certainty",
+    },
+    {
+        "name": "cpp-cross-tu",
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "provider.cpp": "void provider_hit() {}\n",
+            "consumer.cpp": ("void provider_hit();\nvoid caller() { provider_hit(); }\n"),
+        },
+        "ask_callee": "provider_hit",
+        "ask_caller": "caller",
+        "defs": [("provider_hit", "provider.cpp", 1), ("caller", "consumer.cpp", 2)],
+        "claim": [("caller", "provider_hit")],
+        "forbid": [],
+        "mention": [],
+        "find": [("provider_hit", "provider.cpp", 1)],
+        "note": "one definition in the package's other translation unit; the linker fixes the target",
+    },
+    {
+        "name": "cpp-virtual",
+        "unknown_site": True,
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "virt.cpp": (
+                "struct Base { virtual void run(); };\n"
+                "struct Fast : Base { void run() override; };\n"
+                "struct Slow : Base { void run() override; };\n"
+                "void Base::run() {}\n"
+                "void Fast::run() {}\n"
+                "void Slow::run() {}\n"
+                "void caller(Base& base) { base.run(); }\n"
+            ),
+        },
+        "ask_callee": "Fast::run",
+        "ask_caller": "caller",
+        "defs": [
+            ("Base::run", "virt.cpp", 4),
+            ("Fast::run", "virt.cpp", 5),
+            ("Slow::run", "virt.cpp", 6),
+            ("caller", "virt.cpp", 7),
+        ],
+        "claim": [],
+        "forbid": [("caller", "Base::run"), ("caller", "Fast::run"), ("caller", "Slow::run")],
+        "mention": ["Base::run", "Fast::run", "Slow::run"],
+        "find": [],
+        "note": "a virtual call through a reference has no statically known override; all overrides are candidates, so claiming the statically declared method is false certainty",
+    },
+    {
+        "name": "cpp-namespace",
+        "lang": "cpp",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "ns.cpp": (
+                "namespace shop { struct Entry { static Entry make(); }; Entry Entry::make() { return Entry{}; } }\n"
+                "namespace admin { struct Entry { static Entry make(); }; Entry Entry::make() { return Entry{}; } }\n"
+                "void caller() { shop::Entry::make(); }\n"
+            ),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [
+            ("shop::Entry::make", "ns.cpp", 1),
+            ("admin::Entry::make", "ns.cpp", 2),
+            ("caller", "ns.cpp", 3),
+        ],
+        "claim": [("caller", "shop::Entry::make")],
+        "forbid": [("caller", "admin::Entry::make")],
+        "mention": [],
+        "find": [("shop::Entry::make", "ns.cpp", 1), ("admin::Entry::make", "ns.cpp", 2)],
+        "note": "the same class name in two namespaces is two identities; the call writes which one",
+    },
+    {
+        "name": "python-alias",
+        "lang": "python",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "fair.py": (
+                "class Entry:\n"
+                "    def make(self):\n"
+                "        return Entry()\n"
+                "from models import Entry as E\n"
+                "def caller():\n"
+                "    return E.make()\n"
+            ),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [("Entry::make", "fair.py", 2), ("caller", "fair.py", 5)],
+        "claim": [("caller", "Entry::make")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "an import alias names the same class; the call resolves through the alias",
+    },
+    {
+        "name": "python-getattr",
+        "unknown_site": True,
+        "lang": "python",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "fair.py": (
+                "def run():\n"
+                "    return 1\n"
+                "def caller(obj):\n"
+                '    return getattr(obj, "run")()\n'
+            ),
+        },
+        "ask_callee": "run",
+        "ask_caller": "caller",
+        "defs": [("run", "fair.py", 1), ("caller", "fair.py", 3)],
+        "claim": [],
+        "forbid": [("caller", "run")],
+        "mention": [],
+        "find": [],
+        "note": "`getattr` resolves the attribute at run time; the module-level `run` is not named at the call site",
+    },
+    {
+        "name": "python-monkeypatch",
+        "unknown_site": True,
+        "lang": "python",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "fair.py": (
+                "class Entry:\n"
+                "    def make(self):\n"
+                "        return 1\n"
+                "def fake(self):\n"
+                "    return 2\n"
+                "Entry.make = fake\n"
+                "def caller():\n"
+                "    return Entry.make()\n"
+            ),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [("Entry::make", "fair.py", 2), ("fake", "fair.py", 4), ("caller", "fair.py", 7)],
+        "claim": [],
+        "forbid": [("caller", "Entry::make")],
+        "mention": ["fake"],
+        "find": [],
+        "note": "the module-level assignment replaces the class attribute before `caller` runs; the original body is not the target",
+    },
+    {
+        "name": "python-decorator",
+        "lang": "python",
+        "files": {
+            "Cargo.toml": '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n',
+            "fair.py": (
+                "def deco(fn):\n"
+                "    return fn\n"
+                "class Entry:\n"
+                "    @deco\n"
+                "    def make(self):\n"
+                "        return 1\n"
+                "def caller():\n"
+                "    return Entry.make()\n"
+            ),
+        },
+        "ask_callee": "Entry::make",
+        "ask_caller": "caller",
+        "defs": [("Entry::make", "fair.py", 5), ("caller", "fair.py", 7)],
+        "claim": [("caller", "Entry::make")],
+        "forbid": [],
+        "mention": [],
+        "find": [],
+        "note": "the decorator may replace the binding, so the answer must not hide it; the binding is still the class attribute `Entry.make`, and the caveat must travel to the caller's answer",
+    },
+]
+
+# ---------------------------------------------------------------------------------------------
+# Running the tools
+# ---------------------------------------------------------------------------------------------
+
+
+def run(command, cwd=None, timeout=300):
+    started = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            command, cwd=cwd, text=True, capture_output=True, timeout=timeout
+        )
+        return {
+            "command": [str(part) for part in command],
+            "seconds": round(time.perf_counter() - started, 3),
+            "exit": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "command": [str(part) for part in command],
+            "seconds": round(time.perf_counter() - started, 3),
+            "exit": "timeout",
+            "stdout": "",
+            "stderr": f"timed out after {timeout}s",
+        }
+
+
+def xirang_answer(root, names):
+    payload = json.dumps({"function": names})
+    return run([str(MCP), "--call", "callgraph", "--json", payload, "--root", str(root)])
+
+
+def build_mcp():
+    """Build the binary this matrix scores, with both language providers compiled in."""
+    return run(
+        [
+            "cargo",
+            "build",
+            "-p",
+            "xirang-toolchain",
+            "--features",
+            "mcp,lang-cpp,lang-python",
+            "--offline",
+            "--bin",
+            "xirang-mcp",
+        ],
+        cwd=ROOT,
+        timeout=900,
+    )
+
+
+def missing_language_providers():
+    """Which of C++/Python this binary cannot report facts for, by asking it about a probe file.
+
+    The matrix scores 6 C++ and 4 Python cases. A binary built without `lang-cpp`/`lang-python`
+    answers "no static function match" for those files — which looks exactly like a product recall
+    of 0, and that is how one run scored 6/14 instead of 14/14: any `cargo test -p xirang-toolchain
+    --features mcp` rebuilds `target/debug/xirang-mcp` with only the `mcp` feature, silently
+    replacing a feature-complete binary. Probing here turns that setup defect into a refusal.
+    """
+    root = pathlib.Path(tempfile.mkdtemp(prefix="xirang-callgraph-probe-"))
+    try:
+        (root / "probe.cpp").write_text("void cpp_probe() {}\n")
+        (root / "probe.py").write_text("def py_probe():\n    return 1\n")
+        missing = []
+        for language, name in (("lang-cpp", "cpp_probe"), ("lang-python", "py_probe")):
+            answer = xirang_answer(root, [name])
+            # A *definition row* is the signal, not the bare name: a build without the provider
+            # still echoes the queried name in "no static function match for `cpp_probe`", so a
+            # substring test would pass on exactly the defect this probe exists to catch.
+            # 信号是**定义行**，不是裸名字：没有该 provider 的构建也会在 "no static function match
+            # for `cpp_probe`" 里回显被查询的名字，用子串判定恰好会放过这个探针要抓的缺陷。
+            if f"fn {name}" not in answer["stdout"]:
+                missing.append(language)
+        return missing
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def codegraph_setup(root):
+    return run([str(CG), "init", "-y", str(root)])
+
+
+def codegraph_query(root, mode, symbol):
+    return run([str(CG), mode, symbol, "--path", str(root), "-j"])
+
+
+# ---------------------------------------------------------------------------------------------
+# Parsing XiRang's answer
+# ---------------------------------------------------------------------------------------------
+
+DEFINITION = re.compile(r"^(?P<file>[^:\s][^:]*):(?P<line>\d+) fn (?P<qualified>.+)$")
+
+
+def split_top_level(text):
+    """Split a comma-separated list, keeping commas inside parentheses together."""
+    parts, depth, current = [], 0, []
+    for character in text:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth = max(0, depth - 1)
+        if character == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(character)
+    if current:
+        parts.append("".join(current).strip())
+    return [part for part in parts if part]
+
+
+def parse_xirang(text):
+    """One block per answered definition: its qualified name, line, callers, callees, unknowns."""
+    blocks, current = [], None
+    for line in text.splitlines():
+        if line.startswith("evidence: "):
+            current = None
+            continue
+        header = DEFINITION.match(line)
+        if header:
+            current = {
+                "file": header.group("file"),
+                "line": int(header.group("line")),
+                "qualified": header.group("qualified").strip(),
+                "callers": [],
+                "callees": [],
+                "unresolved": [],
+            }
+            blocks.append(current)
+            continue
+        if current is None:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("callers ("):
+            body = stripped.split(":", 1)[1].strip() if ":" in stripped else ""
+            if body and body != "-":
+                current["callers"] = split_top_level(body)
+        elif stripped.startswith("unresolved: ") and len(stripped) > len("unresolved: "):
+            current["unresolved"] = split_top_level(stripped[len("unresolved: ") :])
+        elif stripped.startswith("callees: "):
+            current["callees"] = split_top_level(stripped[len("callees: ") :])
+    return blocks
+
+
+def caller_name(printed):
+    """`src/lib.rs::Fast::run` -> `Fast::run`; a bare `caller` stays `caller`."""
+    _, _, rest = printed.partition("::")
+    return rest if rest else printed
+
+
+def xirang_claims(blocks):
+    claims = set()
+    for block in blocks:
+        for caller in block["callers"]:
+            claims.add((caller_name(caller), block["qualified"]))
+        for callee in block["callees"]:
+            if " -> " not in callee:
+                continue
+            target, location = callee.split(" -> ", 1)
+            if location.startswith("ambiguous") or ":" not in location:
+                continue
+            claims.add((block["qualified"], target.strip()))
+    return claims
+
+
+def xirang_candidate_text(blocks, caller_qualified):
+    lines = []
+    for block in blocks:
+        if block["qualified"] == caller_qualified:
+            lines.extend(block["unresolved"])
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------------------------
+# Parsing CodeGraph's JSON answers
+# ---------------------------------------------------------------------------------------------
+
+
+def load_json(reply):
+    try:
+        return json.loads(reply["stdout"])
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def codegraph_symbols(case):
+    """(file, line) -> the qualified names the fixture declares at that position.
+
+    A template pattern and its implicit instantiation share one source line, so the value is a
+    *set*: a bare `file:line` entry from a side that does not name template arguments can then be
+    read as the ambiguous thing it is instead of being silently canonicalised onto one of them.
+    """
+    symbols = {}
+    for qualified, file, line in case["defs"]:
+        symbols.setdefault((file, line), set()).add(qualified)
+    return symbols
+
+
+def codegraph_claims(callers_payload, callees_payload, symbols):
+    """Direct call edges, canonicalised through the fixture's definition table.
+
+    `relationships` separates a call from a reference, and `metadata.synthesizedBy` marks a
+    dispatch edge attached to an interface declaration rather than to a call site: that one is
+    returned separately as `synthetic` and is not scored.
+    """
+    claims, synthetic = set(), set()
+
+    def canonical(entry):
+        key = (entry.get("filePath"), entry.get("startLine"))
+        declared = symbols.get(key) or set()
+        if len(declared) == 1:
+            return next(iter(declared))
+        return entry.get("qualifiedName") or entry.get("name") or ""
+
+    for payload, direction in ((callers_payload, "callers"), (callees_payload, "callees")):
+        if not payload:
+            continue
+        for definition in payload.get("definitions") or []:
+            owner = canonical(definition.get("definition") or {})
+            if not owner:
+                continue
+            edge_metadata = {}
+            for edge in definition.get("edges") or []:
+                if edge.get("kind") != "calls":
+                    continue
+                other = edge.get("source") if direction == "callers" else edge.get("target")
+                edge_metadata[other] = edge.get("metadata") or {}
+            for entry in definition.get(direction) or []:
+                if "calls" not in (entry.get("relationships") or []):
+                    continue
+                name = canonical(entry)
+                if not name:
+                    continue
+                metadata = edge_metadata.get(entry.get("id")) or {}
+                pair = (name, owner) if direction == "callers" else (owner, name)
+                if metadata.get("synthesizedBy"):
+                    synthetic.add(pair)
+                else:
+                    claims.add(pair)
+    return claims, synthetic
+
+
+def codegraph_candidate_text(callees_payload, caller_qualified, symbols):
+    entries = []
+    if not callees_payload:
+        return ""
+    for definition in callees_payload.get("definitions") or []:
+        declared = definition.get("definition") or {}
+        key = (declared.get("filePath"), declared.get("startLine"))
+        names = symbols.get(key) or set()
+        owner = next(iter(names)) if len(names) == 1 else (
+            declared.get("qualifiedName") or declared.get("name")
+        )
+        if owner != caller_qualified:
+            continue
+        for callee in definition.get("callees") or []:
+            if "calls" not in (callee.get("relationships") or []):
+                continue
+            names = symbols.get((callee.get("filePath"), callee.get("startLine"))) or set()
+            entries.append(
+                next(iter(names)) if len(names) == 1 else (callee.get("name") or "")
+            )
+    return "\n".join(entry for entry in entries if entry)
+
+
+def codegraph_definitions(payloads, symbols):
+    rows = []
+    for payload in payloads:
+        if not payload:
+            continue
+        sources = list(payload.get("targets") or [])
+        sources += [
+            definition.get("definition") or {}
+            for definition in payload.get("definitions") or []
+        ]
+        for source in sources:
+            key = (source.get("filePath"), source.get("startLine"))
+            names = symbols.get(key) or set()
+            declared = sorted(names) if names else [
+                source.get("qualifiedName") or source.get("name")
+            ]
+            if key[1] is not None:
+                for qualified in declared:
+                    if qualified:
+                        rows.append(
+                            {"qualified": qualified, "file": key[0], "line": key[1]}
+                        )
+    return rows
+
+
+# ---------------------------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------------------------
+
+
+def matches(printed, truth):
+    """Whether a printed name denotes exactly this truth symbol.
+
+    A printed name may carry a module path the truth does not (`a::Entry::make` for `Entry::make`):
+    a module path is not part of the identity this matrix asks about. The reverse is not accepted —
+    a bare `run` does not name `Fast::run`. When several truth symbols end with the printed name,
+    the answer named one of them without saying which; that is recorded as `ambiguous`, which is
+    imprecision, not a false certainty.
+    """
+    return printed == truth or printed.endswith("::" + truth)
+
+
+def named_candidates(printed, considered):
+    """Truth symbols a printed name could denote: exact, module-prefixed, or a suffix of them."""
+    return {
+        name
+        for name in considered
+        if matches(printed, name) or name.endswith("::" + printed)
+    }
+
+
+def covered_by_queries(qualified, case):
+    """Whether the queries this case issues can reach this definition row at all."""
+    for query in (case["ask_callee"], case["ask_caller"]):
+        if not query:
+            continue
+        if matches(qualified, query):
+            return True
+        leaf = query.split("<")[0]
+        if qualified.startswith(leaf + "<") or qualified.startswith(query + "::"):
+            return True
+    return False
+
+
+def score_side(claims, candidate_text, definition_rows, case):
+    claim = list(case["claim"])
+    forbid = list(case["forbid"])
+    mention = case["mention"]
+
+    considered = {callee for _, callee in claim} | {callee for _, callee in forbid}
+    considered |= set(mention)
+
+    hits = set()
+    forbidden_hits = set()
+    ambiguous = set()
+    relevant = set()
+    for caller, callee in claims:
+        named = named_candidates(callee, considered)
+        if not named:
+            continue
+        relevant.add((caller, callee))
+        if len(named) > 1 or not matches(callee, next(iter(named))):
+            # The answer named a symbol under test without saying which one: one of two namespaces,
+            # or a bare leaf for a qualified owner. Imprecise, but not a false certainty.
+            ambiguous.add((caller, callee))
+            continue
+        name = next(iter(named))
+        hit = [(c, d) for c, d in claim if matches(caller, c) and matches(name, d)]
+        fault = [(c, d) for c, d in forbid if matches(caller, c) and matches(name, d)]
+        if hit and not fault:
+            hits.add((hit[0][0], hit[0][1]))
+        elif fault:
+            forbidden_hits.add((fault[0][0], fault[0][1]))
+
+    recall = len(hits) / len(claim) if claim else None
+    precision = len(hits) / len(relevant) if relevant else None
+    # Only a case whose call site genuinely has no static target measures unknown-rate honesty;
+    # a `forbid` entry in an identity case (two owners, two namespaces, two overloads) is a
+    # precision trap, not an unknown call.
+    unknown_rate = None
+    if case.get("unknown_site"):
+        unknown_rate = 0.0 if forbidden_hits else 1.0
+    candidate_recall = None
+    if mention:
+        named_count = sum(1 for name in mention if name in candidate_text)
+        candidate_recall = named_count / len(mention)
+
+    found = []
+    for qualified, file, line in case["find"]:
+        covered = covered_by_queries(qualified, case)
+        ok = any(
+            row["qualified"] == qualified
+            and row["line"] == line
+            and (row.get("file") or "").endswith(file)
+            for row in definition_rows
+        )
+        found.append(
+            {
+                "qualified": qualified,
+                "file": file,
+                "line": line,
+                "covered": covered,
+                "ok": ok if covered else None,
+            }
+        )
+
+    return {
+        "claims": sorted(f"{c} -> {d}" for c, d in claims),
+        "hits": sorted(f"{c} -> {d}" for c, d in hits),
+        "forbidden": sorted(f"{c} -> {d}" for c, d in forbidden_hits),
+        "ambiguous": sorted(f"{c} -> {d}" for c, d in ambiguous),
+        "recall": recall,
+        "precision": precision,
+        "unknown_rate": unknown_rate,
+        "candidate_recall": candidate_recall,
+        "must_find": found,
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------------------------
+
+
+def prepare(case, work):
+    root = work / case["name"]
+    for relative, source in case["files"].items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    return root
+
+
+def run_case(case, work):
+    root = prepare(case, work)
+    names = [name for name in (case["ask_callee"], case["ask_caller"]) if name]
+    symbols = codegraph_symbols(case)
+    started = time.perf_counter()
+
+    xirang = xirang_answer(root, names)
+    xirang_blocks = parse_xirang(xirang["stdout"] + xirang["stderr"])
+    xirang_score = score_side(
+        xirang_claims(xirang_blocks),
+        xirang_candidate_text(xirang_blocks, case["ask_caller"]),
+        xirang_blocks,
+        case,
+    )
+
+    setup = codegraph_setup(root)
+    queries, callers_payload, callees_payload = [], None, None
+    if case["ask_callee"]:
+        reply = codegraph_query(root, "callers", case["ask_callee"])
+        queries.append(reply)
+        callers_payload = load_json(reply)
+    if case["ask_caller"]:
+        reply = codegraph_query(root, "callees", case["ask_caller"])
+        queries.append(reply)
+        callees_payload = load_json(reply)
+    codegraph_claim_set, synthetic = codegraph_claims(
+        callers_payload, callees_payload, symbols
+    )
+    codegraph_score = score_side(
+        codegraph_claim_set,
+        codegraph_candidate_text(callees_payload, case["ask_caller"], symbols),
+        codegraph_definitions((callers_payload, callees_payload), symbols),
+        case,
+    )
+
+    return {
+        "case": case["name"],
+        "lang": case["lang"],
+        "note": case["note"],
+        "truth": {
+            "claim": [f"{c} -> {d}" for c, d in case["claim"]],
+            "forbid": [f"{c} -> {d}" for c, d in case["forbid"]],
+            "mention": case["mention"],
+            "find": [f"{q} @ {f}:{l}" for q, f, l in case["find"]],
+            "defs": [f"{q} @ {f}:{l}" for q, f, l in case["defs"]],
+        },
+        "xirang": {
+            "steps": {"steps": 1, "seconds": xirang["seconds"], "exit": xirang["exit"]},
+            "bytes": len(xirang["stdout"].encode()),
+            "answer_head": [
+                line
+                for line in (xirang["stdout"] + xirang["stderr"]).splitlines()
+                if line.strip() and not line.startswith("    ")
+            ][:12],
+            **xirang_score,
+        },
+        "codegraph": {
+            "steps": {
+                "steps": len(queries),
+                "setup_steps": 1,
+                "setup_seconds": setup["seconds"],
+                "seconds": round(sum(query["seconds"] for query in queries), 3),
+                "exit": [query["exit"] for query in queries],
+            },
+            "bytes": sum(len(query["stdout"].encode()) for query in queries),
+            "synthetic": sorted(f"{c} => {d}" for c, d in synthetic),
+            "answer_head": (
+                [
+                    f"def {row['qualified']} @ {row['file']}:{row['line']}"
+                    for row in codegraph_definitions(
+                        (callers_payload, callees_payload), symbols
+                    )
+                ]
+                + [f"edge {c} -> {d}" for c, d in sorted(codegraph_claim_set)]
+                + [f"synthetic {c} => {d}" for c, d in sorted(synthetic)]
+            )[:12],
+            **codegraph_score,
+        },
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+
+
+def percent(value):
+    return "  n/a " if value is None else f"{value:5.0%}"
+
+
+def summarise(rows):
+    headers = (
+        f"{'case':24} {'lang':7} {'xr rec':7} {'xr prec':7} {'xr forbid':9} "
+        f"{'xr cand':7} {'xr unk':7} {'xr step':7} {'cg rec':7} {'cg prec':7} "
+        f"{'cg forbid':9} {'cg cand':7} {'cg unk':7} {'cg step':7}"
+    )
+    print(headers)
+    print("-" * len(headers))
+    totals = {
+        "truth_edges": 0,
+        "xirang_hits": 0,
+        "xirang_forbid": 0,
+        "codegraph_hits": 0,
+        "codegraph_forbid": 0,
+        "xirang_steps": 0,
+        "codegraph_steps": 0,
+        "codegraph_setup_steps": 0,
+        "xirang_bytes": 0,
+        "codegraph_bytes": 0,
+        "xirang_seconds": 0.0,
+        "codegraph_seconds": 0.0,
+        "xirang_unknown_cases": 0,
+        "xirang_unknown_clean": 0,
+        "codegraph_unknown_cases": 0,
+        "codegraph_unknown_clean": 0,
+        "xirang_must_find": 0,
+        "xirang_must_find_ok": 0,
+        "codegraph_must_find": 0,
+        "codegraph_must_find_ok": 0,
+        "xirang_claim_count": 0,
+        "codegraph_claim_count": 0,
+    }
+    for row in rows:
+        xr, cg = row["xirang"], row["codegraph"]
+        print(
+            f"{row['case']:24} {row['lang']:7} {percent(xr['recall']):>7} "
+            f"{percent(xr['precision']):>7} {len(xr['forbidden']):>9} "
+            f"{percent(xr['candidate_recall']):>7} {percent(xr['unknown_rate']):>7} "
+            f"{xr['steps']['steps']:>7} "
+            f"{percent(cg['recall']):>7} {percent(cg['precision']):>7} "
+            f"{len(cg['forbidden']):>9} {percent(cg['candidate_recall']):>7} "
+            f"{percent(cg['unknown_rate']):>7} {cg['steps']['steps']:>7}"
+        )
+        for side, prefix in ((xr, "xirang"), (cg, "codegraph")):
+            totals[f"{prefix}_hits"] += len(side["hits"])
+            totals[f"{prefix}_forbid"] += len(side["forbidden"])
+            totals[f"{prefix}_claim_count"] += len(side["claims"])
+            totals[f"{prefix}_steps"] += side["steps"]["steps"]
+            totals[f"{prefix}_bytes"] += side["bytes"]
+            totals[f"{prefix}_seconds"] += side["steps"]["seconds"]
+            if side["unknown_rate"] is not None:
+                totals[f"{prefix}_unknown_cases"] += 1
+                totals[f"{prefix}_unknown_clean"] += 1 if side["unknown_rate"] == 1.0 else 0
+            for row_found in side["must_find"]:
+                if row_found["ok"] is None:
+                    continue
+                totals[f"{prefix}_must_find"] += 1
+                totals[f"{prefix}_must_find_ok"] += 1 if row_found["ok"] else 0
+        totals["truth_edges"] += len(row["truth"]["claim"])
+        totals["codegraph_setup_steps"] += 1
+    print()
+    print(
+        f"truth edges: {totals['truth_edges']} · "
+        f"XiRang: hits {totals['xirang_hits']} / claims {totals['xirang_claim_count']} · "
+        f"forbidden {totals['xirang_forbid']} · "
+        f"unknown-clean {totals['xirang_unknown_clean']}/{totals['xirang_unknown_cases']} · "
+        f"must-find {totals['xirang_must_find_ok']}/{totals['xirang_must_find']} · "
+        f"steps {totals['xirang_steps']} · bytes {totals['xirang_bytes']}"
+    )
+    print(
+        f"CodeGraph: hits {totals['codegraph_hits']} / claims {totals['codegraph_claim_count']} · "
+        f"forbidden {totals['codegraph_forbid']} · "
+        f"unknown-clean {totals['codegraph_unknown_clean']}/{totals['codegraph_unknown_cases']} · "
+        f"must-find {totals['codegraph_must_find_ok']}/{totals['codegraph_must_find']} · "
+        f"query steps {totals['codegraph_steps']} "
+        f"(+{totals['codegraph_setup_steps']} index builds) · bytes {totals['codegraph_bytes']}"
+    )
+    return totals
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--json-out", type=pathlib.Path, default=None)
+    parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--only", default=None, help="comma-separated case names")
+    parser.add_argument("--keep", action="store_true", help="keep the fixture tree")
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="use the existing binary (still probed for both language providers)",
+    )
+    parser.add_argument(
+        "--mcp-binary",
+        type=pathlib.Path,
+        default=None,
+        help="score this binary instead of building one",
+    )
+    arguments = parser.parse_args()
+
+    global MCP
+    if arguments.mcp_binary is not None:
+        MCP = arguments.mcp_binary
+    elif not arguments.no_build:
+        built = build_mcp()
+        if built["exit"] != 0:
+            print(
+                "the matrix could not build the binary it scores:\n"
+                + "".join(built["stderr"].splitlines(keepends=True)[-20:]),
+                file=sys.stderr,
+            )
+            return 2
+    if not MCP.is_file():
+        print(
+            f"missing {MCP}; build it first "
+            "(cargo build -p xirang-toolchain --features mcp,lang-cpp,lang-python --bin xirang-mcp)",
+            file=sys.stderr,
+        )
+        return 2
+    missing = missing_language_providers()
+    if missing:
+        print(
+            f"the binary at {MCP} reports no facts for {', '.join(missing)} — the matrix scores "
+            "those languages, so a silent 0 here is a setup defect, not a product result;\n"
+            "rebuild it with `cargo build -p xirang-toolchain --features mcp,lang-cpp,lang-python "
+            "--bin xirang-mcp`, or pass --mcp-binary pointing at such a build",
+            file=sys.stderr,
+        )
+        return 2
+    if not CG.is_file():
+        print(f"missing codegraph at {CG}; set CODEGRAPH_BIN", file=sys.stderr)
+        return 2
+
+    selected = CASES
+    if arguments.only:
+        wanted = {name.strip() for name in arguments.only.split(",") if name.strip()}
+        selected = [case for case in CASES if case["name"] in wanted]
+        if not selected:
+            print(f"no case named in {sorted(wanted)}", file=sys.stderr)
+            return 2
+
+    work = pathlib.Path(tempfile.mkdtemp(prefix="xirang-callgraph-matrix-"))
+    rows = []
+    for case in selected:
+        rows.append(run_case(case, work))
+        print(f"ran {case['name']}", file=sys.stderr)
+
+    totals = summarise(rows)
+    report = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "work": str(work),
+        "fixtures_retained": bool(arguments.keep),
+        "binaries": {
+            "xirang_mcp": {
+                "path": str(MCP),
+                "sha256": hashlib.sha256(MCP.read_bytes()).hexdigest(),
+            },
+            "codegraph": {
+                "path": str(CG),
+                "sha256": hashlib.sha256(CG.read_bytes()).hexdigest(),
+            },
+        },
+        "reading": {
+            "kind": "deterministic tool-output comparison; no model session, no token claim",
+            "recall": "fraction of the case's true definite edges stated by the answer",
+            "precision": "hits / claims about the case's asked-about symbols; other callees are not scored",
+            "forbidden": "claims the language semantics do not support; counted separately from a miss",
+            "unknown": "of the case's statically unknown call sites, the fraction with no forbidden claim",
+            "candidates": "fraction of true candidate implementations named where the answer resolves the unknown call",
+            "must_find": "definition rows the answer must contain, for rows the issued queries cover",
+            "steps": "tool invocations for the case's question set; indexing is setup, not a query step",
+            "bytes": "stdout bytes of those invocations; a context-cost proxy, not a token count",
+        },
+        "totals": totals,
+        "cases": rows,
+    }
+    if arguments.json_out:
+        arguments.json_out.parent.mkdir(parents=True, exist_ok=True)
+        arguments.json_out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+        print(f"json: {arguments.json_out}")
+    print(f"fixtures: {work}")
+
+    failures = []
+    for row in rows:
+        side = row["xirang"]
+        if side["forbidden"]:
+            failures.append(f"{row['case']}: XiRang claimed forbidden {side['forbidden']}")
+        if row["truth"]["claim"] and (side["recall"] or 0) < 1.0:
+            message = (
+                f"{row['case']}: XiRang recall {side['recall']} over {row['truth']['claim']}"
+            )
+            if case_note := next(
+                (
+                    candidate.get("known_gap")
+                    for candidate in CASES
+                    if candidate["name"] == row["case"]
+                ),
+                None,
+            ):
+                print(f"known gap: {message} — {case_note}")
+            else:
+                failures.append(message)
+        for found in side["must_find"]:
+            if found["ok"] is False:
+                failures.append(
+                    f"{row['case']}: XiRang did not report {found['qualified']} at "
+                    f"{found['file']}:{found['line']}"
+                )
+    if failures:
+        print("\nstrict findings (XiRang):")
+        for failure in failures:
+            print(f"  {failure}")
+    if not arguments.keep:
+        shutil.rmtree(work, ignore_errors=True)
+    if arguments.strict and failures:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

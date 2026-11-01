@@ -1,0 +1,6 @@
+# 一个 Java 声明面的最小宿主：构建期运行 javac 与注解处理器写记录文件，构建读它并把面并进树。
+# A minimal host for a Java-declared face: the build runs javac and the annotation processor to
+# write the record file, reads it, and folds the face into the tree.
+[workspace]
+resolver = "3"
+members = ["gauge"]

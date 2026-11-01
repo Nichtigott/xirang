@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>xirang-faces</AssemblyName>
+    <RootNamespace>Xirang.Faces</RootNamespace>
+  </PropertyGroup>
+  <!-- The C# compiler's own parser, taken from the SDK that is running the build: an installed
+       .NET SDK always ships Roslyn in `sdk/<version>/Roslyn/bincore`, so no NuGet package (and no
+       network) is needed to read a declaration with the real compiler front end. -->
+  <!-- 用正在运行构建的那个 SDK 自带的 C# 编译器解析器：已安装的 .NET SDK 总在
+       `sdk/<version>/Roslyn/bincore` 提供 Roslyn，因此用真实编译器前端读声明不需要 NuGet 包，也不需要网络。 -->
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Xirang.Sdk/Xirang.Sdk.csproj" />
+  </ItemGroup>
+</Project>

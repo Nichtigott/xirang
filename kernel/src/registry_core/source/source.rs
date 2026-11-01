@@ -128,6 +128,46 @@ fn skip_one_character(bytes: &[u8], cursor: &mut usize) {
 /// 扫描函数体时屏蔽注释、字符串和宏文本，避免把它们误认成 Rust 函数。
 pub fn function_symbols(source: &str) -> Vec<SourceFunction> {
     let masked = mask_non_code(source);
+    functions_from_masked(source, &masked)
+}
+
+/// Version content-addressed syntax caches by the exact pure parser implementation.
+/// 用纯解析器的精确实现为内容寻址语法缓存版本化。
+pub fn parser_fingerprint() -> String {
+    crate::sha256_hex(
+        concat!(
+            include_str!("source.rs"),
+            include_str!("calls.rs"),
+            include_str!("lex.rs")
+        )
+        .as_bytes(),
+    )
+}
+
+/// Functions and branch facts produced by one shared lexical reading.
+/// 一次共用词法读取产出的函数与分支事实。
+pub struct SourceFacts {
+    /// Function definitions in source order.
+    /// 按源码顺序排列的函数定义。
+    pub functions: Vec<SourceFunction>,
+    /// Static branch facts over those same bytes.
+    /// 基于同一批字节的静态分支事实。
+    pub branches: BranchFacts,
+}
+
+/// Share masking and function discovery when both functions and branches are needed.
+/// 同时需要函数和分支时，共用掩码与函数发现。
+pub fn source_facts(source: &str) -> SourceFacts {
+    let masked = mask_non_code(source);
+    let functions = functions_from_masked(source, &masked);
+    let branches = branches::from_symbols(&masked, &functions);
+    SourceFacts {
+        functions,
+        branches,
+    }
+}
+
+fn functions_from_masked(source: &str, masked: &str) -> Vec<SourceFunction> {
     let bytes = masked.as_bytes();
     let mut result = Vec::new();
     // Line numbers come from one forward scan. Both offsets this reports are

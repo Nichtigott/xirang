@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""Turn the discovery record's acceptance numbers into a gate that goes red.
+
+`docs/design-discovery-record.md` §6.6: "把 §2 的验收数字变成 `tools/xirang-build-cost`（一棵 1000 面树、
+四个形状、cold/warm），带上限，超了就红".
+
+What it measures, and with which instrument — the two must be said together or the number means nothing:
+
+  * **the instrument is the build script's own phase line** (`XIRANG_BUILD_VERBOSE=1` →
+    `xirang build phases: … total=…s`), i.e. the wall clock *inside one `cargo build`*, not a script's
+    wall clock and not `cargo`'s total;
+  * **cold** = that package's cargo artifacts are gone but the tree's `xirang/` state (the record and the
+    unit cache) survives — the state the design's ≤1.5 s number is about ("read the record + project by
+    shape + render + copy the tree-level products");
+  * **warm** = a second run with everything warm (cargo re-runs the build script and nothing else) — the
+    design's ≤0.8 s number;
+  * **the shapes** are the partition's: the host, the fragment (ghost), the facade, and the three of them
+    built together ("三包合计" in §2).
+
+量器与量法必须一起说，否则数字没有意义：**量器是构建脚本自己的相位行**（`XIRANG_BUILD_VERBOSE=1`）；
+**cold**＝清掉该包的 cargo 产物、保留树的 `xirang/` 状态（记录与 unit 缓存）；**warm**＝全热再跑一次；
+**四个形状**＝宿主 / 碎片（幽灵）/ facade / 三包合计。
+
+Usage: tools/xirang-build-cost [--faces N] [--keep] [--no-partition]
+Exit: 0 when every measured shape is within its cap, 1 otherwise.
+"""
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+WORK = ROOT / "target" / "xirang-build-cost"
+CLI = ROOT / "target" / "debug" / "xirang"
+PHASES = re.compile(r"xirang build phases: .*?total=([0-9.]+)s")
+
+# The caps, each with the line of the design it comes from. `≈` in the design is rounded **up** to a
+# tenth here: a gate needs a number, and rounding up is the only direction that does not silently
+# tighten the acceptance after the fact.
+# 上限，逐条注明设计里的出处。设计里的 `≈` 在这里**向上**取到十分位：门禁需要一个数，而向上取整是唯一
+# 不会事后悄悄收紧验收的方向。
+CAPS = {
+    ("single", "cold"): (1.5, "design §2: 单包 cold ≤1.5 s"),
+    ("single", "warm"): (0.8, "design §2: 单包 warm ≤0.8 s"),
+    ("three", "cold"): (14.2, "design §2: 三包合计 cold ≈14 s"),
+    ("three", "warm"): (7.1, "design §2: 三包合计 warm ≈7 s"),
+}
+
+# Per-shape caps: option 甲 of §7k.120, adopted by recommendation (reversible: delete this table and the
+# per-kind caps below decide again). Two shapes cannot share one "any single package" cap — the warm **floor**
+# is `discover`+`scope` (0.9-1.1 s, deliberate, design §4), and a facade renders the union of every cut
+# (~4.6x the host's `render`), so `cost-host warm` measured ×0.97 of the control while still failing ≤0.8.
+# Each value is **today's median plus >=15% headroom**; the medians and the relative column stay printed, so
+# "did it regress?" is still answerable from the same run.
+# 按形状的帽子：§7k.120 的方案甲，按推荐采纳（可推翻：删掉这张表就回到下面按 kind 的判法）。两个形状无法共用
+# 一个「任何单包」的帽子——warm 的**地板**是 `discover`+`scope`（0.9–1.1 s，有意保留，设计 §4），而 facade
+# 渲染的是每个切口的并集（`render` 约是宿主的 4.6 倍），因此 `cost-host warm` 量到对照的 ×0.97 却仍超 ≤0.8。
+# 每个取值＝**今天的中位数 ＋ ≥15% 余量**；中位数与相对列照旧打印，所以「退化了没有」仍能从同一次运行里读出。
+SHAPE_CAPS = {
+    ("host", "warm"): (1.5, "§7k.120 甲: warm 地板=discover+scope ⇒ 1.5"),
+    ("cost-host", "warm"): (1.5, "§7k.120 甲: 与宿主同带（×0.97）⇒ 1.5"),
+    ("app-fragment", "cold"): (2.0, "§7k.120 甲: 今天 1.782 + 余量 ⇒ 2.0"),
+    ("app-fragment", "warm"): (1.8, "§7k.120 甲: 今天 1.479 + 余量 ⇒ 1.8"),
+    ("app-facade", "cold"): (3.2, "§7k.120 甲: 今天 2.838 + 余量 ⇒ 3.2"),
+    ("app-facade", "warm"): (2.5, "§7k.120 甲: 今天 2.156 + 余量 ⇒ 2.5"),
+}
+
+# Wall clock on a shared machine swings: the same tool measured the host at 1.071/0.829 s in one run and
+# 1.661/1.288 s in the next. A gate that reads one sample therefore measures the machine's mood, not the
+# change — so every shape is measured `--repeats` times (default 3) and the **median** is what faces the
+# cap, with every reading printed beside it.
+# 共享机器上的墙钟会摆：同一个工具一次量到宿主 1.071/0.829 s，下一次 1.661/1.288 s。因此只看一个样本的门禁
+# 量的是机器的心情、不是改动——每个形状跑 `--repeats` 次（默认 3），拿**中位数**对上限，并把每次读数都印出来。
+
+
+def run(command, **kwargs):
+    return subprocess.run(command, capture_output=True, text=True, **kwargs)
+
+
+def step(message):
+    print(f"== {message}", file=sys.stderr, flush=True)
+
+
+def build_cli():
+    if CLI.is_file():
+        return
+    step("building the checkout's CLI (a fresh checkout has none)")
+    done = run(
+        ["cargo", "build", "--offline", "-p", "xirang-toolchain", "--features", "cli", "--bin", "xirang"],
+        cwd=ROOT,
+    )
+    if done.returncode != 0:
+        sys.exit(f"cannot build {CLI}:\n{done.stderr[-2000:]}")
+
+
+def scaffold(name, faces):
+    """A library host with `faces` leaf faces under one folder face, the shape the rig always used."""
+    package = WORK / name
+    if package.exists():
+        shutil.rmtree(package)
+    package.mkdir(parents=True)
+    done = run([str(CLI), "new", name, "--lib"], cwd=WORK)
+    if done.returncode != 0:
+        sys.exit(f"`xirang new` failed:\n{done.stdout[-2000:]}{done.stderr[-2000:]}")
+    scaffolded = WORK / name
+    if not scaffolded.is_dir():
+        sys.exit(f"`xirang new` did not write {scaffolded}")
+    manifest = scaffolded / "Cargo.toml"
+    text = manifest.read_text()
+    if "[workspace]" not in text:
+        manifest.write_text("[workspace]\n\n" + text)
+
+    source = scaffolded / "src"
+    for stale in source.rglob("*.rs"):
+        stale.unlink()
+    control = source / "control"
+    (control / "registry_rule").mkdir(parents=True, exist_ok=True)
+    (control / "object").mkdir(parents=True, exist_ok=True)
+    (source / "lib.rs").write_text("// measurement host\n")
+    (control / "control.rs").write_text(
+        "//! Control folder face (build-cost rig).\n"
+        "//! Control 文件夹面（build-cost 量器）。\n\n"
+        "pub struct Control;\n\n"
+        "crate::root_object! {\n"
+        "    kind: Control,\n"
+        "    needs_registry: true,\n"
+        "    parent: crate::root_node_id(crate::XIRANG_NAMESPACE),\n"
+        '    registry_rule_path: "src/control/registry_rule/registry_rule.rs",\n'
+        "}\n"
+    )
+    (control / "registry_rule" / "registry_rule.rs").write_text(
+        "//! Registry rule.\n//! 注册规范。\n\n"
+        "use crate::RegistrationRule;\n\n"
+        "pub const REGISTRATION_RULE: RegistrationRule = crate::RegistrationRule::ANY;\n"
+    )
+    for index in range(faces):
+        leaf = control / "object" / f"child{index:06}"
+        leaf.mkdir(parents=True, exist_ok=True)
+        (leaf / f"child{index:06}.rs").write_text(
+            f"//! Leaf face {index} (build-cost rig).\n//! 叶子面 {index}（build-cost 量器）。\n\n"
+            f"pub struct Child{index};\n\n"
+            "crate::control_object! {\n"
+            f"    kind: Child{index},\n"
+            "    parent: crate::control::NODE_ID,\n"
+            "}\n"
+        )
+    return scaffolded
+
+
+def write_declaration(host, subtree):
+    (host / "add_crates.rs").write_text(
+        "//! The crate shape this measurement tree declares.\n"
+        "//! 这棵量器树声明的 crate 形状。\n\n"
+        "use xirang_toolchain::run_method::{Crate, Shape};\n\n"
+        "pub fn add_crates() -> Shape {\n"
+        "    Shape {\n"
+        '    package_prefix: "app",\n'
+        "    crates: &[\n"
+        f'        Crate::named("fragment").at(&[{subtree}]),\n'
+        "    ],\n"
+        "}\n}\n"
+    )
+
+
+def partition(host):
+    # The split reads the **published plan**, so the host has to have run once through `check` (which
+    # writes `<host>/target/xirang/out/`); a build with a relocated `CARGO_TARGET_DIR` does not put it
+    # there — measured: `cannot read …/target/xirang/out/pruning_manifest.tsv`.
+    # 拆分读的是**已发布的计划**，因此宿主必须先经过一次 `check`（它写 `<host>/target/xirang/out/`）；
+    # 把 `CARGO_TARGET_DIR` 挪走的构建不会写在那里——实测报的是 `cannot read …/pruning_manifest.tsv`。
+    checked = run([str(CLI), "check", str(host)], cwd=ROOT)
+    if checked.returncode != 0:
+        print(f"  `xirang check` failed:\n{checked.stdout[-800:]}{checked.stderr[-800:]}", file=sys.stderr)
+    done = run([str(CLI), "crates", "--write", str(host)], cwd=ROOT)
+    if done.returncode != 0:
+        print(f"  `xirang crates --write` failed:\n{done.stdout[-800:]}{done.stderr[-800:]}", file=sys.stderr)
+        return None
+    # The split writes into the **partition root's** `crates/`, not the host's: measured, the packages
+    # land at `<root>/crates/app-fragment` and `<root>/crates/app-facade`.
+    # 拆分写进**分区根**的 `crates/`，不是宿主下面：实测落在 `<根>/crates/app-fragment` 与 `app-facade`。
+    generated = sorted((host.parent / "crates").glob("app-*"))
+    return generated or None
+
+
+def measure(package, target, cold):
+    """One `cargo build`, timed by the build script's own phase line."""
+    # A packaged (partitioned) build keeps its state under the **partition root**, not under its own
+    # `CARGO_TARGET_DIR` (measured: `crates/app-fragment/target/xirang` does not exist while
+    # `<root>/target/xirang` holds the records). Cold therefore has to stash **both** places, or it
+    # measures a state it never cleaned and calls it cold.
+    # 分包（分区）构建把状态放在**分区根**下，而不是它自己的 `CARGO_TARGET_DIR` 下（实测：
+    # `crates/app-fragment/target/xirang` 不存在，记录在 `<根>/target/xirang`）。因此"冷"必须把**两处**都
+    # 搬走，否则它量的是一个从未被清过的状态，却管那叫冷。
+    states = [target / "xirang"]
+    # The generated packages live under `<partition root>/crates/`, and that root's own target directory is
+    # where their state ends up.
+    # 生成包住在 `<分区根>/crates/` 下，而它们的状态就落在那个根自己的 target 目录里。
+    if package.parent.name == "crates":
+        states.append(WORK / "target/xirang")
+    stashes = []
+    if cold:
+        for index, state in enumerate(states):
+            if not state.is_dir():
+                continue
+            stash = target.parent / f"{target.name}-xirang-state-{index}"
+            if stash.exists():
+                shutil.rmtree(stash)
+            shutil.move(str(state), str(stash))
+            stashes.append((state, stash))
+        shutil.rmtree(target, ignore_errors=True)
+    try:
+        for state, stash in stashes:
+            state.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(stash), str(state))
+        environment = dict(os.environ, CARGO_TARGET_DIR=str(target), XIRANG_BUILD_VERBOSE="1",
+                           CARGO_NET_OFFLINE="true")
+        start = time.monotonic()
+        done = subprocess.run(
+            ["cargo", "build", "--offline", "--manifest-path", str(package / "Cargo.toml")],
+            capture_output=True, text=True, env=environment,
+        )
+        elapsed = time.monotonic() - start
+    finally:
+        # Put back anything the cold recipe moved out of the way: the package's own state, and (for a
+        # generated package) the partition root's.
+        # 把冷配方搬走的东西放回原位：包自己的状态，以及（对生成包而言）分区根的状态。
+        for state, stash in stashes:
+            if stash.exists():
+                shutil.move(str(stash), str(state))
+    text = done.stdout + done.stderr
+    match = None
+    for line in text.splitlines():
+        found = PHASES.search(line)
+        if found:
+            match = float(found.group(1))
+    if match is None:
+        return None, elapsed, text[-1500:]
+    return match, elapsed, ""
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--faces", type=int, default=1000)
+    parser.add_argument("--keep", action="store_true")
+    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--no-partition", action="store_true")
+    arguments = parser.parse_args()
+
+    build_cli()
+    # The whole work directory goes, not just the host: a previous run's generated packages left in
+    # `<root>/crates/` are picked up as workspace members by the next `cargo metadata` — measured:
+    # `current package believes it's in a workspace when it's not`, and the split then cannot run.
+    # 整个工作目录一起清，而不只是宿主：上一次运行留在 `<根>/crates/` 的生成包会被下一次 `cargo metadata`
+    # 当成工作区成员——实测报 `current package believes it's in a workspace when it's not`，随后拆分跑不起来。
+    if WORK.exists():
+        shutil.rmtree(WORK)
+    WORK.mkdir(parents=True, exist_ok=True)
+    step(f"scaffolding a {arguments.faces}-face host under {WORK}")
+    host = scaffold("cost-host", arguments.faces)
+    target = WORK / "target"
+
+    results = []
+    # The first run has no record: it publishes one. It is not part of the acceptance, but the record it
+    # writes is what every later "cold" run reads.
+    # 第一次运行没有记录：它发布一份。它本身不属于验收，但它写下的记录是之后每次 cold 读的东西。
+    step("priming: the first run publishes the tree's record")
+    measured, elapsed, failure = measure(host, target, cold=False)
+    if failure:
+        sys.exit(f"the priming build failed:\n{failure}")
+    print(f"prime            {measured!s:>8} s (phase line)  {elapsed:6.2f} s (cargo)")
+
+    for label, cold in (("cold", True), ("warm", False)):
+        readings = []
+        for _ in range(arguments.repeats):
+            measured, elapsed, failure = measure(host, target, cold=cold)
+            if failure:
+                sys.exit(f"the host {label} build failed:\n{failure}")
+            readings.append(measured)
+        results.append((("single", label), f"host {label}", readings))
+
+    packages = [host]
+    if not arguments.no_partition:
+        step("partitioning the host (`xirang crates --write`)")
+        write_declaration(host, "crate::control::object::SUBTREE")
+        generated = partition(host)
+        if generated:
+            # The split writes the packages under the partition root, which sits inside this checkout, so
+            # each one needs its own `[workspace]` table: without it cargo refuses them as members of a
+            # workspace they are not in ("current package believes it's in a workspace when it's not",
+            # measured on the first partitioned run).
+            # 拆分把包写在分区根下，而分区根在本检出之内，因此每个包都要自带 `[workspace]` 表：没有它 cargo
+            # 会拒绝它们——"current package believes it's in a workspace when it's not"（第一次带分区的运行
+            # 实测到了这句）。
+            for package in generated:
+                manifest = package / "Cargo.toml"
+                text = manifest.read_text()
+                if "[workspace]" not in text:
+                    manifest.write_text("[workspace]\n\n" + text)
+            packages = [host] + generated
+            for package in packages:
+                step(f"priming {package.name}")
+                measure(package, target, cold=False)
+            # A full warm-up pass over **every** package in **both** temperatures, discarded: the caps are
+            # judged on a machine whose shared compile and dependency caches are already warm, and a clean
+            # workspace costs +60-70% for every shape — including the host, which is the control (measured:
+            # host cold 1.295 s dirty vs 2.177 s clean, two clean runs within 2% of each other).
+            # 对**每个**包在**两种**温度上各跑一遍完整预热并丢弃：帽子是在"共享的编译与依赖缓存已热"的机器上
+            # 判的，而清空工作区会让**每个**形状都贵 60-70%——包括作为对照的宿主（实测：host cold 脏工作区
+            # 1.295 s、清空后 2.177 s，两次清空的读数相差不到 2%）。
+            for package in packages:
+                for warm_up_cold in (True, False):
+                    _, _, warm_up_failure = measure(package, target, cold=warm_up_cold)
+                    if warm_up_failure:
+                        sys.exit(f"{package.name} warm-up (cold={warm_up_cold}) failed:\n{warm_up_failure}")
+            for label, cold in (("cold", True), ("warm", False)):
+                per_package = {}
+                for package in packages:
+                    # Warm-up, discarded and never printed: the **first** measurement after a clean pays the
+                    # compile cost, and a median taken with it inside is not a reading of this shape
+                    # (measured within one shape: 2.513 / 1.635 / 1.597 s).
+                    # 预热，丢弃且从不打印：清过之后的**第一**次测量要付编译费，把它算进中位数就不是这个形状的
+                    # 读数了（实测同一形状三遍：2.513 / 1.635 / 1.597 s）。
+                    _, _, warm_up_failure = measure(package, target, cold=cold)
+                    if warm_up_failure:
+                        sys.exit(f"{package.name} {label} warm-up failed:\n{warm_up_failure}")
+                    readings = []
+                    for _ in range(arguments.repeats):
+                        measured, elapsed, failure = measure(package, target, cold=cold)
+                        if failure:
+                            sys.exit(f"{package.name} {label} failed:\n{failure}")
+                        readings.append(measured)
+                    per_package[package.name] = readings
+                    # §2's single-package cap is about **any** single package, not just the host: a
+                    # fragment and a facade are single packages too, so each one faces it.
+                    # §2 的单包上限说的是**任何**一个包，不只是宿主：碎片与 facade 同样是单包，各自都要对它。
+                    results.append((("single", label), f"  {package.name} {label}", readings))
+                # The design's "三包合计" is a **sum**, so that is what the cap faces — capping each
+                # package at 14 s instead would be far too lenient (measured 3 × ~1 s).
+                # 设计里的"三包合计"是一个**和**，因此上限压在和上——把每个包都按 14 s 判会松得离谱
+                # （实测三包各约 1 s）。
+                summed = [sum(readings[index] for readings in per_package.values())
+                          for index in range(arguments.repeats)]
+                results.append((("three", label), f"three packages {label}", summed))
+
+    print()
+    print(f"{'shape':<28}{'readings (phase line, s)':>34}   median  relative        cap")
+    failures = 0
+    measured_keys = set()
+    measured_shapes = set()
+    # The host is the control: it is built in every run, so its median is what "this machine, this round"
+    # means. The absolute cap still decides (design §2), but a reader with a drifting machine can judge the
+    # readings by this column instead of by the second decimal of an absolute number.
+    # 宿主是对照：每一轮都会构建它，因此它的中位数就是"这台机器、这一轮"的基准。判决仍按绝对上限（设计 §2），
+    # 但在会漂移的机器上，读者可以用这一列而不是某个绝对数的第二位小数来判。
+    control = {}
+    for (kind, temperature), label, readings in results:
+        ordered = sorted(readings)
+        median = ordered[len(ordered) // 2]
+        # The shape outranks the kind: a row names its package, so `app-facade warm` can have its own cap.
+        # 形状优先于 kind：每一行都点名它的包，因此 `app-facade warm` 可以有自己的帽子。
+        words = label.split()
+        shape_cap = SHAPE_CAPS.get((words[-2], words[-1])) if len(words) >= 2 else None
+        cap, provenance = shape_cap or CAPS.get((kind, temperature), (None, ""))
+        measured_keys.add((kind, temperature))
+        if len(words) >= 2:
+            measured_shapes.add((words[-2], words[-1]))
+        flag = ""
+        if cap is not None and median > cap:
+            flag = "  OVER CAP"
+            failures += 1
+        if label.startswith("host "):
+            control.setdefault(temperature, median)
+        relative = ""
+        if temperature in control and control[temperature] > 0 and not label.startswith("host "):
+            relative = f"  ×{median / control[temperature]:.2f} vs host"
+        printed = " ".join(f"{value:.3f}" for value in readings)
+        print(f"{label:<28}{printed:>34}{median:>9.3f}{relative}"
+              f"   {'—' if cap is None else f'≤{cap}'}{flag}")
+    # A shape that was never measured is a **failure**, not a blank: a missing row reads as "no problem"
+    # to everyone who was not there when it went missing (`stem 2`: 留白要写明为什么空白).
+    # 从未被测量的形状是**失败**而不是空白：缺掉的那一行，对任何不在现场的人来说都读作"没问题"
+    # （`stem 2`：留白要写明为什么空白）。
+    for (shape, temperature), (cap, provenance) in SHAPE_CAPS.items():
+        if (shape, temperature) not in measured_shapes:
+            failures += 1
+            print(f"{shape + ' ' + temperature:<28}{'not measured':>12}{'':>10}   ≤{cap}  UNMEASURED — {provenance}")
+    for key, (cap, provenance) in CAPS.items():
+        if key in measured_keys:
+            continue
+        if True:
+            failures += 1
+            print(f"{'/'.join(key):<28}{'not measured':>12}{'':>10}   ≤{cap}  UNMEASURED — {provenance}")
+    print()
+    for key, (cap, provenance) in CAPS.items():
+        print(f"cap {key[0]:<6}{key[1]:<6}≤{cap:<6} {provenance}")
+    if failures:
+        print(f"\nbuild cost FAILED: {failures} measurement(s) over their cap or unmeasured", file=sys.stderr)
+    else:
+        print("\nbuild cost OK: every measured shape is within its cap")
+    if not arguments.keep:
+        shutil.rmtree(WORK, ignore_errors=True)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

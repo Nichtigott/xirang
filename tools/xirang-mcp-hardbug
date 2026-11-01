@@ -1594,7 +1594,8 @@ def tokens(target, tool_name="xirang-mcp"):
     shell_steps = naming_steps = other_steps = 0
     shell_chars = naming_chars = 0
     calls = {}
-    prompt = cached = generated = 0
+    prompt = cached = cache_written = generated = 0
+    usage_steps = 0
     reasoning = visible = tool_result = 0
     for row in done.stdout.splitlines():
         if not row.strip():
@@ -1610,8 +1611,10 @@ def tokens(target, tool_name="xirang-mcp"):
         elif kind == "assistant/message":
             steps += 1
             usage = data.get("usage") or {}
+            usage_steps += bool(usage)
             prompt += int(usage.get("inputTokens", 0))
-            cached += int(usage.get("cacheReadTokens", 0)) + int(usage.get("cacheWriteTokens", 0))
+            cached += int(usage.get("cacheReadTokens", 0))
+            cache_written += int(usage.get("cacheWriteTokens", 0))
             generated += int(usage.get("outputTokens", 0))
             for block in (data.get("message") or {}).get("content") or []:
                 if not isinstance(block, dict):
@@ -1650,20 +1653,27 @@ def tokens(target, tool_name="xirang-mcp"):
         "label": label,
         "session": str(path),
         "steps": steps,
+        "usage_steps": usage_steps,
         "tool_calls": tool_calls,
         "shell_steps": shell_steps,
         "shell_steps_naming_tool": naming_steps,
         "shell_steps_other": other_steps,
         "shell_output_chars_naming_tool": naming_chars,
         "shell_output_chars_other": other_chars if False else shell_chars - naming_chars,
-        "input_tokens_uncached": prompt,
+        "input_tokens_uncached": prompt + cache_written,
+        "input_tokens_uncached_without_cache_write": prompt,
         "input_tokens_cached": cached,
-        "input_tokens_total": prompt + cached,
+        "input_tokens_cache_write": cache_written,
+        "input_tokens_total": prompt + cached + cache_written,
+        "cache_hit_rate": cached / (prompt + cached + cache_written)
+            if prompt + cached + cache_written else None,
         "output_tokens": generated,
         "reasoning_chars": reasoning,
         "visible_text_chars": visible,
         "tool_result_chars": tool_result,
-        "note": "input and output are separate axes with separate prices; neither is an estimate",
+        "note": "session usage uses disjoint input/cacheRead/cacheWrite buckets; hits are reads only; "
+                "uncached includes cache writes, whose price must be accounted separately; "
+                "input and output are separate axes, not estimated tokens or a monetary bill",
     }, indent=2, sort_keys=True))
     return 0
 

@@ -78,22 +78,22 @@ spec24 的 `mir button2.mir against`、`mir foreign.jsonl against`、`mir button
 
 **R1 原文证据**：定义 `toolchain/src/build_time/src/graft_view/declared.rs:138`；生产调用点恰 6 处
 （`impact.rs:95`、`studio/app/graft.rs:324`、`graft_plan_check.rs:143`、`plan_rows.rs:160`、`overlay_rows.rs:137`、
-`cli/src/explain_report.rs:183`），测试 1 个函数（`graft_plan_check.rs:307-316`，同一条 `#[test]` 的两组断言）。
+`cli/explain_report.rs:183`），测试 1 个函数（`graft_plan_check.rs:307-316`，同一条 `#[test]` 的两组断言）。
 `cargo test -p xirang-toolchain --offline --lib -- a_string_range_names_both_endpoints_as_data` → `1 passed`。
 t1 说的"6 生产 + 1 测试 = 7"，与 grep 逐条一致；报告里"6/7 是口径差"的提醒**成立**。
 
 **R2 原文证据**：定义 `kernel/src/registry_core/mir/text.rs:23`；调用点 `text.rs:100`、`text.rs:107`（两条测试）、
-`toolchain/src/mcp/src/mir.rs:291`、`toolchain/src/studio/src/studio/app/lifecycle.rs:403`。
+`toolchain/src/mcp/mir.rs:291`、`toolchain/src/studio/studio/app/lifecycle.rs:403`。
 `cargo test -p xirang-kernel --offline --all-features --lib -- text::tests` → `2 passed`（`parses_native_textual_mir`、
 `text_that_is_not_mir_yields_an_empty_graph`）⇒ codegraph 的 `⚠️ no covering tests found` 是**假阴性**，且 W2 那一次
 它返回的源码里就有这两条测试，属**同一份返回自相矛盾**。t1 的断言一致。
 
-**R3 原文证据**：`toolchain/src/mcp/src/tools.rs:316` 定义，唯一使用点同文件 `:374`（`tool_call`），测试
+**R3 原文证据**：`toolchain/src/mcp/tools.rs:316` 定义，唯一使用点同文件 `:374`（`tool_call`），测试
 `tools_tests.rs:100`；`cargo test -p xirang-toolchain --offline --features mcp --lib -- the_dispatch_table_follows_the_catalog`
 → `1 passed` ⇒ 第三条假阴性也被我亲手证伪。xirang 侧"搜不到常数"由 `callgraph.rs:23-60`（纯 `load_sources` 名字匹配，
 无 MIR、无跳数）与 `search` 只索引 fn/文件/面共同支持，**一致**。
 
-**R4**：`toolchain/src/mcp/src/*.rs` 里的 `^pub(crate) fn` 逐条归类，只有 12 个是工具入口
+**R4**：`toolchain/src/mcp/*.rs` 里的 `^pub(crate) fn` 逐条归类，只有 12 个是工具入口
 （apply/callgraph/converge/diff/grafts/impact/mir/unified/search/registry/usages/verify），其余全是助手
 （`load_registry`/`out_dir`/`build_evidence`/`scope_line`/`pruning_line`/`namespace`/`resolve_node`/`derived_faces`/
 `load_sources`/`load_one`/`required_path`/`resolve_root`…）或已被 `explain_tool` 路由的 `overlay`；
@@ -239,7 +239,7 @@ t1 已自曝的装置差异（两个客户端、一次调用、`maxFiles=3`、�
 （在同一棵树上同时断言 `verdict ok` 与 `connector verdict: rejected` 必须并存）。
 它也是 ① 的**最小可落地前置**：先让"信任"只有一种读法，再谈"标本"。
 
-**给 t3 的落地口径（S1）**：改 `toolchain/src/mcp/src/verify.rs`，在 `check_for` 之后调用已有的
+**给 t3 的落地口径（S1）**：改 `toolchain/src/mcp/verify.rs`，在 `check_for` 之后调用已有的
 `crate::mcp::apply::load_registry(root, &package)`（`apply.rs:510`，错误串已经就是
 `the package's own faces were rejected: …`），把它的成败作为**独立的第二行**印出（用同一个 `MAX_DIAGNOSTIC_LINES` 截断），
 `verdict ok` 的字面**保持不变**——因为"静态面通过"仍然为真，`verify.rs:5-11` 与 CLI `check` 的不漂移不变量必须守住。

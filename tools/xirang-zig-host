@@ -1,0 +1,41 @@
+#!/bin/sh
+# Gate: the Zig-declared face really lands in the runtime registration tree.
+# 门禁：Zig 声明的面真的落进了运行期注册树。
+#
+#   XIRANG_ZIG=/path/to/zig tools/xirang-zig-host
+#
+# Why it exists: the other Zig checks are part-level (a record reads back, a compiler hook produces
+# an object). This one builds a host package whose only face is declared in Zig, runs it, and asserts
+# the runtime tree — the same distinction that made `tools/xirang-mixed-shop` worth keeping.
+# 为什么需要它：其它 Zig 检查都是部件级的（记录能读回、编译钩子能产出目标文件）。这一条构建一个"唯一
+# 的面声明在 Zig 里"的宿主、跑起来并断言运行期树——与 `tools/xirang-mixed-shop` 值得保留的是同一种区别。
+#
+# Zig is located from XIRANG_ZIG, PATH, or `nix shell nixpkgs#zig`. A machine without Zig reports
+# "not run" (exit 2) instead of failing a face it cannot build.
+# Zig 从 XIRANG_ZIG、PATH 或 `nix shell nixpkgs#zig` 定位。没有 Zig 的机器报"未跑"（exit 2），而不是让
+# 一个它构建不了的面失败。
+
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+zig=${XIRANG_ZIG:-}
+if [ -z "$zig" ]; then
+    zig=$(command -v zig || true)
+fi
+if [ -z "$zig" ]; then
+    if command -v nix >/dev/null 2>&1; then
+        zig=$(XDG_CACHE_HOME=${XDG_CACHE_HOME:-/tmp/nix-cache} nix shell nixpkgs#zig -c sh -c 'command -v zig')
+    else
+        echo "xirang-zig-host: no Zig compiler; set XIRANG_ZIG or install zig" >&2
+        exit 2
+    fi
+fi
+echo "zig    $zig ($("$zig" version))"
+# The host's build script runs the language's default recipe, which is the word `zig`; put the
+# compiled toolchain on PATH under that name for the duration of the build.
+# 宿主的构建脚本运行该语言的默认配方，配方里的程序名就是 `zig`；构建期间把找到的编译器以这个名字放进 PATH。
+bin=$(mktemp -d "${TMPDIR:-/tmp}/xirang-zig-bin-XXXXXX")
+trap 'rm -rf "$bin"' EXIT INT TERM
+ln -s "$zig" "$bin/zig"
+cd "$root/examples/zig-gauge"
+PATH="$bin:$PATH" CARGO_NET_OFFLINE=true cargo test --offline
+echo "xirang-zig-host: ok (a Zig-declared face is in the runtime tree)"

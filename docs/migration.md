@@ -158,7 +158,7 @@ provided by `xirang-dev`, a workspace-only binary behind the non-default
 `dev-supervisor` feature: it rebuilds the child Studio process after source,
 Cargo, or plugin catalog changes, so it needs this checkout
 (`cargo run -p xirang-toolchain --features dev-supervisor --bin xirang-dev -- watch`)
-and is not installed by `cargo install xirang-toolchain`.
+and is not installed by `cargo install xirang-toolchain --features cli` either.
 
 ## Plugin host
 

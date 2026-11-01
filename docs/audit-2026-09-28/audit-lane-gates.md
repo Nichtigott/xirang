@@ -216,8 +216,8 @@
 ### G-22 MINOR — 注释-准确性：`lint.rs` 的模块文档低估了自己的范围
 
 - file:line：`conventions/src/lint.rs:15-20`（"Boundary: the requirement covers the nine published crates' library roots."）vs `conventions/src/lint.rs:27-38`（函数文档：除示例宿主外每个 crate 目录的库根 + 一个二进制根）
-- 现象：`required_roots` 实测返回 10 个库根（含**未发布**的 `conventions/src/lib.rs`）外加 `mcp/src/main.rs`，共 11 个。模块级那句只说九个已发布 crate（再加一句 MCP 二进制），漏掉了 `conventions` 自己——而这恰恰是注释里说要防的一件事（`:29-38`：删掉 `conventions` 自己的属性曾经无人发现）。同一模块的两段文档对同一事实给出不同口径。
-- 判据 `[实测]`：按根清单 `members` 复算：`core/macro/run_method/build_method/cli/debug_method/studio/plugin-host/mcp/conventions` 各有 `src/lib.rs` → 10；`mcp/src/main.rs` 存在 → 11。
+- 现象：`required_roots` 实测返回 10 个库根（含**未发布**的 `conventions/src/lib.rs`）外加 `mcp/main.rs`，共 11 个。模块级那句只说九个已发布 crate（再加一句 MCP 二进制），漏掉了 `conventions` 自己——而这恰恰是注释里说要防的一件事（`:29-38`：删掉 `conventions` 自己的属性曾经无人发现）。同一模块的两段文档对同一事实给出不同口径。
+- 判据 `[实测]`：按根清单 `members` 复算：`core/macro/run_method/build_method/cli/debug_method/studio/plugin-host/mcp/conventions` 各有 `src/lib.rs` → 10；`mcp/main.rs` 存在 → 11。
 - 最小修复方向：模块级那句改成"除示例宿主外的每个 crate 目录的库根（含 `conventions` 自己）+ MCP 的二进制根"，与函数文档统一。
 - 复核手段：上面那次复算；或读 `lint.rs:39-60` 的实现。
 
@@ -327,8 +327,8 @@
 | `tools/`（6 个脚本） | **58** | `xirang-publish` 26（两张表）、`package-audit` 4、`visual` 3、`scale-audit` 2、`external-rehearsal` 1、`release-audit` 1 |
 | `conventions/`（门禁本体 + 注释） | **20** | 含 `LIB_NAME_EXCEPTIONS`（`conventions/src/naming.rs:39`）与文档注释里的示例名 |
 | `.github/`（2 个工作流） | **10** | 4 处在命令行位置、其余在注释/说明 |
-| `build_method/src/scaffold/`（模板） | **6**（4 行要求文本） | `build_method/src/scaffold/project.rs:115`、`:118`、`:124`、`:127`；版本不是字面量——`build_method/src/scaffold/project.rs:103` 用 `env!("CARGO_PKG_VERSION")` 生成，模板只写 crate 名 |
-| 其余 `.rs` 源（非模板、非门禁） | **8** | 其中真正按名引用的是 `mcp/src/protocol.rs:270`（serverInfo 名）、`studio/src/bin/xirang-dev.rs:142`（`--bin xirang-studio`），其余在注释/测试断言里 |
+| `build_method/scaffold/`（模板） | **6**（4 行要求文本） | `build_method/scaffold/project.rs:115`、`:118`、`:124`、`:127`；版本不是字面量——`build_method/scaffold/project.rs:103` 用 `env!("CARGO_PKG_VERSION")` 生成，模板只写 crate 名 |
+| 其余 `.rs` 源（非模板、非门禁） | **8** | 其中真正按名引用的是 `mcp/protocol.rs:270`（serverInfo 名）、`studio/bin/xirang-dev.rs:142`（`--bin xirang-studio`），其余在注释/测试断言里 |
 | 各成员清单的依赖要求行 | **19** | 见 7.2 |
 
 口径说明：以上是"按 crate 名出现"的**站点数**，不等于"合并后必须改的处数"（许多处是历史叙述、README 章节标题、测试夹具字符串；脚手架与发布表是非改不可的两类）。逐条判定留给 boundary-architect。
@@ -375,7 +375,7 @@
 8. **发布工作流的关键性质**：上传步骤自带肯定式 tag 守卫（`:122`、`:136`）；tag 检查读的是发布路径同一个读取器（`tools/xirang-publish --workspace-version`，`.github/workflows/release.yml:81`），没有第二份副本；`workflow_dispatch` 存在且无 `inputs.`；`permissions: contents: read`；`concurrency` + `timeout-minutes` 有界；无 `continue-on-error`；发布步骤在全部检查之后。
 9. **`--offline` 政策一致**：`.github/workflows` 里 0 处 `--offline`（冷 runner 注册表为空）；本地默认带 `--offline` 的三个工具都用"显式空值可覆盖"的展开写法，CI 侧显式传空（`ci.yml:47`、`:116`）。
 10. **`--help` 与子命令集合一致**：`target/debug/xirang --help` 列出 8 个子命令（`new/check/build/snippets/explain/grafts/studio/mcp`），与 `README.md:895-896` 一字不差；`--help` 关于 MCP 的措辞是"queries, plus authoring writes that preview unless `apply: true`"，与 `docs/audit-3p-2026-09-27.md` 记录的 CS1 修复一致（"read-only"已不存在于根 README/ROADMAP/中文 README）。
-11. **MCP 工具名无漂移**：`mcp/src/` 里出现的 `xirang.*` 工具名与 `mcp/README.md` 列出的 18 个集合一致。
+11. **MCP 工具名无漂移**：`mcp/` 里出现的 `xirang.*` 工具名与 `mcp/README.md` 列出的 18 个集合一致。
 12. **双语覆盖**：43 个受追踪 `.md` 全部含中文（含 `macro/README.md`——它没有独立 `README.zh-CN.md`，但正文是逐段英中对照）；`conventions/`、两个 example 宿主没有 README，但它们在 `publish = false` 家族里、manifest 也没声明 `readme`，不是漂移；`docs/` 下的 `audit-*`/`design-*` 记录按文件名豁免。
 13. **`doc_blocks`/`doc_anchors` 的覆盖范围无盲区**：43 个 `.md` 里只有 `studio/tests/fixtures/node-editor/README.md` 不在门禁范围（它不是工作区成员——`studio/tests/fixtures/node-editor/` 是仅源码的 fixture 宿主，从不编译，设计如此）。
 14. **锚点判定落在"路径"上而不是"后缀"**：`doc_anchors.rs:172-195` 的 `resolve` 先精确匹配、再要求带前导斜杠的段边界后缀，`..` 段在比较前折叠（`:199-211`）；`0` 行号与越界行号都单独判（`:88-111`）。三条都有红例。

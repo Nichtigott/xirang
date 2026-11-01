@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Probe the callgraph answer against a real repository and hand-checked expectations.
+
+针对真实仓库与手工核对过的期望，抽查调用图答案。
+
+Usage / 用法:
+    tools/xirang-real-repo-probe --root <repo> [--cases <file>] [--mcp <binary>]
+
+Each case is `function<TAB>caller,caller` (an empty right side means "no callers"). The tool runs
+`xirang-mcp --call callgraph --function <function> --root <repo>` once per case, parses `matches N`
+and `callers (N): …`, and compares the caller *names* (the part after the last `::`, with the
+"(outside …)" annotation stripped) with the expectation. It is a probe, not a gate: the repository is
+external and may move, so a failing case prints the raw answer and the mismatch instead of a verdict
+about the product.
+
+每个用例是 `函数<TAB>调用者,调用者`（右侧为空表示"没有调用者"）。每个用例跑一次
+`xirang-mcp --call callgraph --function <函数> --root <仓库>`，解析 `matches N` 与
+`callers (N): …`，把调用者**名字**（最后一个 `::` 之后、去掉 "(outside …)" 注释）与期望比对。
+它是探针而不是门禁：外部仓库会移动，失败的用例打印原始答案与差异，而不是对产品下判决。
+"""
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+DEFAULT_CASES = pathlib.Path(__file__).with_name("fixtures") / "real-repo-cases-nichui.tsv"
+
+
+def parse_cases(path):
+    cases = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, _, callers = line.partition("\t")
+        expected = [item.strip() for item in callers.split(",") if item.strip()]
+        cases.append((name.strip(), expected))
+    return cases
+
+
+def caller_names(answer):
+    match = re.search(r"callers \((\d+)\): (.*)", answer)
+    if not match:
+        return None
+    count, tail = int(match.group(1)), match.group(2).strip()
+    if count == 0 or tail == "-":
+        return []
+    names = []
+    for item in tail.split(", "):
+        item = re.sub(r" \(outside .*\)$", "", item)
+        names.append(item.rsplit("::", 1)[-1])
+    return names
+
+
+def run(mcp, root, function):
+    result = subprocess.run(
+        [str(mcp), "--call", "callgraph", "--function", function, "--root", str(root)],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout + result.stderr
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", required=True, type=pathlib.Path)
+    parser.add_argument("--cases", type=pathlib.Path, default=DEFAULT_CASES)
+    parser.add_argument(
+        "--mcp",
+        type=pathlib.Path,
+        default=pathlib.Path(__file__).resolve().parent.parent / "target/debug/xirang-mcp",
+    )
+    args = parser.parse_args()
+
+    failures = 0
+    for function, expected in parse_cases(args.cases):
+        answer = run(args.mcp, args.root, function)
+        got = caller_names(answer)
+        status = "PASS"
+        if got is None:
+            status = "FAIL (no callers line)"
+        elif sorted(got) != sorted(expected):
+            status = "FAIL"
+        if status != "PASS":
+            failures += 1
+            print(f"{status} {function}: expected {expected}, got {got}")
+            print(answer)
+        else:
+            print(f"PASS {function}: {got}")
+    print(f"{len(parse_cases(args.cases)) - failures}/{len(parse_cases(args.cases))} cases passed")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

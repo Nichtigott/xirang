@@ -10,27 +10,20 @@ use xirang_toolchain::run_method::registry_core::{
 
 pub struct ControlFast;
 
-xirang_toolchain::run_method::external_object! {
-    source: "control_fast/control_fast.rs",
-    kind: ControlFast,
-    preset: NoPreset,
-    parts: NoParts,
-    name: { zh: "快速控件", en: "Fast control" },
-    summary: { zh: "整体替换", en: "Whole-subtree replacement" },
-    exports: ["control.render"],
-    needs_registry: true,
-    parent: root_node_id(crate::XIRANG_NAMESPACE),
-    getting_from_other_registry: None,
-    registry_rule_path: "control_fast/control_fast.rs",
-    registry_rule: RegistrationRule::ANY,
-    handle_traits: ["ControlHandle"],
-    requires: [],
-    provides: [],
-    flow: FlowContract::new(
-        ContractId::new("control.frame.v1"),
-        1,
-        "ControlInput",
-        "ControlFrame",
-    ),
-    runtime_checks: [],
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<ControlFast>()
+    .source("control_fast/control_fast.rs")
+    .preset::<NoPreset>()
+    .parts::<NoParts>()
+    .name("Fast control", "快速控件")
+    .summary("Whole-subtree replacement", "整体替换")
+    .exports(&["control.render"])
+    .needs_registry(true)
+    .under(root_node_id(crate::XIRANG_NAMESPACE))
+    .getting_from_other_registry(None)
+    .registry_rule_path("control_fast/control_fast.rs")
+    .registry_rule(RegistrationRule::ANY)
+    .handle_traits(&["ControlHandle"])
+    .provides(&[])
+    .flow(FlowContract::new(ContractId::new("control.frame.v1"), 1 , "ControlInput" , "ControlFrame" ,))
+    .runtime_checks(&[]);

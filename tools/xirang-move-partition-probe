@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Leg 8 of the partition rehearsal: execute moves against its built dual-graft host.
+分区演练第八阶段：在已构建的双嫁接宿主上搬迁，每一步回放真正编译的计划。
+This helper consumes the disposable fixture built by xirang-partition-rehearsal.
+此辅助脚本只接收 xirang-partition-rehearsal 创建的一次性夹具。
+"""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import tomllib
+
+
+def main():
+    repo, workspace = map(Path, sys.argv[1:3])
+    app = workspace / "app"
+    cli = repo / "target/debug/xirang"
+    bridge = repo / "target/debug/xirang-mcp"
+    probe = workspace / "probe/src/main.rs"
+    manifest = workspace / "probe/Cargo.toml"
+    entry = app / "src/lib.rs"
+    provider = workspace / "fast-widget/src/fast/fast.rs"
+    provider_before = provider.read_bytes()
+    branch_before = None
+    entry_before = entry.read_bytes()
+    env = dict(os.environ, CARGO_TARGET_DIR=str(workspace / "target"), XIRANG_SCOPE="all")
+    flags = shlex.split(os.environ.get("XIRANG_REHEARSAL_CARGO_FLAGS", "--offline"))
+
+    def business_owner(package):
+        lines = [line for line in manifest.read_text().splitlines() if not line.startswith('spare_owner =')]
+        path = '../app' if package == 'app' else f'../crates/{package}'
+        lines.append(f'spare_owner = {{ package = "{package}", path = "{path}" }}')
+        manifest.write_text('\n'.join(lines) + '\n')
+
+    def run(args, expected=0):
+        result = subprocess.run(list(map(str, args)), cwd=workspace, env=env,
+                                capture_output=True, text=True, timeout=240)
+        if result.returncode != expected:
+            raise AssertionError(f"{args}: exit {result.returncode}\n{result.stdout}\n{result.stderr}")
+        return result.stdout + result.stderr
+
+    def fingerprint():
+        return {str(p.relative_to(app)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in app.rglob("*") if p.is_file()
+                and "target" not in p.relative_to(app).parts}
+
+    def move(node, to, name=None, apply=True, refused=False):
+        args = dict(action="move", node=node, to=to, apply=apply)
+        if name is not None:
+            args["name"] = name
+        before = fingerprint()
+        response = run([bridge, "--call", "apply", "--root", app,
+                        "--json", json.dumps(args)], expected=1 if refused else 0)
+        if refused or not apply:
+            assert fingerprint() == before, f"refusal/preview changed authored files: {response}"
+        return response
+
+    def boundary(split):
+        groups = [('widgets', ['panel::frame']), ('gauges', ['panel::gauge'])] if split else [
+            ('widgets', ['panel::frame', 'panel::gauge'])]
+        claims = ','.join('Crate::named("%s").at(&[%s])' %
+                          (name, ','.join('crate::%s::SUBTREE' % path for path in paths))
+                          for name, paths in groups)
+        (app / "add_crates.rs").write_text(
+            'use xirang_toolchain::run_method::{Crate, Shape};\n'
+            'pub fn add_crates() -> Shape { Shape::of("app", &[' + claims + ']) }\n')
+        business_owner('app-gauges' if split else 'app-widgets')
+
+    def observe(label):
+        run([cli, "check", app])
+        run([cli, "crates", "--write", app])
+        for package, peer in [('app-widgets', 'app-gauges'), ('app-gauges', 'app-widgets')]:
+            path = workspace / f'crates/{package}/Cargo.toml'
+            if path.exists():
+                dependencies = tomllib.loads(path.read_text()).get('dependencies', {})
+                assert all(name != peer and (not isinstance(value, dict) or value.get('package') != peer)
+                           for name, value in dependencies.items()), f'{label}: introduced a sibling crate dependency'
+        result = subprocess.run(["cargo", "run", *flags, "--quiet", "--manifest-path",
+                                 "probe/Cargo.toml"], cwd=workspace, env=env,
+                                capture_output=True, text=True, timeout=240)
+        assert result.returncode == 0, f"{label}: {result.stdout}\n{result.stderr}"
+        rows = {}
+        for line in result.stdout.splitlines():
+            identity, path, kind = line.split()
+            rows[path] = (identity, kind)
+        assert rows, "the compiled probe must emit a tree"
+        assert provider.read_bytes() == provider_before, "third-party source changed"
+        if branch_before is not None:
+            assert (provider.parent.parent / "branch/branch.rs").read_bytes() == branch_before
+        print(f"leg 8/{label}: compiled graft and behavior checks passed ({len(rows)} faces)", flush=True)
+        return rows
+
+    def moved_only(before, after, old, new):
+        before, after = dict(before), dict(after)
+        paths = [p for p in before if p == old or p.startswith(old + '/')]
+        assert paths, "the moved subtree must exist"
+        for path in paths:
+            old_face, new_face = before.pop(path), after.pop(new + path[len(old):])
+            assert old_face[0] != new_face[0], "source move must change identity"
+            assert old_face[1] == new_face[1], "move changed effective replacement kind"
+        assert before == after, "move changed an unrelated face, identity or graft"
+
+    if not set(sys.argv[3:]) & {"--range-only", "--local-only"}:
+        print("== leg 8/8: moves and partial graft repair in a materialized partition", flush=True)
+        source = app / "src/panel/frame/widget/spare/spare.rs"
+        source.parent.mkdir(parents=True)
+        source.write_text('crate::widget_object! {\n    kind: Spare,\n'
+                          '    parent: crate::panel::frame::widget::NODE_ID,\n}\n'
+                          'pub fn behavior() -> u32 { 73 }\n')
+        probe.write_text(probe.read_text().replace('fn main() {',
+                         'fn main() {\n    assert_eq!(spare_owner::panel::frame::widget::spare::behavior(), 73);'))
+        business_owner('app-widgets')
+        baseline = observe("before-move")
+        declaration = (app / "add_crates.rs").read_bytes()
+        move("root/panel/frame/widget/spare", "root/panel/frame", "renamed", apply=False)
+        move("root/panel/frame/widget/spare", "root/panel/frame", "renamed")
+        probe.write_text(probe.read_text().replace('frame::widget::spare::behavior', 'frame::renamed::behavior'))
+        first = observe("same-claim")
+        moved_only(baseline, first, "root/panel/frame/widget/spare", "root/panel/frame/renamed")
+        assert (app / "add_crates.rs").read_bytes() == declaration
+        move("root/panel/frame/renamed", "root/panel/gauge")
+        probe.write_text(probe.read_text().replace('frame::renamed::behavior', 'gauge::renamed::behavior'))
+        second = observe("two-claims-same-owner")
+        moved_only(first, second, "root/panel/frame/renamed", "root/panel/gauge/renamed")
+        assert (app / "add_crates.rs").read_bytes() == declaration
+        assert entry.read_bytes() == entry_before, "unrelated move rewrote graft declarations"
+
+        boundary(True)
+        assert observe("split-after-moves") == second
+        declaration = (app / "add_crates.rs").read_bytes()
+        # Cover both a leaf and a subtree in all three cross-owner directions.
+        # 叶节点与子树都走完三种跨归属方向，不通过临时撤销分区来绕过。
+        for subtree in (False, True):
+            if subtree:
+                source = app / "src/panel/gauge/renamed/renamed.rs"
+                source.write_text(source.read_text().replace('kind: Spare,', 'kind: Spare,\n    needs_registry: true,'))
+                inner = source.parent / "inner/inner.rs"
+                inner.parent.mkdir()
+                inner.write_text('crate::renamed_object! { kind: Inner, parent: crate::panel::gauge::renamed::NODE_ID, }\n'
+                                 'pub fn behavior() -> u32 { 19 }\n')
+                rule = source.parent / "registry_rule/registry_rule.rs"
+                rule.parent.mkdir()
+                rule.write_bytes((app / "src/panel/gauge/registry_rule/registry_rule.rs").read_bytes())
+                probe.write_text(probe.read_text().replace('fn main() {',
+                                 'fn main() {\n    assert_eq!(spare_owner::panel::gauge::renamed::inner::behavior(), 19);'))
+                second = observe("subtree-before-cross-owner")
+            previous = second
+            for label, old, to, owner, notice in [
+                ("ghost-to-ghost", "root/panel/gauge/renamed", "root/panel/frame", "app-widgets", "gauges -> widgets"),
+                ("ghost-to-host", "root/panel/frame/renamed", "root/panel", "app", "widgets -> host"),
+                ("host-to-ghost", "root/panel/renamed", "root/panel/gauge", "app-gauges", "host -> gauges"),
+            ]:
+                for apply in (False, True):
+                    response = move(old, to, apply=apply)
+                    assert f"notice: compilation owner {notice}" in response, response
+                new = to + "/renamed"
+                probe.write_text(probe.read_text().replace(old.removeprefix('root/').replace('/', '::') + '::',
+                                                          new.removeprefix('root/').replace('/', '::') + '::'))
+                business_owner(owner)
+                current = observe(f"{'subtree' if subtree else 'leaf'}-{label}")
+                moved_only(previous, current, old, new)
+                previous = current
+                assert (app / "add_crates.rs").read_bytes() == declaration
+                assert entry.read_bytes() == entry_before
+            assert previous == second, "cross-owner roundtrip changed the effective tree"
+
+        # Keep separate owners; only the affected graft entry needs a rebind.
+        # 保持归属拆分，只重绑受影响的嫁接条目。
+        assert observe("split-before-repair") == second
+        old = "root/panel/frame/widget/cap"
+        new = "root/panel/gauge/lens"
+        for apply in (False, True):
+            error = move(old, "root/panel/gauge", "lens", apply=apply, refused=True)
+            assert "graft" in error and old in error
+        cut = '    cut(crate::panel::frame::widget::cap::NODE_ID) graft(fast_widget::fast::NODE_ID),'
+        assert entry.read_text().count(cut) == 1
+        saved = entry.read_text()
+        entry.write_text(saved.replace(cut, ''))
+        move(old, "root/panel/gauge", "lens")
+        entry.write_text(saved.replace('frame::widget::cap::NODE_ID', 'gauge::lens::NODE_ID'))
+        probe.write_text(probe.read_text().replace(old, new))
+        repaired = observe("one-of-two-grafts-rebound")
+        moved_only(second, repaired, old, new)
+        assert repaired[new][1] == "WidgetFast"
+        assert repaired["root/panel/gauge/needle"] == second["root/panel/gauge/needle"]
+        boundary(True)
+        assert observe("split-after-partial-repair") == repaired
+
+        # Move back through the same supported repair path, then split again.
+        # 按同一修复通道搬回，再次拆分，验证操作顺序不会积累静默损伤。
+        boundary(False)
+        rebound = entry.read_text()
+        entry.write_text(rebound.replace(cut.replace('frame::widget::cap', 'gauge::lens'), ''))
+        move(new, "root/panel/frame/widget", "cap")
+        entry.write_text(saved)
+        probe.write_text(probe.read_text().replace(new, old))
+        assert observe("repair-roundtrip") == second
+        boundary(True)
+        assert observe("split-after-roundtrip") == second
+        assert entry.read_bytes() == entry_before
+        print("leg 8 passed: same/cross-owner moves, atomic graft refusals, partial repair, and split/merge roundtrip", flush=True)
+
+    if "--local-only" not in sys.argv[3:]:
+        # A single range crosses owners; full then covers children owned by those crates.
+        # 一个区间横跨两个归属；随后 full 覆盖由这些 crate 编译的子对象。
+        meter = app / "src/panel/gauge/meter/meter.rs"
+        meter.parent.mkdir(parents=True, exist_ok=True)
+        meter.write_text((app / "src/panel/gauge/needle/needle.rs").read_text().replace('kind: Needle', 'kind: Meter'))
+        for name in ('meter', 'needle'):
+            owner = app / f"src/panel/gauge/{name}/{name}.rs"
+            owner.write_text(owner.read_text().replace('    needs_registry: true,\n', '').replace(
+                '    parent:', '    needs_registry: true,\n    parent:'))
+            rule = owner.parent / "registry_rule/registry_rule.rs"
+            rule.parent.mkdir(parents=True, exist_ok=True)
+            rule.write_bytes((app / "src/panel/gauge/registry_rule/registry_rule.rs").read_bytes())
+            child = owner.parent / "reading/reading.rs"
+            child.parent.mkdir(parents=True, exist_ok=True)
+            child.write_text(f'crate::{name}_object! {{\n    kind: {name.title()}Reading,\n'
+                             f'    parent: crate::panel::gauge::{name}::NODE_ID,\n}}\n')
+        needle_cut = 'cut(crate::panel::gauge::needle::NODE_ID)'
+        range_cut = 'cut(crate::panel::gauge::meter::NODE_ID to crate::panel::gauge::needle::NODE_ID)'
+        branch = provider.parent.parent / "branch/branch.rs"
+        branch.parent.mkdir(exist_ok=True)
+        branch.write_text(provider.read_text().replace('WidgetFast', 'WidgetBranch').replace(
+            'fast/fast.rs', 'branch/branch.rs').replace('"fast.rs"', '"branch.rs"').replace(
+            'needs_registry: false', 'needs_registry: true'))
+        branch_before = branch.read_bytes()
+        entry.write_text(entry.read_text().replace(needle_cut, range_cut).replace(
+            range_cut + ' graft(fast_widget::fast::NODE_ID)', range_cut + ' graft(fast_widget::branch::NODE_ID)'))
+        probe.write_text(probe.read_text().replace(
+            'assert_eq!(effective.depth_first().iter().find(|face| face.id == slot).unwrap().kind, "WidgetFast");',
+            'let expected = if matches!(original, "Meter" | "Needle" | "Gauge") { "WidgetBranch" } else { "WidgetFast" };\n'
+            '        assert_eq!(effective.depth_first().iter().find(|face| face.id == slot).unwrap().kind, expected);'))
+        probe.write_text(probe.read_text().replace(
+            '        targets.push(("root/panel/gauge/meter", "Meter"));\n', '').replace(
+            'targets.push(("root/panel/gauge/needle", "Needle"));',
+            'targets.push(("root/panel/gauge/needle", "Needle"));\n'
+            '        targets.push(("root/panel/gauge/meter", "Meter"));'))
+        boundary(False)
+        range_baseline = observe("range-merged")
+
+        def split_range():
+            (app / "add_crates.rs").write_text(
+                'use xirang_toolchain::run_method::{Crate, Shape};\n'
+                'pub fn add_crates() -> Shape { Shape::of("app", &['
+                'Crate::named("widgets").at(&[crate::panel::frame::SUBTREE, crate::panel::gauge::meter::SUBTREE]),'
+                'Crate::named("gauges").at(&[crate::panel::gauge::needle::SUBTREE])]) }\n')
+            business_owner('app')
+
+        range_entry = entry.read_bytes()
+        split_range()
+        assert observe("one-range-across-two-owners") == range_baseline
+        assert entry.read_bytes() == range_entry
+        boundary(False)
+        for apply in (False, True):
+            error = move("root/panel/gauge/meter", "root/panel/frame", apply=apply, refused=True)
+            assert "graft" in error
+        assert observe("range-move-refused") == range_baseline
+
+        gauge = app / "src/panel/gauge/gauge.rs"
+        gauge.write_text(gauge.read_text().replace('    parent: crate::panel::NODE_ID,',
+            '    parent: crate::panel::NODE_ID,\n'
+            '    flow: crate::FlowContract::new(crate::ContractId::new("panel.render.v1"), 1, "PanelInput", "PanelFrame"),'))
+        entry.write_text(entry.read_text().replace(range_cut, 'cut(crate::panel::gauge::NODE_ID) full'))
+        text = probe.read_text().replace('targets.push(("root/panel/gauge/needle", "Needle"));',
+                                        'targets.push(("root/panel/gauge", "Gauge"));')
+        text = text.replace('        targets.push(("root/panel/gauge/meter", "Meter"));', '')
+        text = text.replace('!slots.contains(&face.id)',
+                            '!slots.contains(&face.id) && !base.path_for(face.id).unwrap().starts_with("root/panel/gauge/")')
+        probe.write_text(text)
+        full_baseline = observe("full-merged")
+        assert full_baseline["root/panel/gauge"][1] == "WidgetBranch"
+        assert not any(path.startswith("root/panel/gauge/") for path in full_baseline)
+        full_entry = entry.read_bytes()
+        split_range()
+        assert observe("full-above-two-owned-children") == full_baseline
+        assert entry.read_bytes() == full_entry
+        for apply in (False, True):
+            error = move("root/panel/gauge/renamed", "root/panel", apply=apply, refused=True)
+            assert "full" in error
+        assert observe("full-membership-move-refused") == full_baseline
+        print("leg 8 range/full passed: compiled overlays survive boundary edits; membership changes refuse atomically", flush=True)
+
+    # A locally adopted replacement may be compiled by a different owner from its cut.
+    # 本地认领的替换实现也可能与切口由不同 crate 编译；不能强加反向依赖。
+    entry.write_text('xirang_toolchain::run_method::host!();\n'
+        'pub const FRAMEWORK: FrameworkId = FrameworkId::new("xirang.rehearsal.repartition");\n'
+        'xirang_toolchain::run_method::static_graft_plan!(FRAMEWORK,\n'
+        'cut(crate::panel::frame::widget::cap::NODE_ID) graft(crate::panel::gauge::meter::NODE_ID),\n);\n')
+    probe.write_text(probe.read_text().split('fn main() {')[0] + '''fn main() {
+    assert_eq!(spare_owner::panel::gauge::renamed::behavior(), 73);
+    let framework = FrameworkId::new("xirang.rehearsal.repartition");
+    let mut base = Registry::root_for_namespace(framework, subject::XIRANG_NAMESPACE);
+    base.register_all(&subject::registrations()).unwrap();
+    let before = rows(&base);
+    let effective = base.overlay_static(subject::builtin_static_plan().grafts(), &base).unwrap();
+    assert_eq!(before, rows(&base));
+    let slot = base.depth_first().into_iter().find(|face|
+        base.path_for(face.id).as_deref() == Some("root/panel/frame/widget/cap")).unwrap().id;
+    for face in base.depth_first() {
+        let replaced = effective.depth_first().into_iter().find(|other| other.id == face.id).unwrap();
+        assert_eq!(replaced.kind, if face.id == slot { "Meter" } else { &face.kind });
+    }
+    for row in rows(&effective) { println!("{row}"); }
+}
+''')
+    boundary(False)
+    local_baseline = observe("local-provider-merged")
+    local_entry = entry.read_bytes()
+    boundary(True)
+    assert observe("local-provider-in-another-owner") == local_baseline
+    assert entry.read_bytes() == local_entry
+    print("leg 8 local provider passed: cut and implementation can have independent crate owners", flush=True)
+
+
+if __name__ == "__main__":
+    main()

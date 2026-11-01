@@ -57,7 +57,7 @@ pub const MIN_PROSE: usize = 30;
 
 /// The directory the walk covers.
 /// 遍历覆盖的目录。
-const BRIDGE: &str = "toolchain/src/mcp/src";
+const BRIDGE: &str = "toolchain/src/mcp";
 
 /// One file that answers online without saying why the build cannot.
 /// 一个在线作答、却没说为什么构建算不了的文件。

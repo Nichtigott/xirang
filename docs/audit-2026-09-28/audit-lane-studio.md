@@ -19,7 +19,7 @@
 
 ## 1. 发现
 
-### S-01 · CRITICAL · 可靠性/数据损坏 · `studio/src/studio/app/mutations.rs:257-346`
+### S-01 · CRITICAL · 可靠性/数据损坏 · `studio/studio/app/mutations.rs:257-346`
 
 - 现象：`submit_plugin` 手写锁文件格式并直接 append：记录串在 `mutations.rs:258` 拼成 7 字段 `{source}|{framework}|{package}|{version}|{crate_name}|{checksum}|{mode}`，`mutations.rs:332-333` 用 `append_line` 追加。写入前只有两道闸：整行字符串相等（`mutations.rs:260`）与「official 必须已在受信锁里」（`mutations.rs:299`）。两者都拦不住**同一身份、不同 checksum/mode** 的新行：
   - 整行比较要求七个字段的序列化字节完全相同，checksum 或 mode 任一不同即放行；
@@ -47,7 +47,7 @@
 ### S-04 · MAJOR · 职责边界 · `ui/ui.rs:66`、`ui/panels.rs:52/60-61/115`、`ui/overlay.rs:7/52`、`ui/graph/nodes.rs:130-165`
 
 - 现象：渲染不是只读的。`draw(frame, app: &mut App)`，并在绘制期写 `App`：`panels.rs:52` 与 `60-61` 写 `hot.workspace_area/tree_area/details_area`，`panels.rs:115` 把 `ListState::offset()` 写回 `app.tree_offset`，`overlay.rs:7` 先把整个 overlay `clone()` 出来、`overlay.rs:52` 再把 `current.offset` 写回 overlay，`ui/graph/nodes.rs:130-165` 直接改 `app.graph_flow`（缓存控件的重建/重盖/视口保存）。同一批函数签名还不统一：`draw_details(&App)`、`draw_tree(&mut App)`、`draw_search(_, &mut App, _)`。
-- 判据：热区是 immediate-mode 的既有设计（`app.rs:112-114` 注释、`studio/src/studio/app/hot_zones.rs:6-13` 说明“Every draw recomputes these”），这条可以留；但「渲染期写回状态」把渲染与事件处理绑在一个可变引用上，`overlay.rs` 的 clone→写回只写回**一个**字段这一点尤其脆：任何第二个字段在绘制期被改都会静默丢失（clone 的副本被丢弃），而这件事没有任何编译期约束。
+- 判据：热区是 immediate-mode 的既有设计（`app.rs:112-114` 注释、`studio/studio/app/hot_zones.rs:6-13` 说明“Every draw recomputes these”），这条可以留；但「渲染期写回状态」把渲染与事件处理绑在一个可变引用上，`overlay.rs` 的 clone→写回只写回**一个**字段这一点尤其脆：任何第二个字段在绘制期被改都会静默丢失（clone 的副本被丢弃），而这件事没有任何编译期约束。
 - 最小修复方向：`draw` 收 `&App` + `&mut HotZones`（或一个 `RenderCache`），把 `offset` 与 `tree_offset` 作为**返回值**交给事件循环写回；`draw_search` 已经从“返回值 + 调用方写回”的形态退化成内部写回，退回返回值即可。
 - 复核手段：把 `draw` 的 `app` 参数改成 `&App` 后能编译即证明写入点已收敛；再加一条“同一帧两次 draw 只改变 RenderCache”的断言测试。
 
@@ -63,7 +63,7 @@
 - 现象：`source_symbol_rows` 第二段循环自己实现了一套“什么是符号”的识别：13 个 `strip_prefix`（`pub fn `/`fn `/`pub async fn `/…/`const `/`let `，`search_queries.rs:82-95`），然后按 `( { : = whitespace` 截名。同一函数上面已经用内核 `function_symbols` 拿到了函数清单（`search_queries.rs:55`），并只把「已是函数声明行」的行跳过（`search_queries.rs:75-79`）。
 - 判据：仓库自己立的规则就在隔壁——`state/state.rs:32-37` 写了“内核拥有唯一的 `::` 边界匹配规则，Studio 曾带一份单向副本……这会让它画出的图与内核归并的证据不一致”。这里是同一错误的另一种形态：两份“符号清单”会漂移，而且两个方向都实测存在——
   - **多**：`let` 绑定被当成符号（`search_queries.rs:95`），并由 `ui/search/results.rs:38-42` 用与函数相同的 `ƒ` 标记渲染、按 `Enter` 可直接推进调用图（`app/overlay/search.rs:149-176`）——语义上它不是可跳转的符号，`call_relations` 也找不到同名函数。
-  - **漏**：13 个前缀不含 `pub(crate)`/`pub(super)`/`unsafe fn`（`search_queries.rs:82-95`），而内核认这些（`studio/src/studio/app/tests/source.rs:26-53` 用例 `function_index_accepts_qualified_visibility_and_impl_methods` 钉了 `pub(crate) async fn load` 与 impl 内的 `unsafe fn render`）；这类行只有在 needle 命中内核已识别的 name/signature 时才由上面的循环补上，否则整行不进结果，而符号循环里真正按“整行文本”匹配的分支（`search_queries.rs:113` 的 `trimmed.contains(&needle)`）本来会命中它——同一行在两段代码里得到不同答案。
+  - **漏**：13 个前缀不含 `pub(crate)`/`pub(super)`/`unsafe fn`（`search_queries.rs:82-95`），而内核认这些（`studio/studio/app/tests/source.rs:26-53` 用例 `function_index_accepts_qualified_visibility_and_impl_methods` 钉了 `pub(crate) async fn load` 与 impl 内的 `unsafe fn render`）；这类行只有在 needle 命中内核已识别的 name/signature 时才由上面的循环补上，否则整行不进结果，而符号循环里真正按“整行文本”匹配的分支（`search_queries.rs:113` 的 `trimmed.contains(&needle)`）本来会命中它——同一行在两段代码里得到不同答案。
   - 去重比文档弱（注释轴另记 C-03）：`search_rows` 交给 `dedup_by`（`search_queries.rs:20-23`），而它只比较**相邻**元素；文件行（`depth: 0`、`function: ""`、`line: Some(1)`）与符号行之间有函数行插入，所以“已去重的扁平列表”（同处文档措辞）只对相邻重复成立。**今天没有可复现输入**（每行最多进一次符号循环、函数行已按行号跳过），因此这是一条“文档承诺 > 代码保证”的隐性依赖，不是现存 bug——但它意味着以后任何一处调整行序都可能悄悄放出重复行。
 - 最小修复方向：让内核 `source` 提供一份“声明/符号”清单（或复用它已有的 `function_symbols` 加上独立的 `item_symbols`），Studio 只做渲染与去重。
 - 复核手段：测试——对同一个源文件，断言 `search_rows("...")` 中来自该文件的符号行集合等于内核扫描产出的集合；把 `pub(crate) fn`、impl 内 `unsafe fn`、`let` 三类各放一行即可区分两份实现。
@@ -115,7 +115,7 @@
 - 现象：被要求核对“`state/` 八个文件是纯数据还是偷偷做 I/O”的答案是：`forms.rs`、`graft.rs`、`pages.rs`、`search.rs`、`plugin_field.rs`、`new_project_field.rs`、`state.rs` 是纯数据/纯常量，**`misc.rs` 不是**——`source_path_for`（`misc.rs:161-181`）调 `package_root()`（`support.rs:111-141`，读环境变量与 `current_dir()`）并做 `path.is_dir()`/`is_file()` 文件系统探测。文件自己的标题是 “Ungrouped Studio state / 未归类的 Studio 状态”（`misc.rs:1-2`），里面装着 `ReloadError`、`Overlay`（模态枚举）、`CallRef`、`CallTreeView`、`CallTreeMemo`、`push_call_ref`、`source_path_for`——状态、查询结果、路径解析、I/O 各一。
 - 判据：`state` 是身份目录名，读它的人有权假设“只有数据”。`source_path_for` 的探测行为还会在渲染期被调用（`ui/search/detail.rs:33`、`ui/graph/nodes.rs:265-273`），即“纯状态目录”里的函数参与每帧 I/O。
 - 最小修复方向：`source_path_for` → `support`（或 `writers` 旁的路径模块）；`CallRef`/`CallTreeView`/`CallTreeMemo`/`push_call_ref` → `call_tree_queries`；`Overlay`/`ReloadError` 留 state（或各自的屏幕模块）；删掉 `misc.rs` 这个名字。
-- 复核手段：把 `misc.rs` 移空后编译；`grep -n 'std::fs\|std::env' studio/src/studio/app/state/` 应为空（可加进 `conventions`）。
+- 复核手段：把 `misc.rs` 移空后编译；`grep -n 'std::fs\|std::env' studio/studio/app/state/` 应为空（可加进 `conventions`）。
 
 ### S-14 · MINOR · 命名/职责 · `app/writers.rs`（全 42 行）与 `app/mutations.rs:1-395`
 
@@ -123,7 +123,7 @@
 - 判据：维护者要改一次写盘必须去 `mutations.rs`，而 `writers.rs` 的文档会把他引到错误的地方；`mutations.rs` 同时承担 new-project 脚手架、add/edit 表单提交、plugin 锁写入、编辑器交接四种职责（`mutations.rs:10/74/78/152/213`）。这一条与 S-01 同根：写盘责任没有一个明确的落点，于是 plugin 那条路绕开了内核的写入器，自己拼格式。
 - 注释轴：模块文档自述与实现不符，见 C-02。
 - 最小修复方向：`writers.rs` 要么接纳真正的写盘辅助（`append_line` 等）并改名 `writes.rs`/`guard.rs` 与实际一致，要么把四个 `submit_*` 各自下沉到一个模块（`forms/`、`plugin.rs`、`project.rs`），`mutations.rs` 只留编辑器交接。
-- 复核手段：改名/拆模块后 `grep -rn 'std::fs::' studio/src/studio/app/` 的命中应集中在被命名为写入方的模块里。
+- 复核手段：改名/拆模块后 `grep -rn 'std::fs::' studio/studio/app/` 的命中应集中在被命名为写入方的模块里。
 
 ### S-15 · MINOR · 碎片化/阅读顺序 · `app/support.rs:1-509`
 
@@ -245,63 +245,63 @@
 判据按重要性取自 captain 的转达：① 注释描述的行为与实现不符 → MAJOR（过时注释比没有更坏）；② 讲「为什么/不变量/陷阱/边界」还是复述代码；③ 双语两侧是否说同一件事；④ 术语是否一致；⑤ 该由名字/类型承担的信息被塞进注释；⑥ 注释掉的死代码、悬挂 TODO/FIXME；⑦ 位置与密度（信噪比）。
 说明：C-01/C-02/C-03/C-04 与 S-17/S-14/S-06/S-15 是**同一处的两个轴**（实现轴 + 注释轴），各自计一条并互相指针；其余为注释轴独有。
 
-### C-01 · MAJOR · 注释与实现不符 · `studio/src/studio/app/navigation.rs:165-171`
+### C-01 · MAJOR · 注释与实现不符 · `studio/studio/app/navigation.rs:165-171`
 
 - 现象：`retreat_graph_focus` 的注释写 “BackTab walks the same two panes the other way. / BackTab 以相反方向走同样这两块面板。”（`navigation.rs:166-167`），而函数体与 `advance_graph_focus`（`navigation.rs:155-163`）逐字节相同——方向与函数名无关。另见 `navigation.rs:155-171` 两个函数上方各自的 “Two panes…” 注释，都把两面板当三段式在描述。
 - 判据：判据 ①。注释描述的行为在实现里不存在：读者据此会以为 BackTab 有独立语义，改动时只改一处，另一处静默漂移（`overlay/search.rs:41-42` 确实两条键都绑在这对函数上）。
 - 最小改法：合并为 `toggle_graph_focus` 并同步注释；若要保留两个入口，就把注释改成“两块面板下前进与后退等价，保留两个名字只为键盘映射可读”。
 - 复核手段：把 `_ => 0` 改成显式 `1 => 0` 之类不改变行为的改写后，注释与实现是否仍一致；实现重复那一半见 S-17。
 
-### C-02 · MAJOR · 注释与实现不符（模块自述） · `studio/src/studio/app/writers.rs:1-22`
+### C-02 · MAJOR · 注释与实现不符（模块自述） · `studio/studio/app/writers.rs:1-22`
 
 - 现象：模块文档承诺 “Write guards: every operation that creates, rewrites, moves, or deletes something in the project the reader opened. / 写入守卫：每一个在读者打开的项目里创建、重写、移动或删除东西的操作。”，实现里只有两个不写盘的守卫（`writers.rs:30-33`、`writers.rs:37-42`）；实际写入在 `mutations.rs` 中（`mutations.rs:51-56`、`mutations.rs:137-149`、`mutations.rs:185-210` 与手写的 `mutations.rs:259`、`mutations.rs:319`、`mutations.rs:333-338`）。
 - 判据：判据 ①。按文档去 `writers.rs` 找写盘点会空手而归；写盘责任没有落点正是 S-01（CRITICAL）的成因。
 - 最小改法：文档先改成事实（“读取上下文与写作用域守卫；写入见 `mutations.rs`”），或按 S-14 的最小修复方向把写入搬进来，文档与之合一。
-- 复核手段：`grep -n 'std::fs::\|OpenOptions\|create_project\|add_module_from_face\|edit_module_face' studio/src/studio/app/writers.rs` 应与其文档所述一致。
+- 复核手段：`grep -n 'std::fs::\|OpenOptions\|create_project\|add_module_from_face\|edit_module_face' studio/studio/app/writers.rs` 应与其文档所述一致。
 
-### C-03 · MAJOR · 注释与实现不符 · `studio/src/studio/app/search_queries.rs:9-17`
+### C-03 · MAJOR · 注释与实现不符 · `studio/studio/app/search_queries.rs:9-17`
 
 - 现象：`search_rows` 的文档写 “Flat, deduplicated rows for one search query. / 一次搜索查询的扁平、已去重结果行。”而实现用 `dedup_by`（`search_queries.rs:20-23`），只消**相邻**重复。
 - 判据：判据 ①。今天没有可复现输入（在 S-06 里已说明：每行最多进一次符号循环），但文档承诺的保证强于代码——“不会有跨行/跨深度重复”是后来者会据此建立的假设。
 - 最小改法：文档改成 “adjacent duplicates collapsed”，或把实现改成真正的全量去重（`BTreeSet` 键）。
 - 复核手段：把符号循环的行序调换一次（不改逻辑），看 `search_rows` 是否出现相邻之外的重复——出现即文档不成立。实现轴见 S-06。
 
-### C-04 · MAJOR · 注释范围与实现不符 · `studio/src/studio/app/support.rs:1-2`
+### C-04 · MAJOR · 注释范围与实现不符 · `studio/studio/app/support.rs:1-2`
 
 - 现象：模块文档只声明 “Shared interaction geometry and editor helpers. / 交互几何与编辑器辅助。”，而 509 行里有约 220 行是别的东西：项目解析（`support.rs:157-247`）与 `cargo` 子进程（`support.rs:277-374`）。
 - 判据：判据 ①的弱形式——不是行为写错，而是**范围声明不全**，同样让读者误判这个模块的依赖面（谁 import 它就会连带引入 `std::process` 与 `std::env`）。
 - 最小改法：按 S-15 拆成 `project`/`cargo_probe`/`geometry`，或把文档标题改成实际的三块内容。
 - 复核手段：拆后 `support.rs` 只剩几何；或按文档逐项列出内容并核对。
 
-### C-05 · MINOR · 注释位置 · `studio/src/studio/app/lifecycle.rs:185-190`
+### C-05 · MINOR · 注释位置 · `studio/studio/app/lifecycle.rs:185-190`
 
 - 现象：两段 doc 摘要叠在 `load_mir_snapshot_report` 上（英文 `lifecycle.rs:185` + 中文 `lifecycle.rs:186` 是一份摘要，`lifecycle.rs:187-189` 是另一份），而真正做那件事的 `load_mir_snapshot`（`lifecycle.rs:197`）**没有任何文档**。
 - 判据：判据 ⑦（位置）与 ⑤（该由名字承担的信息被塞进注释）：读者会以为 `load_mir_snapshot_report` 背两份契约，而 `load_mir_snapshot` 无契约可依。
 - 最小改法：把第一段摘要移到 `load_mir_snapshot` 上方（`lifecycle.rs:196` 前），`load_mir_snapshot_report` 只留“按键绑定一行”那段。
-- 复核手段：`sed -n '185,197p' studio/src/studio/app/lifecycle.rs` 应看到两份摘要各自贴着对应的函数。
+- 复核手段：`sed -n '185,197p' studio/studio/app/lifecycle.rs` 应看到两份摘要各自贴着对应的函数。
 
-### C-06 · MINOR · 注释与实现不符（页脚合同） · `studio/src/studio/ui/status.rs:37-48`
+### C-06 · MINOR · 注释与实现不符（页脚合同） · `studio/studio/ui/status.rs:37-48`
 
 - 现象：注释说本页脚 “lists exactly the keys that `App::handle_key` handles on the Inspect/workspace page”，而页脚串（`status.rs:48`）不含 `Tab`（切焦点，`keyboard.rs:132-138`）、`j`/`k`（`Up`/`Down` 的别名，`keyboard.rs:139-153`）与空格（折叠），却含 `Enter fold`——`Enter` 在 Details 焦点下是**编辑**（`keyboard.rs:160-164`，见 S-19）。
 - 判据：判据 ①。页脚是读者唯一可见的按键契约，而 “exactly” 让它成为可验证的错误断言（`m MIR` 那段注释则是对的，值得保留写法）。
 - 最小改法：注释里的 “exactly” 改成 “the subset a reader needs”；页脚补 `Tab/j/k`，并把 `Enter fold` 写成 `Enter fold/edit`。
 - 复核手段：逐条比对 `handle_key`（`keyboard.rs:16-167`）的分支与 `status.rs:48` 的页脚串。
 
-### C-07 · MINOR · 术语一致性 · `studio/src/studio/app/graft.rs:69`、`studio/src/studio/app/graft.rs:78`、`studio/src/studio/app/graft.rs:235`
+### C-07 · MINOR · 术语一致性 · `studio/studio/app/graft.rs:69`、`studio/studio/app/graft.rs:78`、`studio/studio/app/graft.rs:235`
 
 - 现象：同一动作三个名字——`refresh_graft`（刷新界面状态）、`refresh_open_graft`（仅当界面打开时刷新）、`graft_facts`（真正做事的名词短语）；同一“宿主入口里的静态计划声明”在 `graft.rs:15` 叫 declaration、在 `graft.rs:144` 的警告文案里叫 “Add to static_graft_plan!”、在 `mutations.rs:317` 又被叫 `anchor`（那里指的是 `use <crate> as _;` 这一行）——declaration / anchor / entry line 三个词在注释里指三种不同工件。
 - 判据：判据 ④。这三个词恰好落在 S-01/S-08 涉及的写入路径上（谁写什么、写到哪里），术语不统一会放大那两处的误读。
 - 最小改法：`graft_facts` → `read_graft_state`；在 `graft.rs:1-21` 的三段 bullet 上补一行术语表，把 declaration（`static_graft_plan!`）/ record（`graft.plan`）/ entry line（`use … as _`）三者钉住。
 - 复核手段：`grep -rn 'graft_facts\|refresh_graft\|refresh_open_graft' studio/src` 的调用点全部可读成“刷新状态”。
 
-### C-08 · MINOR · 悬挂预留 · `studio/src/studio/app/hot_zones.rs:40`、`studio/src/studio/app/hot_zones.rs:43`
+### C-08 · MINOR · 悬挂预留 · `studio/studio/app/hot_zones.rs:40`、`studio/studio/app/hot_zones.rs:43`
 
 - 现象：`action_validate_area` 与 `action_edit_area` 的注释自认 “no screen sets it yet / 目前没有界面设置它”，没有任何绘制方赋值，只有 `ui/overlay.rs:34-37` 每帧把它们清空——读起来像“有东西在用它”。
 - 判据：判据 ⑥（悬挂的“以后再改”式承诺）。它比 TODO 安静，但同样是**存在的理由不在代码里**的字段，而且多一对每帧复位的矩形就多一处可能与真实按钮错位。
 - 最小改法：删掉这两个字段，等真实按钮出现再加——`state/search.rs:51-55` 已经写下同一条政策：“零调用者的字段会在真实调用者出现时回来”。
 - 复核手段：`grep -rn 'action_validate_area\|action_edit_area' studio/src` 只剩 `hot_zones.rs` 与 `ui/overlay.rs`。
 
-### C-09 · MINOR · 注释密度/信噪比 · `studio/src/studio/app/graft.rs:129-158`、`studio/src/studio/ui/graph/node_graph.rs:41-48`、`studio/src/studio/app/call_tree_queries.rs:74-80`
+### C-09 · MINOR · 注释密度/信噪比 · `studio/studio/app/graft.rs:129-158`、`studio/studio/ui/graph/node_graph.rs:41-48`、`studio/studio/app/call_tree_queries.rs:74-80`
 
 - 现象：注释密度很高（71 文件 12209 行、注释与代码接近 1:2），且同一条“为什么”常在第三处再出现一次：`graft.rs:129-142` 的注释与 `graft.rs:144` 的警告文案说的是同一后果（“发布态剪掉没有声明命名的槽位，运行期 UnkeptSlot 跳过”），`node_graph.rs:41-48` 与测试 `node_graph.rs:245-249` 说的是同一条重叠规则，`call_tree_queries.rs:74-80` 与 `call_tree_queries.rs:3-11` 说的是同一次备忘动机。
 - 判据：判据 ⑦ 与 ②。这些注释**是**“为什么/不变量/陷阱”型（我抽查的绝大多数属于此类，见 C-10），所以问题不在“空话”，而在**同一事实重复三遍**：改一处对不上另两处时，读者无法判断哪份是权威（`graft.rs:144` 的文案已在 S-01/S-08 相邻处出现过一次）。
@@ -346,7 +346,7 @@
 
 ## 5. 结构观察
 
-- **目录与包边界（studio 内部）**：`studio/src/studio/{app,ui}` 与 `app/{state,overlay,tests}` 的父文件只做 `#[path]` 挂载 + 重导出（`state/state.rs` 45 行、`ui/forms.rs` 32 行、`keyboard_overlay.rs` 24 行），与 `AGENTS.md` 的模块挂载规则一致，也确实是本轮审计里最健康的一层。真正的边界问题在**文件级职责**而不是目录级：`mutations.rs`（写盘）、`writers.rs`（无写盘）、`support.rs`（四类关注点）、`state/misc.rs`（杂物抽屉）、`navigation.rs`（FS 戳 + 导航）。这五处都不需要动目录，只需要把内容搬到与名字相符的文件，正好符合“本轮只出报告、下一轮逐条批准”的节奏。
+- **目录与包边界（studio 内部）**：`studio/studio/{app,ui}` 与 `app/{state,overlay,tests}` 的父文件只做 `#[path]` 挂载 + 重导出（`state/state.rs` 45 行、`ui/forms.rs` 32 行、`keyboard_overlay.rs` 24 行），与 `AGENTS.md` 的模块挂载规则一致，也确实是本轮审计里最健康的一层。真正的边界问题在**文件级职责**而不是目录级：`mutations.rs`（写盘）、`writers.rs`（无写盘）、`support.rs`（四类关注点）、`state/misc.rs`（杂物抽屉）、`navigation.rs`（FS 戳 + 导航）。这五处都不需要动目录，只需要把内容搬到与名字相符的文件，正好符合“本轮只出报告、下一轮逐条批准”的节奏。
 - **依赖方向**：`ui → app`单向，`app` 不引用 `ui`（除 `ui/search.rs:96-98` 把 app 的文本函数改名重导出，方向仍是从 app 取）。这是好性质，值得在重构中保住：上面 S-04 的修法（`draw(&App)`）会让这条边更硬。
 - **重复实现的三处“真值分裂”**（按危险度）：S-01（锁的合法性：解析器 vs 写入方）、S-02（检视器行数：渲染 vs 键盘）、S-06（符号清单：内核词法器 vs Studio 前缀扫描）。三处都是同一种病：**同一规则在写方与读方各有一份**，三处都建议“让一份成为唯一来源”，而不是两边对齐。
 - **命名**：整体很好——`submit_*`（表单提交）、`handle_*`（按键）、`*_queries`（查询）、`draw_*`（渲染）四组前缀确实让维护者知道“这是什么”；`is_editable`/`owns_registry`/`visible_nodes`/`node_label` 等谓词/取值名也清楚。掉信息或名实不符的只有六个：`App::handle`（应为 `handle_event`，`interaction.rs:12`）、`graft_facts`（应为 `refresh_graft_state`，`graft.rs:235`）、`usable`（`support.rs:229`，实为“接受或按名拒绝一个候选根”）、`writers`（S-14）、`misc`（S-13）、`support`（S-15）。没有任何 `process`/`update`/`data`/`info` 这类纯噪音函数名。

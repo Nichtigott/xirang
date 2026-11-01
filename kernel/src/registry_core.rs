@@ -18,10 +18,14 @@ pub mod declaration;
 pub mod diagnostic;
 #[path = "registry_core/identity/identity.rs"]
 pub mod identity;
+#[path = "registry_core/interchange.rs"]
+pub mod interchange;
 #[path = "registry_core/json.rs"]
 pub mod json;
 #[path = "registry_core/lexicon/lexicon.rs"]
 pub mod lexicon;
+#[path = "registry_core/maintenance/maintenance.rs"]
+pub mod maintenance;
 #[path = "registry_core/mir/mir.rs"]
 pub mod mir;
 #[path = "registry_core/plugin/plugin.rs"]
@@ -45,8 +49,10 @@ pub use authoring::*;
 pub use declaration::*;
 pub use diagnostic::*;
 pub use identity::*;
+pub use interchange::*;
 pub use json::*;
 pub use lexicon::*;
+pub use maintenance::*;
 pub use mir::*;
 pub use plugin::*;
 pub use release::*;
@@ -56,3 +62,7 @@ pub use source::*;
 #[cfg(feature = "syntax")]
 pub use syntax::*;
 pub use tree::*;
+
+#[path = "registry_core/graft_builder.rs"]
+pub mod graft_builder;
+pub use graft_builder::*;

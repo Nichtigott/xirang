@@ -65,25 +65,25 @@
 
 | # | 现路径 | 钉住的语句（截断） | 搬后路径 |
 | --- | --- | --- | --- |
-| 1 | `run_method/src/lib.rs` | `pub use xirang_kernel::registry_core;` | `toolchain/src/runtime/lib.rs` |
-| 2 | `run_method/src/lib.rs` | `pub use xirang_kernel::registry_core::*;` | 同上 |
-| 3 | `run_method/src/registry.rs` | `pub use xirang_kernel::tree;` | `toolchain/src/runtime/registry.rs` |
-| 4 | `run_method/src/registry.rs` | `pub use xirang_kernel::tree::*;` | 同上 |
-| 5 | `run_method/src/authoring/face_file.rs` | `pub use xirang_kernel::authoring::{FACE_FIELD_COUNT, face_field};` | `toolchain/src/runtime/authoring/face_file.rs` |
-| 6 | `run_method/src/authoring/parse/parse.rs` | `pub use xirang_kernel::authoring::parse::*;` | 同前缀 |
-| 7 | `run_method/src/authoring/context.rs` | `pub use xirang_kernel::authoring::validation::*;` | 同前缀 |
-| 8 | `run_method/src/runtime/runtime.rs` | `pub use xirang_kernel::{COORDINATES_IN_VIEWPORT, Coordinates, …};` | 同前缀 |
-| 9 | `run_method/src/runtime/trace/trace.rs` | `pub use xirang_kernel::CallSite;` | 同前缀 |
-| 10 | `run_method/src/runtime/trace/trace.rs` | `pub use xirang_kernel::declaration::source_file_matches;` | 同前缀 |
-| 11 | `run_method/src/runtime/trace/trace.rs` | `pub use xirang_kernel::TraceMode;` | 同前缀 |
-| 12 | `run_method/src/runtime/evidence.rs` | `pub use xirang_kernel::{CallEdge, EvidenceKind, LogicalCallEdge…};` | 同前缀 |
-| 13 | `run_method/src/plugin.rs` | `pub use xirang_kernel::plugin;` | 同前缀 |
-| 14 | `run_method/src/plugin.rs` | `pub use xirang_kernel::plugin::*;` | 同前缀 |
-| 15 | `build_method/src/syntax.rs` | `pub use xirang_kernel::registry_core::syntax::{…};` | `toolchain/src/build_time/syntax.rs` |
-| 16 | `build_method/src/identity.rs` | `pub use xirang_kernel::registry_core::identity::NodeId;` | 同前缀 |
-| 17 | `build_method/src/identity.rs` | `pub use xirang_kernel::registry_core::identity::IDENTITY_SCHEMA…;` | 同前缀 |
+| 1 | `run_method/lib.rs` | `pub use xirang_kernel::registry_core;` | `toolchain/src/runtime/lib.rs` |
+| 2 | `run_method/lib.rs` | `pub use xirang_kernel::registry_core::*;` | 同上 |
+| 3 | `run_method/registry.rs` | `pub use xirang_kernel::tree;` | `toolchain/src/runtime/registry.rs` |
+| 4 | `run_method/registry.rs` | `pub use xirang_kernel::tree::*;` | 同上 |
+| 5 | `run_method/authoring/face_file.rs` | `pub use xirang_kernel::authoring::{FACE_FIELD_COUNT, face_field};` | `toolchain/src/runtime/authoring/face_file.rs` |
+| 6 | `run_method/authoring/parse/parse.rs` | `pub use xirang_kernel::authoring::parse::*;` | 同前缀 |
+| 7 | `run_method/authoring/context.rs` | `pub use xirang_kernel::authoring::validation::*;` | 同前缀 |
+| 8 | `run_method/runtime/runtime.rs` | `pub use xirang_kernel::{COORDINATES_IN_VIEWPORT, Coordinates, …};` | 同前缀 |
+| 9 | `run_method/runtime/trace/trace.rs` | `pub use xirang_kernel::CallSite;` | 同前缀 |
+| 10 | `run_method/runtime/trace/trace.rs` | `pub use xirang_kernel::declaration::source_file_matches;` | 同前缀 |
+| 11 | `run_method/runtime/trace/trace.rs` | `pub use xirang_kernel::TraceMode;` | 同前缀 |
+| 12 | `run_method/runtime/evidence.rs` | `pub use xirang_kernel::{CallEdge, EvidenceKind, LogicalCallEdge…};` | 同前缀 |
+| 13 | `run_method/plugin.rs` | `pub use xirang_kernel::plugin;` | 同前缀 |
+| 14 | `run_method/plugin.rs` | `pub use xirang_kernel::plugin::*;` | 同前缀 |
+| 15 | `build_method/syntax.rs` | `pub use xirang_kernel::registry_core::syntax::{…};` | `toolchain/src/build_time/syntax.rs` |
+| 16 | `build_method/identity.rs` | `pub use xirang_kernel::registry_core::identity::NodeId;` | 同前缀 |
+| 17 | `build_method/identity.rs` | `pub use xirang_kernel::registry_core::identity::IDENTITY_SCHEMA…;` | 同前缀 |
 
-（7/13/14 的路径与语句已按**命名批次 G4a** 后的现树记：`face_file.rs`、`context.rs`、`run_method/src/plugin.rs`——plan §5.1 写作 `face_manifest.rs` / `validation/validation.rs` / `plugin/plugin.rs`，是旧值。）**复核**：`cargo test -p xirang-conventions --offline shims` 必须绿，且 `grep -c '("' conventions/src/shims.rs` 与搬后路径逐条 `test -f`。
+（7/13/14 的路径与语句已按**命名批次 G4a** 后的现树记：`face_file.rs`、`context.rs`、`run_method/plugin.rs`——plan §5.1 写作 `face_manifest.rs` / `validation/validation.rs` / `plugin/plugin.rs`，是旧值。）**复核**：`cargo test -p xirang-conventions --offline shims` 必须绿，且 `grep -c '("' conventions/src/shims.rs` 与搬后路径逐条 `test -f`。
 
 ### 7.2 plan §4.2 依赖搬家表（原文抄录 + 按现树重算）
 

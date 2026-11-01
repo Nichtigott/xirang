@@ -1,0 +1,4 @@
+# 构建期生成物：记录文件与生成的常量源码。
+# Build-time artifacts: the record file and the generated constants source.
+gauge/native/gauge.faces
+gauge/go/src/gauge/faces.go

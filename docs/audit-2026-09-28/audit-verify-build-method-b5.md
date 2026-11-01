@@ -6,7 +6,7 @@
 
 ## 1. 我的装置（不采信作者钉子原文）
 
-副本内新增 `build_method/src/t74_probe_tests.rs`（经 `#[cfg(test)] #[path]` 挂在本模块上，因此可调私有 `rule_method_strings`），6 条用例全部用**我自己的数据**（`t74.*` 前缀）：
+副本内新增 `build_method/t74_probe_tests.rs`（经 `#[cfg(test)] #[path]` 挂在本模块上，因此可调私有 `rule_method_strings`），6 条用例全部用**我自己的数据**（`t74.*` 前缀）：
 
 | 用例 | 断言 |
 | --- | --- |

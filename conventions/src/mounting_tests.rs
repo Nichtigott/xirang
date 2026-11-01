@@ -14,7 +14,7 @@ use crate::workspace_root;
 #[test]
 fn an_include_with_another_delimiter_is_still_a_splice() {
     let root = synthetic(&[(
-        "toolchain/src/cli/src/zz_audit_probe.rs",
+        "toolchain/src/cli/zz_audit_probe.rs",
         "pub mod spliced {\n    include! {\"zz_body.rs\"}\n}\n",
     )]);
     let found = findings(&root);
@@ -34,7 +34,7 @@ fn an_include_with_another_delimiter_is_still_a_splice() {
 #[test]
 fn an_include_whose_bang_is_on_the_next_line_is_still_a_splice() {
     let root = synthetic(&[(
-        "toolchain/src/cli/src/zz_audit_probe.rs",
+        "toolchain/src/cli/zz_audit_probe.rs",
         "pub mod spliced {\n    include\n        !(\"zz_body.rs\");\n}\n",
     )]);
     let found = findings(&root);

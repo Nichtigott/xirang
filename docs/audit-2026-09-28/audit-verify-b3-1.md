@@ -19,15 +19,15 @@
 逐文件 hash（复核者可直接比对）：
 
 ```
-ff5af699291a8d20276fbe9d69d0eacb040470005351a76d8ea86bd1590da1e0  mcp/src/diff.rs
-5190c80f64d9b5c70513ef87288ad88dd90697d4906ae2458f776254f99a59a6  mcp/src/tools.rs
-5124df53f30b6d9619cefe3b69febc3826b08bf5ab21f52047f8384618b28381  mcp/src/evidence.rs
-aa0558f90a650e867b90a8900db35c631cc8f322a5aa3897875395b266863294  mcp/src/overlay.rs
-f3dd654fe4620f2d09240097a988fdeacecaec798224a6a4a9a3a7ff33630d47  mcp/src/converge.rs
-7ac8bd170d921d5434e144510282c44ceb9b062353a7243ddff94e56bf34a7d3  mcp/src/tree_delta.rs
-3fbbf1471f7b5a6d5698e41b6ed9fcb45a9d80ae1d3d30df6dfb9ad37b86f190  mcp/src/index.rs
-a556e00b3c7d53ae6bfbcdd8cddf70f4a566237a5c64c5fb632ac9560e61543b  mcp/src/index_tests.rs
-e8300cc94ca26102a9b08cd7f37ba4e8c4edd2ea369b12a1bd4be5f4cbe6d546  mcp/src/usages.rs
+ff5af699291a8d20276fbe9d69d0eacb040470005351a76d8ea86bd1590da1e0  mcp/diff.rs
+5190c80f64d9b5c70513ef87288ad88dd90697d4906ae2458f776254f99a59a6  mcp/tools.rs
+5124df53f30b6d9619cefe3b69febc3826b08bf5ab21f52047f8384618b28381  mcp/evidence.rs
+aa0558f90a650e867b90a8900db35c631cc8f322a5aa3897875395b266863294  mcp/overlay.rs
+f3dd654fe4620f2d09240097a988fdeacecaec798224a6a4a9a3a7ff33630d47  mcp/converge.rs
+7ac8bd170d921d5434e144510282c44ceb9b062353a7243ddff94e56bf34a7d3  mcp/tree_delta.rs
+3fbbf1471f7b5a6d5698e41b6ed9fcb45a9d80ae1d3d30df6dfb9ad37b86f190  mcp/index.rs
+a556e00b3c7d53ae6bfbcdd8cddf70f4a566237a5c64c5fb632ac9560e61543b  mcp/index_tests.rs
+e8300cc94ca26102a9b08cd7f37ba4e8c4edd2ea369b12a1bd4be5f4cbe6d546  mcp/usages.rs
 ff0379892ea69eea4578935e2b9fb9e1df4fc22f4b14d32fb30bb594c23722c1  mcp/README.md
 a5503bf61a9021532c238f88dc1f2ea68cc8c75d4b7c48ce3792a60b80f3457b  mcp/README.zh-CN.md
 ```
@@ -35,7 +35,7 @@ a5503bf61a9021532c238f88dc1f2ea68cc8c75d4b7c48ce3792a60b80f3457b  mcp/README.zh-
 变异纪律（按队长提示）：每次变异前备份 → 就地改写 → `touch` → 比对 sha256（确认变异生效）→ 在
 **独立 target** 里构建/测试 → 判定只取 hash 稳定那一次 → 用备份逐字节还原并再核 sha256。五处变异
 全部还原后，副本 `cargo test -p xirang-mcp --offline --lib` 为 **108 passed / 0 failed**，且副本的
-`mcp/src/{tools,index,tree_delta,evidence}.rs` 与两份 README 与仓库**逐字节相同**（`diff -q` 无输出）。
+`mcp/{tools,index,tree_delta,evidence}.rs` 与两份 README 与仓库**逐字节相同**（`diff -q` 无输出）。
 
 我自己装置里被自身抓出的三个解析缺陷（说明探针确实独立、且结论不是"解析器恰好同意"）：
 ① README 的桶枚举跨行折行、末项以 `and` / `与 ` 连接，最初的切分把它读成 2 项；
@@ -52,11 +52,11 @@ a5503bf61a9021532c238f88dc1f2ea68cc8c75d4b7c48ce3792a60b80f3457b  mcp/README.zh-
 | **BR-2** "树 diff 仍待做"整句 | **证实**（附**行号更正**） | `grep` | `grep -rn "still to come\|仍待做\|item 7\|第 7 条" mcp/README.md mcp/README.zh-CN.md` → **0 命中**（exit 1）；收尾能力句确实存在，但位置是 `mcp/README.md:174-175`（"Everything this bridge reads or writes is the two lists above."）与 `mcp/README.zh-CN.md:120`（"本桥读取与写入的全部能力即上面两张清单。"）——作者报的 `168-171` / `115-117` 各偏后 3–5 行，句子本身逐字相符。 |
 | **BR-7** `xirang.usages` 的字段清单 | **证实** | `usages_labels.py` | 从 `usages.rs` 独立解析出 **22** 个标签（两半合计），逐个在 `tools.rs` 的 `xirang.usages` 描述与两份 README 里命中：**66/66 PASS**。 |
 | **BR-12** 目录 ↔ 分派齐全与顺序 | **证实** | `dispatch.py`（端到端 stdio） | 用 live `tools/list` 的 **17** 个 name 逐个 `tools/call`：无一回复 `unknown tool`；先用一个 Cargo 说不出名字的 root 捕获 **root 解析错误文本**，断言 17 个回复都不等于它（排除"root 失败 ⇒ 其实从未分派"的假绿）；再从源码独立解析 `DISPATCH` 表：集合与顺序都与目录一致、无重名。 |
-| **BR-9** 可移植路径一份规则 | **证实** | `grep` + 变异 B | `grep -rn "replace('\\\\', \"/\")" mcp/src` → **0 命中**；`mcp/src/index.rs:179` 转发内核 `xirang::declaration::portable_path`。变异 B（把该转发里的折叠去掉）⇒ `index_tests::a_backslash_in_a_file_name_is_spelled_one_way` **红**，症状 `left: ["a\\b.rs"] right: ["a/b.rs"]`，还原后绿。 |
-| **BR-11** index 的内联测试迁出 | **证实** | `grep` + 测试 | `grep -rn "^mod tests {" mcp/src` → **0 命中**；`mcp/src/index_tests.rs` 存在，`cargo test -p xirang-mcp --offline` 的 108 条里含 index 的 6 条全绿。 |
-| **BR-C5①** `slot` → `registry_name`、`slots:` → `faces:` | **证实** | `grep` | `grep -rn "slot {}\|slots:" mcp/src` → **0 命中**；`mcp/src/evidence.rs:127` 的逐面表头写 `registry_name`（值仍是 `face.registry_name`），`tools.rs` 的描述同词。 |
+| **BR-9** 可移植路径一份规则 | **证实** | `grep` + 变异 B | `grep -rn "replace('\\\\', \"/\")" mcp/src` → **0 命中**；`mcp/index.rs:179` 转发内核 `xirang::declaration::portable_path`。变异 B（把该转发里的折叠去掉）⇒ `index_tests::a_backslash_in_a_file_name_is_spelled_one_way` **红**，症状 `left: ["a\\b.rs"] right: ["a/b.rs"]`，还原后绿。 |
+| **BR-11** index 的内联测试迁出 | **证实** | `grep` + 测试 | `grep -rn "^mod tests {" mcp/src` → **0 命中**；`mcp/index_tests.rs` 存在，`cargo test -p xirang-mcp --offline` 的 108 条里含 index 的 6 条全绿。 |
+| **BR-C5①** `slot` → `registry_name`、`slots:` → `faces:` | **证实** | `grep` | `grep -rn "slot {}\|slots:" mcp/src` → **0 命中**；`mcp/evidence.rs:127` 的逐面表头写 `registry_name`（值仍是 `face.registry_name`），`tools.rs` 的描述同词。 |
 | **BR-C5②** 状态词形单源 | **证实** | `grep` + 变异 D | 词形常量之外，`"added since build"` / `"re-identified"` 在 `mcp/src` 只出现在 `search_tests.rs:108` 的**夹具包名**字符串里；变异 D（`FaceStatus::label()` 对 `Reidentified` 返回 `reidentified`）⇒ `search_tests::a_kind_change_under_an_unmoved_file_is_re_identified` **红**，而 `diff_tests` 的计数行钉子（读常量）**仍绿**——两面各自的词形都有钉子。 |
-| **BR-C6** 无名三元组类型化 | **证实（审计要求①）／附加声明部分证实** | `grep` + 变异 E + 端到端 | ① 审计的最小修复方向是"收成 `struct { current, scope, pruning }`，文档就不必再解释位置"：`mcp/src/evidence.rs` 的 `BuildEvidence` 具名字段已落地，`evidence.rs:141/205` 用 `evidence.freshness()`，`overlay.rs` 不再按位置解构（取 `evidence.current`/`evidence.scope`；"没用 pruning"现在是代码里显式的，而不是 doc 里的 `_`）。审计要求②（`is_loaded` 改名）在 `plugin-host`，属 t6 scope 外，作者已列报；我核其仍在原位、未被本批触碰。② 作者报告里"把 current 回答什么放在**唯一**产出该词的地方"只对 explain 的两条报告成立：`mcp/src/overlay.rs:97-101` 与 `mcp/src/converge.rs:119-126` 各自**内联**了同一对词。变异 E（`freshness()` 的 current 分支改成 `healthy`）⇒ **整个 mcp lib 套件 108 条全绿**，且同一包上用变异二进制实测回 `build healthy`、用仓库二进制回 `build current`——三份词形之间**没有任何钉子耦合**（`evidence_tests.rs:79` 只钉了 stale）。 |
+| **BR-C6** 无名三元组类型化 | **证实（审计要求①）／附加声明部分证实** | `grep` + 变异 E + 端到端 | ① 审计的最小修复方向是"收成 `struct { current, scope, pruning }`，文档就不必再解释位置"：`mcp/evidence.rs` 的 `BuildEvidence` 具名字段已落地，`evidence.rs:141/205` 用 `evidence.freshness()`，`overlay.rs` 不再按位置解构（取 `evidence.current`/`evidence.scope`；"没用 pruning"现在是代码里显式的，而不是 doc 里的 `_`）。审计要求②（`is_loaded` 改名）在 `plugin-host`，属 t6 scope 外，作者已列报；我核其仍在原位、未被本批触碰。② 作者报告里"把 current 回答什么放在**唯一**产出该词的地方"只对 explain 的两条报告成立：`mcp/overlay.rs:97-101` 与 `mcp/converge.rs:119-126` 各自**内联**了同一对词。变异 E（`freshness()` 的 current 分支改成 `healthy`）⇒ **整个 mcp lib 套件 108 条全绿**，且同一包上用变异二进制实测回 `build healthy`、用仓库二进制回 `build current`——三份词形之间**没有任何钉子耦合**（`evidence_tests.rs:79` 只钉了 stale）。 |
 | **BR-C7** `apply` 的 `work` 类型化 | **证实** | `apply_e2e.py`（端到端 stdio） | `apply_target.rs` 的 `enum Target { Project, Copy(PathBuf) }` + `report_path`/`report_message` 在；端到端两条路：**预览**（无 `apply`）在一次性 host 副本上**逐文件 sha256 完全不变**、回复给出 `would write <path>` 与 diff；**落盘**（`apply: true`）恰好创建该文件，且**落盘字节 == 预览 diff 的内容**（逐行 unified diff 0 差异）。 |
 
 ### BR-C6 附加声明的建议（最小）

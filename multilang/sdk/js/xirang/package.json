@@ -1,0 +1,10 @@
+{
+  "name": "xirang",
+  "version": "0.1.0",
+  "description": "The JavaScript side of a XiRang registration face.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  }
+}

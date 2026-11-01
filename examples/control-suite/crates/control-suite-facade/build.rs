@@ -13,7 +13,7 @@ fn host_root() -> std::path::PathBuf {
         panic!("cargo metadata failed: {}", String::from_utf8_lossy(&output.stderr));
     }
     let text = String::from_utf8(output.stdout).expect("utf-8 metadata");
-    let name = format!("\"name\":{:?}", "xirang-example-control-suite");
+    let name = format!("\"name\":{:?},\"version\":", "xirang-example-control-suite");
     let at = text.find(&name).unwrap_or_else(|| panic!("`xirang-example-control-suite` is not a dependency of this facade"));
     let rest = &text[at..];
     let key = "\"manifest_path\":\"";
@@ -30,12 +30,34 @@ fn main() {
     let host = host_root();
     println!("cargo:rerun-if-changed={}", host.join("src").display());
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    xirang_toolchain::build_method::run_for_partition(
+    xirang_toolchain::build_method::run_for_partition_with_cuts(
         &host,
         &out,
         "xirang-example-control-suite",
         None,
         true,
+        &[
+            xirang_toolchain::build_method::HostCut {
+                cut: "crate::control::object::button::NODE_ID".to_owned(),
+                cut_end: None,
+                graft: "control_button_graft::button_fast::NODE_ID".to_owned(),
+                full: false,
+                typed: true,
+                cfg: None,
+                line: 38,
+                column: 5,
+            },
+            xirang_toolchain::build_method::HostCut {
+                cut: "crate::control::object::slider::NODE_ID".to_owned(),
+                cut_end: None,
+                graft: "control_button_graft::slider_fast::NODE_ID".to_owned(),
+                full: false,
+                typed: true,
+                cfg: None,
+                line: 40,
+                column: 5,
+            },
+        ],
     )
     .expect("xirang");
 }

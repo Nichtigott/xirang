@@ -18,6 +18,10 @@ pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 /// 只写 `collector` 与 `kind`、别无其它字段的注册面：没有 `handle`，没有显式
 /// `registry_name`，也没有 `needs_registry`。
 mod kind_only {
+    // type named in `kind:`/`preset:`/`parts:` must be public too: private in a public interface
+    // is `E0446`.
+    // `parts:` 点名的类型也必须公开——公开接口里的私有类型是 `E0446`。
+
     xirang_toolchain::__control_object! {
         collector: development,
         kind: KindOnlyFace,

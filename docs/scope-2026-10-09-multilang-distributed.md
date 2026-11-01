@@ -26,9 +26,9 @@ name, so "a different tree per platform" is not expressible today (§2.4).
 | 三平台 CI **已存在** | `verify` 矩阵 `ubuntu-latest / macos-latest / windows-latest` × `{1.96.0, stable}`，跑 fmt / tests / release tests / clippy / doc | `.github/workflows/ci.yml:11` 起 |
 | 重装置**只在 Linux** | 8 个步骤带 `if: runner.os == 'Linux'`（外部路径演练、分区演练、graft 矩阵、日常行为、真项目、MCP 会话、打包、打包审计） | 同上 |
 | 交叉编译**今天就能跑** | 单 crate 真示例 → wasm32 exit 0（22.97 s）；分区真示例（graft + objects + host + facade 四个 crate）→ wasm32 exit 0（20.32 s） | `target/xirang-bench/build-cost/wasm-{build,partitioned}.log` |
-| **按平台分叉的面**今天被按名拒绝 | 只有 `feature` 门控可跟随；`evaluate_cfg` 只认 `feature = "…"` 与 `not(…)`，其余一律 `face-cfg` 诊断 | `toolchain/src/build_method/src/static_plan.rs:94`、`:159` |
+| **按平台分叉的面**今天被按名拒绝 | 只有 `feature` 门控可跟随；`evaluate_cfg` 只认 `feature = "…"` 与 `not(…)`，其余一律 `face-cfg` 诊断 | `toolchain/src/build_method/static_plan.rs:94`、`:159` |
 | 身份**与平台/target 无关** | `NodeId = hash(命名空间, 包内相对源码路径, 名字)`；命名空间＝包名；路径来自 `file!()` | `kernel/src/registry_core/identity`；AGENTS.md「身份红线」 |
-| **记录落点没有配置分量** | `<包>/target/xirang/out`（写死；只认 `CARGO_TARGET_DIR` 的是发现缓存） | `toolchain/src/mcp/src/build_evidence.rs:36` · `build_method/src/partition_view.rs:36` · `discovery_cache.rs:86` |
+| **记录落点没有配置分量** | `<包>/target/xirang/out`（写死；只认 `CARGO_TARGET_DIR` 的是发现缓存） | `toolchain/src/mcp/build_evidence.rs:36` · `build_method/partition_view.rs:36` · `discovery_cache.rs:86` |
 | 内核**没有 C ABI 面** | 全仓 `extern "C"` 只有 1 处、与内核无关；没有 cdylib/staticlib target | `grep -rn 'extern "C"'` ⇒ `toolchain/src/bin/xirang-dev.rs:185` |
 | 证据（MIR）**很少人读** | 只有 6 个文件命中 `mir::`（含实现文件本身）；`check`/`registry`/`diff`/`affected` 一个都不读 | `grep -rln 'mir::' toolchain/src/` |
 | 10k 面规模：**墙在构建脚本** | 构建脚本 103.885 s / 总 141.635 s = **73.3%**；rustc 37.750 s = 26.7%（debug、warm、本机、同一检出） | `scale-logs/compile-wall.json`（2026-10-04） |
@@ -91,7 +91,7 @@ $ cd examples/partitioned-button && cargo build --target wasm32-unknown-unknown 
 
 ### 3.2 三个选项
 
-- **L-i 宿主语言先切（推荐）**：一个手工 C 宿主 + 一个 C 头文件形状的声明 + 一个**窄 C ABI**（只三件事：喂声明 / 算身份 / 取结论），产出**同一套 `.xirang/` 记录**。验收＝`check` / `registry` / `diff` / `affected` 对 C 宿主原样作答，且**同一棵树两种宿主语言得到同一批 NodeId**。**这一刀先不做 MIR**：证据那半只有 6 个文件消费（§1），`affected` 走的是词法源索引（`toolchain/src/mcp/src/affected.rs:20`），所以竖切可以先不碰它。
+- **L-i 宿主语言先切（推荐）**：一个手工 C 宿主 + 一个 C 头文件形状的声明 + 一个**窄 C ABI**（只三件事：喂声明 / 算身份 / 取结论），产出**同一套 `.xirang/` 记录**。验收＝`check` / `registry` / `diff` / `affected` 对 C 宿主原样作答，且**同一棵树两种宿主语言得到同一批 NodeId**。**这一刀先不做 MIR**：证据那半只有 6 个文件消费（§1），`affected` 走的是词法源索引（`toolchain/src/mcp/affected.rs:20`），所以竖切可以先不碰它。
 - **L-ii 证据来源先切**：宿主仍是 Rust，把 MIR 换成 Clang IR / DWARF，回答"跨语言调用链"。它**不**解决"非 Rust 项目也能有注册树"，只让已有 Rust 项目的调用证据伸到 C 侧。
 - **L-iii 两者都要（先 i 后 ii）**：成本是 i 的两倍量级，但也是唯一能回答"跨语言调用链证据"的路。
 

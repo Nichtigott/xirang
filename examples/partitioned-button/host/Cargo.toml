@@ -5,10 +5,10 @@ edition = "2024"
 publish = false
 
 [dependencies]
-xirang-toolchain = { path = "../../../toolchain", version = "0.1.0", features = ["run", "authoring"] }
+xirang-toolchain = { path = "../../../toolchain", version = "0.2.0", features = ["run", "authoring"] }
 # 类型化 graft 表达式在宿主入口里按 Rust 路径点名实现，因此它必须被链接进来
 # （字符串写法的 graft 不需要这一行）。
 xirang-example-partitioned-button-graft = { path = "../graft" }
 
 [build-dependencies]
-xirang-toolchain = { path = "../../../toolchain", version = "0.1.0", features = ["build"] }
+xirang-toolchain = { path = "../../../toolchain", version = "0.2.0", features = ["build"] }

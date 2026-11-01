@@ -46,7 +46,7 @@
 ### 1.2 差集
 
 **它漏的（我补，见 §7/§10）**：
-1. **4 个末 token 落在它自己 `bad_tail` 表里的模块名**：`support`（`studio/src/studio/app/app.rs:34`）、`misc`（`studio/src/studio/app/state/state.rs:14`）、`data`（`studio/src/studio/ui/graph.rs:20`）、`face_helpers`（`run_method/src/macros/face.rs:7`）——它的 R-4a 模块输出是**空的**，这 4 个必须进基线。
+1. **4 个末 token 落在它自己 `bad_tail` 表里的模块名**：`support`（`studio/studio/app/app.rs:34`）、`misc`（`studio/studio/app/state/state.rs:14`）、`data`（`studio/studio/ui/graph.rs:20`）、`face_helpers`（`run_method/macros/face.rs:7`）——它的 R-4a 模块输出是**空的**，这 4 个必须进基线。
 2. **`mir` ↔ `mirror` 近名对**：`core/src/registry_core/mir/mir.rs:1`（rustc MIR）vs `macro/src/lib.rs:59`→`macro/src/mirror.rs:1`（"Editor-only field mirror"）。它 §4 判 `mir` 不算歧义（我同意），但**漏了这一对**。
 3. **模块名的"声明处数"**（339；裸动词那 16 个名字占 33 处）——门禁若按"名字"钉，改起来是 33 个站点。
 4. **方案行号的归属文件**：它只写"方案 `:NN`"。
@@ -60,7 +60,7 @@
 | id | 复核结论 | 我的依据 | 严重度 |
 | --- | --- | --- | --- |
 | **AMB-01** `core/` + lib `xirang` | **部分证实（方向对，主理由要换）** | ① lib `xirang` = 项目名（`Cargo.toml:1` 起的 workspace）**= 其中一个 bin 名**（我的 bin 枚举：`xirang`）**= 内核 lib 名**——一个名字三种角色，这是**实害**（`use xirang::…` 分不清"内核"还是"整仓"；docs.rs 链接混淆）。② `core` 确在 std crate 名里（sysroot rlib 实测），但本仓不是 `no_std`，工作区里看到 `core/` 的读者多半读成"本项目的核心 crate"——**这半不足以支撑 MAJOR，只作旁证**。③ 建议 `kernel/`+`xirang-kernel` 与 `AGENTS.md:3` 的 "pure kernel" 同词、与合并方案 `:38`/`:53` 一致 | **MAJOR 维持**（换主理由） |
-| **AMB-02** `build_method/` | **证实** | `method` 在 Rust 首读"类型上的函数"（`build_method/` 里没有 `Method` 类型，读者预期落空）；`build` 与 Cargo 家族同词（`cargo --help` 的 `build`、`[build-dependencies]`、`build.rs`）。**`find . -name build.rs` 实测 4 个文件 3 种角色**：`cli/src/commands/build.rs`（CLI 命令实现）、`core/src/registry_core/diagnostic/build.rs`（私有模块文件）、`examples/control-button/build.rs`、`studio/tests/fixtures/node-editor/build.rs`（真构建脚本）——它的这条证据**逐字成立** | **MAJOR 维持** |
+| **AMB-02** `build_method/` | **证实** | `method` 在 Rust 首读"类型上的函数"（`build_method/` 里没有 `Method` 类型，读者预期落空）；`build` 与 Cargo 家族同词（`cargo --help` 的 `build`、`[build-dependencies]`、`build.rs`）。**`find . -name build.rs` 实测 4 个文件 3 种角色**：`cli/commands/build.rs`（CLI 命令实现）、`core/src/registry_core/diagnostic/build.rs`（私有模块文件）、`examples/control-button/build.rs`、`studio/tests/fixtures/node-editor/build.rs`（真构建脚本）——它的这条证据**逐字成立** | **MAJOR 维持** |
 | **AMB-03** `run_method/` | **证实** | `run` 与 `cargo run`（`cargo --help`）、程序入口 `run()` 同词；crate 实际是"运行期那一半"（`AGENTS.md` 该行自述 "Runtime state instance + trace binding"）。另：改名要连带改 `core/src/registry_core/lexicon/lexicon.rs:28` 的 `RUN_METHOD_CRATE = "xirang_run_method"`（全仓 4 处引用）——它的影响面提到该常量 ✓ | **MAJOR 维持** |
 | **AMB-04** `plugin-host/` + 方案模块名 `plugins` | **证实（且维护者的猜测被证伪）** | ① `.xirang/plugins` 是真的用户插件锁目录：`plugin-host/src/admission.rs:38` `pub const PLUGIN_LOCK_DIRECTORY: &str = ".xirang/plugins";`——方案的模块名 `plugins` 与它**同词反义** ✓。② `plugin-host` 不是"只跑插件"：`plugin-host/src/verifier.rs:10`+`:53`（`Ed25519Verifier::admit`）、`plugin-host/src/admission.rs:167`（`admit`）、`plugin-host/src/wasm.rs:149`/`plugin-host/src/process.rs:146`（`load`）、`plugin-host/src/lazy_wasm.rs:127`（`install`）、`plugin-host/src/deployment.rs:36`（`new` + `health_check`）——**验签与准入是这 crate 的一半**。→ **队长的猜测"该叫 `plugin-runtime`"证伪**：`runtime` 只覆盖执行半，丢掉验签/准入/部署；保留 `plugin-host` 正确 | **MAJOR 维持**（针对方案模块名 `plugins`） |
 | **AMB-05** 公开类型 `Registry` | **证实** | `registry` 在 Cargo 生态有确定义（上文 `cargo --help` 两条 + `~/.cargo/registry/`）；本仓 `Registry` 是注册树根（`core/src/registry_core/tree/registry.rs:18`）。它自己标了 `= D-9 的保留词 registry，计文件 stem vs 计类型名，不重复计数` ✓ 记账正确 | **MAJOR 维持**（修法是限定/词表登记，不必强改公开类型） |
@@ -79,10 +79,10 @@
 | AMB-09 顶层 `picture/` | 证实（存在，但**建议降为 MINOR/移出**） | `picture/` 实测只有 `XiRang_studio.png`、`XiRang_wordmark.svg`——**图片目录，没有歧义可言**；"`picture` 单数而装多张图"是优雅问题，不误导（读者不会因它找错地方）。建议移出发现清单或降 MINOR 并只保留"建议改名 `assets/`/`images/`"一句 |
 | AMB-10 `docs/ROADMAP.md` 与 `docs/roadmap-1.0.md` 只差大小写 | 证实 | 两份都在（我的目录枚举里可见）；大小写只在 Case-sensitive FS 区分，这是**真实的可移植性风险**（Windows/macOS 默认 FS 上二者会互覆），不是纯命名优雅问题——**建议保留 MINOR 并加一句"跨平台 FS"** |
 | AMB-11 内核模块 `syntax` + feature `syntax` | 证实 | `core` 的 feature `syntax` 与 `core/src/registry_core/syntax/syntax.rs` 同名同对象（feature 门控该模块的解析入口）——**同名同物不构成歧义**；它写的是 MINOR（可读性），判定成立 |
-| AMB-15 内核 `source` 一名四义 | 证实（抽样核两处） | 内核 `core/src/registry_core/source/`（词法扫描）、`mcp` 的 source 查询、studio 的 `studio/src/studio/app/source_index.rs`（这一处命名是对的）——**它把 studio 那处列为"命名更好"的对照，判法正确** |
-| AMB-17 `index` 一名三义 | 证实 | `core/src/registry_core/tree/tree.rs:19 pub mod index;`（注册树索引）vs `mcp/src/lib.rs:76 mod index;`（源码/符号索引）vs `Registry::index()`（扁平查找表，AMB-20 的表里有 file:line）——三处同词不同物 ✓ |
+| AMB-15 内核 `source` 一名四义 | 证实（抽样核两处） | 内核 `core/src/registry_core/source/`（词法扫描）、`mcp` 的 source 查询、studio 的 `studio/studio/app/source_index.rs`（这一处命名是对的）——**它把 studio 那处列为"命名更好"的对照，判法正确** |
+| AMB-17 `index` 一名三义 | 证实 | `core/src/registry_core/tree/tree.rs:19 pub mod index;`（注册树索引）vs `mcp/lib.rs:76 mod index;`（源码/符号索引）vs `Registry::index()`（扁平查找表，AMB-20 的表里有 file:line）——三处同词不同物 ✓ |
 | AMB-19 feature 名与模块/包名重名 | 证实 | 我的 feature 枚举 8 个里 `syntax`/`wasm`/`authoring`/`node-graph` 都与模块同名；`AGENTS.md` 明确说"特性名是公开 API、不要为对齐改名"——它的建议（README 对照表而非改名）与 `AGENTS.md` **一致** ✓ |
-| AMB-20 13 个"整名就是别处既有词"的公开名 | 证实（抽核 4 个） | `cli/src/lib.rs:94 pub fn main(args)`（真入口在 `cli/src/bin/xirang.rs`）、`build_method/src/lib.rs:137 pub fn run()`、`mcp/src/protocol.rs:71`、`RuntimeCheckSpec::run`（`core/src/registry_core/declaration/runtime_checks.rs:345`）——四处文件行号**全部命中**；它给的建议（`cli::main`→`run_from_env`、`RuntimeCheckSpec::run`→`check`）方向正确，且与 §D 的 D-5（裸动词只许入口位）**同规则** ✓ |
+| AMB-20 13 个"整名就是别处既有词"的公开名 | 证实（抽核 4 个） | `cli/lib.rs:94 pub fn main(args)`（真入口在 `cli/bin/xirang.rs`）、`build_method/lib.rs:137 pub fn run()`、`mcp/protocol.rs:71`、`RuntimeCheckSpec::run`（`core/src/registry_core/declaration/runtime_checks.rs:345`）——四处文件行号**全部命中**；它给的建议（`cli::main`→`run_from_env`、`RuntimeCheckSpec::run`→`check`）方向正确，且与 §D 的 D-5（裸动词只许入口位）**同规则** ✓ |
 
 **抽样结论**：14 条里我核了 9 条，**8 条成立、1 条建议降为"优雅问题"（AMB-09）**；没有发现"把好名字判成缺陷"的严重过火。
 
@@ -136,7 +136,7 @@ t34 全篇写"方案 `:40`/`:167`/`:89-93`/`:122-126`/`:194`"，**没有点名�
 
 | 谓词 | 我的结果 | t34 的结果 | 差 |
 | --- | --- | --- | --- |
-| **R-4a：末 token ∈ `bad_tail`** | **4 个模块名**：`support`、`misc`、`data`、`face_helpers`（声明处：`studio/src/studio/app/app.rs:34`、`studio/src/studio/app/state/state.rs:14`、`studio/src/studio/ui/graph.rs:20`、`run_method/src/macros/face.rs:7`） | **空**（它只报了 3 个 `*_method` 目录） | **缺 4** |
+| **R-4a：末 token ∈ `bad_tail`** | **4 个模块名**：`support`、`misc`、`data`、`face_helpers`（声明处：`studio/studio/app/app.rs:34`、`studio/studio/app/state/state.rs:14`、`studio/studio/ui/graph.rs:20`、`run_method/macros/face.rs:7`） | **空**（它只报了 3 个 `*_method` 目录） | **缺 4** |
 | **R-4b：单 token 且是裸动词** | **16 个**：`add apply build converge create delete diff edit explain graft install parse preview render search verify`（共 **33 个声明处**） | **14 个**（少了 `build`、`graft`） | 见下 |
 
 **14 与 16 的差**：它用 `exempt()` 里的 `n == "build"` 与 `toks(n)[0] == "graft"` 排掉了这两个：
@@ -180,8 +180,8 @@ t34 全篇写"方案 `:40`/`:167`/`:89-93`/`:122-126`/`:194`"，**没有点名�
 
 | 重叠点 | 我的 §D 条目 | t34 的条目 | 判定 |
 | --- | --- | --- | --- |
-| `support` / `misc` | `D-1` 黑名单 + **NAM-01/NAM-02**（**文件 stem**：`studio/src/studio/app/support.rs`、`studio/src/studio/app/state/misc.rs`） | `R-4a`（**模块名** `support`/`misc`，声明处 `studio/src/studio/app/app.rs:34`/`studio/src/studio/app/state/state.rs:14`） | **同一个对象被两份报告各计一次**（文件与模块同名，是同一个东西）。必须二选一：`support`/`misc` 归 **D-1/NAM-01/02**（我已有具体改法与豁免表），t34 的 R-4a 只做**交叉引用**「= NAM-01/02，不另计」；`data`/`face_helpers` 是新对象，归 t34 |
-| `evidence`/`index`/`artifact`/`registry` | `D-9`（**文件 stem** 层：`mcp/src/evidence.rs` 等） | `AMB-16/17/AMB-05`（**类型/模块名**层，它自己在标题行标了"不重复计数"） | **记账正确** ✓（它主动标了 `= D-9`），但要在**门禁**层面明确：D-9 与 R-2 若各生成一条"违规数"，`mcp/src/evidence.rs` 会被数两次——**建议合并成一张登记表**，按对象去重（我 §D 的 D-9 行与它的 R-2 段互加交叉引用） |
+| `support` / `misc` | `D-1` 黑名单 + **NAM-01/NAM-02**（**文件 stem**：`studio/studio/app/support.rs`、`studio/studio/app/state/misc.rs`） | `R-4a`（**模块名** `support`/`misc`，声明处 `studio/studio/app/app.rs:34`/`studio/studio/app/state/state.rs:14`） | **同一个对象被两份报告各计一次**（文件与模块同名，是同一个东西）。必须二选一：`support`/`misc` 归 **D-1/NAM-01/02**（我已有具体改法与豁免表），t34 的 R-4a 只做**交叉引用**「= NAM-01/02，不另计」；`data`/`face_helpers` 是新对象，归 t34 |
+| `evidence`/`index`/`artifact`/`registry` | `D-9`（**文件 stem** 层：`mcp/evidence.rs` 等） | `AMB-16/17/AMB-05`（**类型/模块名**层，它自己在标题行标了"不重复计数"） | **记账正确** ✓（它主动标了 `= D-9`），但要在**门禁**层面明确：D-9 与 R-2 若各生成一条"违规数"，`mcp/evidence.rs` 会被数两次——**建议合并成一张登记表**，按对象去重（我 §D 的 D-9 行与它的 R-2 段互加交叉引用） |
 | `face`/`graft`/`trace` | `D-9` 保留词表 | `R-2` 需限定词表（它写"与 D-9 的并集，不另计"） | 同上：**必须一张表**，否则同一词在两处各有一条"待判定" |
 | 裸动词 | `D-5`（**函数名**层，非入口位 15 处） | `R-4b`（**模块名**层，16 个名字/33 站点） | **不重复** ✓（对象不同：函数 vs 模块），它标了"与 D-5 同规则" ✓ |
 | 类别名 | `D-1`（文件 stem） | `R-4a`（模块/目录/包/lib 的末 token） | 层不同，但**命中同一批名字时要按上面第 1 行处理** |

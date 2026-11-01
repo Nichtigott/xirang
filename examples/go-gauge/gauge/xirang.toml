@@ -1,0 +1,8 @@
+# 构建期记录文件 + 生产者：构建在这一包里运行 Go 生成器，把 `xirang.Soil` 声明写成版本 3 记录。
+# The build-time record file and its producer: the build runs the Go generator in this package, and
+# it writes the `xirang.Soil` declarations as version-3 records.
+[record]
+file = "native/gauge.faces"
+language = "go"
+constants = "go/src/gauge/faces.go"
+command = ["sh", "go/build.sh"]

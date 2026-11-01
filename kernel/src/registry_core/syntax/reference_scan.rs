@@ -58,6 +58,12 @@ fn is_build_macro(name: &str) -> bool {
             | "__external_object"
             | "__xirang_object"
             | "__registration_face"
+            | "assert_contracts"
+            // The hand-written face (H/A2e) writes its own contract check beside itself, and the trait
+            // list it names is registration metadata — exactly what this scan ignores. Without this the
+            // same face would widen the scope after migration that stayed narrow before it.
+            // 手写的面（H/A2e）把自己那条合同检查写在旁边，而它点名的 trait 列表是注册元数据——正是本扫描
+            // 忽略的东西。少了这一条，同一个面在迁移后会放宽作用域，而迁移前它是收窄的。
     ) || name.ends_with("_object")
 }
 
@@ -130,6 +136,33 @@ struct ReferenceVisitor {
 }
 
 impl<'ast> Visit<'ast> for ReferenceVisitor {
+    fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
+        if !super::has_face_attribute(&item.attrs) {
+            syn::visit::visit_item_const(self, item);
+        }
+    }
+
+    /// The struct-literal form (H/A2e) keeps its declaration in an `impl`, so the "registration metadata
+    /// is not a reference" rule has to reach it there: a face's own `parent:`, `flow:` and labels are the
+    /// same metadata the macro block carried, and reading them as references would widen the build's
+    /// source scope the moment a face is migrated — while `graft_plan.tsv` stayed byte-identical
+    /// (measured: `source_scope.tsv` grew a row for the parent face).
+    /// 字面量形（H/A2e）把声明放在 `impl` 里，因此"注册元数据不算引用"这条规则必须够到那里：面自己的
+    /// `parent:`、`flow:` 与标签就是宏块携带的同一份元数据，把它们读成引用会让构建的源码作用域在面迁移的那一刻
+    /// 放宽——而 `graft_plan.tsv` 是逐字不变的（实测：`source_scope.tsv` 多出父面那一行）。
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        let is_face_declaration = item.items.iter().any(|entry| {
+            matches!(entry, syn::ImplItem::Const(constant) if constant.ident == "REGISTRATION")
+        }) || item.trait_.as_ref().is_some_and(|(_, path, _)| {
+            path.segments
+                .last()
+                .is_some_and(|segment| segment.ident == "FaceContract")
+        });
+        if !is_face_declaration {
+            syn::visit::visit_item_impl(self, item);
+        }
+    }
+
     fn visit_expr_path(&mut self, expression: &'ast syn::ExprPath) {
         self.references
             .paths

@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Rehearse two backends that live outside this checkout.
+
+The point is the open-backend boundary, not the languages: each backend is an ordinary program,
+installed through the user-level record and asked for a plan by `xirang build` / `xirang test`.
+Everything this script writes lives in a fresh temporary directory outside the checkout, and the
+record goes to `$XIRANG_BACKENDS` so the real user configuration is not touched.
+
+两个后端的实现都位于本检出之外，经用户级记录安装，由 `xirang build` / `xirang test` 真实调用；
+脚本写的一切都在本检出之外的临时目录里，记录走 `$XIRANG_BACKENDS`，不碰真实用户配置。
+"""
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+XIRANG = pathlib.Path(os.environ.get("XIRANG", ROOT / "target/debug/xirang"))
+PYTHON = os.environ.get("XIRANG_PYTHON", sys.executable)
+RUBY = os.environ.get("XIRANG_RUBY") or shutil.which("ruby")
+
+
+def run(cwd, arguments, env):
+    return subprocess.run(
+        [str(XIRANG), *arguments],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+PYTHON_BACKEND = '''import glob, json, os, sys
+request = json.load(sys.stdin)
+if request.get("request") == "handshake":
+    print(json.dumps({"protocol": 2, "source_extensions": ["sh"], "test_suffix": "_test", "language": "shell", "backend": "python-shell-backend",
+                      "capabilities": ["discovery", "build-test"]}))
+    sys.exit(0)
+directory = request["directory"]
+actions = []
+if request["action"] == "test":
+    for path in sorted(glob.glob(os.path.join(directory, "tests", "*_test.sh"))):
+        actions.append({"kind": "test", "name": os.path.basename(path)[:-3],
+                        "program": "sh", "args": [path]})
+else:
+    for path in sorted(glob.glob(os.path.join(directory, "src", "*.sh"))):
+        actions.append({"kind": "compile", "program": "sh", "args": ["-n", path]})
+if not actions:
+    sys.exit("no files to plan")
+print(json.dumps({"protocol": 2, "inputs": request["inputs"], "language": "shell", "backend": "python-shell-backend",
+                  "capabilities": ["discovery", "build-test"], "actions": actions}))
+'''
+
+RUBY_BACKEND = '''require "json"
+
+request = JSON.parse($stdin.read)
+if request["request"] == "handshake"
+  puts JSON.generate({protocol: 2, language: "perl", backend: "ruby-perl-backend",
+                      capabilities: ["discovery", "build-test"],
+                      source_extensions: ["pl"], test_suffix: "_test"})
+  exit 0
+end
+directory = request["directory"]
+actions =
+  if request["action"] == "test"
+    Dir.glob(File.join(directory, "tests", "*_test.pl")).sort.map do |path|
+      {kind: "test", name: File.basename(path, ".pl"), program: "perl", args: [path]}
+    end
+  else
+    Dir.glob(File.join(directory, "src", "*.pl")).sort.map do |path|
+      {kind: "compile", program: "perl", args: ["-c", path]}
+    end
+  end
+abort "no files to plan" if actions.empty?
+puts JSON.generate({protocol: 2, language: "perl", backend: "ruby-perl-backend",
+                    capabilities: ["discovery", "build-test"], inputs: request["inputs"], actions: actions})
+'''
+
+
+def fail(message):
+    print(f"xirang-backend-rehearsal: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    if not XIRANG.is_file():
+        fail(f"no xirang binary at {XIRANG}; build it or set XIRANG")
+    if not RUBY:
+        fail("no ruby found; set XIRANG_RUBY to a ruby executable")
+    work = pathlib.Path(tempfile.mkdtemp(prefix="xirang-third-party-"))
+    record = work / "user-record" / "xirang.backends.toml"
+    record.parent.mkdir(parents=True)
+    backends = work / "backends"
+    backends.mkdir()
+    environment = dict(os.environ, XIRANG_BACKENDS=str(record))
+    (backends / "shell_backend.py").write_text(PYTHON_BACKEND)
+    (backends / "perl_backend.rb").write_text(RUBY_BACKEND)
+
+    installs = [
+        ({
+            "language": "shell",
+            "name": "python-shell-backend",
+            "programs": [PYTHON, str(backends / "shell_backend.py")],
+            "source": "src/greet.sh",
+            "test": "tests/lib_test.sh",
+            "contents": {
+                "xirang.toml": 'schema = 1\n\n[package]\nname = "greeter"\nversion = "0.1.0"\nkind = "library"\n\n[language.shell]\nstandard = "5"\n\n[dependencies]\n',
+                "src/greet.sh": 'greet() {\n    echo hello\n}\n',
+                "tests/lib_test.sh": '. ./src/greet.sh\n[ "$(greet)" = "hello" ] || { echo "expected hello"; exit 1; }\n',
+            },
+        }),
+        ({
+            "language": "perl",
+            "name": "ruby-perl-backend",
+            "programs": [RUBY, str(backends / "perl_backend.rb")],
+            "source": "src/greet.pl",
+            "test": "tests/lib_test.pl",
+            "contents": {
+                "xirang.toml": 'schema = 1\n\n[package]\nname = "greeter"\nversion = "0.1.0"\nkind = "library"\n\n[language.perl]\nstandard = "5"\n\n[dependencies]\n',
+                "src/greet.pl": 'sub greet {\n    return "hello";\n}\n1;\n',
+                "tests/lib_test.pl": 'require "./src/greet.pl";\nexit(greet() eq "hello" ? 0 : 1);\n',
+            },
+        }),
+    ]
+
+    for case in installs:
+        installed = run(work, [
+            "backends", "install",
+            "--language", case["language"],
+            "--backend", case["name"],
+            *[part for program in case["programs"] for part in ("--command", program)],
+            "--capability", "discovery",
+            "--capability", "build-test",
+        ], environment)
+        if installed.returncode != 0:
+            fail(f"install of {case['name']} failed:\n{installed.stdout}\n{installed.stderr}")
+        project = work / "projects" / case["language"]
+        for relative, text in case["contents"].items():
+            target = project / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+
+        listed = run(project, ["languages"], environment)
+        if listed.returncode != 0 or case["name"] not in listed.stdout:
+            fail(f"{case['name']} is not reported:\n{listed.stdout}\n{listed.stderr}")
+
+        built = run(project, ["build"], environment)
+        if built.returncode != 0:
+            fail(f"build through {case['name']} failed:\n{built.stdout}\n{built.stderr}")
+        evidence = sorted(project.glob("target/xirang/build/*/evidence.json"))
+        if not evidence:
+            fail(f"no evidence after building through {case['name']}")
+        document = json.loads(evidence[-1].read_text())
+        if document["backend"]["name"] != case["name"]:
+            fail(f"evidence names {document['backend']['name']}, not {case['name']}")
+
+        tested = run(project, ["test"], environment)
+        if tested.returncode != 0 or f"test {pathlib.Path(case['test']).stem} ... ok" not in tested.stdout:
+            fail(f"test through {case['name']} failed:\n{tested.stdout}\n{tested.stderr}")
+
+        failing = project / case["test"]
+        saved = failing.read_text()
+        failing.write_text("exit 1\n")
+        red = run(project, ["test"], environment)
+        failing.write_text(saved)
+        if red.returncode == 0:
+            fail(f"a failing test through {case['name']} was reported as passed")
+
+        print(f"ok  {case['language']:5}  {case['name']:20}  install/build/test/red-control")
+
+    print(f"ok  two backends outside the checkout ran through the user-level record")
+    print(f"    workspace kept at {work}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

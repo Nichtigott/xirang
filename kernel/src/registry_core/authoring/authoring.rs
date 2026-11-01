@@ -19,6 +19,9 @@ pub use field_presentation::*;
 #[path = "parse/parse.rs"]
 #[cfg(feature = "syntax")]
 pub mod parse;
+#[path = "request.rs"]
+pub mod request;
+pub use request::*;
 #[path = "snapshot.rs"]
 #[cfg(feature = "syntax")]
 pub mod snapshot;

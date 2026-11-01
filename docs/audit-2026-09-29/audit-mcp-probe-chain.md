@@ -188,7 +188,7 @@ Wait — can I? "不改仓库代码、不提交；收工时 git status --porcela
 
 Compromise: use the real control-button package as the primary root (real faces/real graft plan). For the MIR text and graft plan artifacts, the tool's inputs are files; there are no real ones in the repo (no `.xirang/`, no `.mir`). I'll note that and construct the inputs from the repo's *real* declarations: the graft plan content I write comes from copying the real typed plan in `examples/control-button/src/lib.rs`; the MIR text comes from the real byte content of a real function in `button_fast.rs` (I'll reflect real functions). And the JSONL round trip will use the real package namespace.
 
-Actually, better idea for MIR: check if `graft.plan` documents exist as fixture in tests — e.g. `toolchain/src/mcp/src/grafts_tests.rs` writes plan documents. Let me look at the format so I can produce one identical to what the repo's own writer writes.
+Actually, better idea for MIR: check if `graft.plan` documents exist as fixture in tests — e.g. `toolchain/src/mcp/grafts_tests.rs` writes plan documents. Let me look at the format so I can produce one identical to what the repo's own writer writes.
 
 Also, does .xirang/external-grafts exist anywhere in repo? No. So grafts tool will report "no external graft plans" against the real example — that's a real result and worth recording as such. Then I can create a real plan in a temp package to test the positive path.
 
@@ -739,7 +739,7 @@ Let me search for `write_trace_artifact(` in tests.
 
 推理：
 
-`FrameRecord` is `pub(super)` — not constructible outside. But there's `trace_tests.rs` in the MCP module (in-crate) that does it. Let me read toolchain/src/mcp/src/trace_tests.rs lines ~20-70 to see how it builds a trace — that tells me the public path.
+`FrameRecord` is `pub(super)` — not constructible outside. But there's `trace_tests.rs` in the MCP module (in-crate) that does it. Let me read toolchain/src/mcp/trace_tests.rs lines ~20-70 to see how it builds a trace — that tells me the public path.
 
 ## step 62（turn 1，in 1188 / out 945 tokens）
 
@@ -1134,7 +1134,7 @@ Q2 调用链：`graft_plan_rows` 到 `GraftPlanDocument::parse_graft_plan_docume
 Q3 符号位置＋调用者：`names_face` 定义在哪个文件哪一行？谁调用它？
 Q4 符号位置＋调用者：`MirGraph::from_mir_text` 定义在哪？谁调用它？
 Q5 影响面：如果给 `Registry::provider_for_capability` 加一个参数，哪些文件/函数需要一起改？
-Q6 影响面：`anchor`… let me use: 如果改 `toolchain/src/mcp/src/tools.rs` 里的 `DISPATCH` 表，哪些地方会受影响？
+Q6 影响面：`anchor`… let me use: 如果改 `toolchain/src/mcp/tools.rs` 里的 `DISPATCH` 表，哪些地方会受影响？
 
 Hmm, Q6 should be about "哪里改了" — a change. Let me make:
 Q5: 改 `provider.capability` 的匹配规则（`kernel/src/registry_core/tree/connector.rs` 里比较 `info.provides` 的那段）——影响面有哪些（谁调用 `provider_for_capability` / `ancestor_capability`）？
@@ -1147,7 +1147,7 @@ Let me settle on 6 stable questions:
 - W1 (在哪/谁调用) `names_face` 在哪、谁调用。
 - W2 (在哪/谁调用) `from_mir_text` 在哪、谁调用。
 - I1 (影响面) 给 `Registry::provider_for_capability` 加一个参数，谁受影响。
-- I2 (影响面) 改 `DISPATCH`（toolchain/src/mcp/src/tools.rs），谁受影响。
+- I2 (影响面) 改 `DISPATCH`（toolchain/src/mcp/tools.rs），谁受影响。
 
 Good. Send to captain now, then run xirang side.
 
@@ -1171,7 +1171,7 @@ Let me run those.
 
 推理：
 
-Great. Note: `inspect toolchain/src/mcp/src/tools.rs` lists fns but not the `DISPATCH` const → confirms `search`/`inspect` index only functions (plus files/faces). Also `include` of `mod tools_tests` is a #[path] module, not an fn.
+Great. Note: `inspect toolchain/src/mcp/tools.rs` lists fns but not the `DISPATCH` const → confirms `search`/`inspect` index only functions (plus files/faces). Also `include` of `mod tools_tests` is a #[path] module, not an fn.
 
 Note the xirang answers for C1: `register_snapshot_batch` callers are mostly tests (name-based matching across the whole tree, 41 callers) and callees include `connector_error`. It does NOT give a path from register_snapshot_batch → connector_error (no transitive chain) — the tool only gives 1-hop callers/callees. codegraph gives a call path.
 
@@ -1374,7 +1374,7 @@ Now I have all the codegraph material. Let me do the two verification items the 
    
    So `a_string_range_names_both_endpoints_as_data` is a `#[test]` that calls names_face directly. Let me verify it's a #[test] and run it. Also check whether graft_plan_check.rs has tests calling names_face... wait, `a_string_range_names_both_endpoints_as_data` is IN graft_plan_check.rs and calls names_face? Let me verify. Actually xirang's caller list says `toolchain/src/build_time/src/graft_plan_check.rs::a_string_range_names_both_endpoints_as_data` — so yes, a test function in graft_plan_check.rs calls names_face.
 
-   Also `toolchain/src/mcp/src/impact.rs::impact` calls names_face — that's a real caller (production).
+   Also `toolchain/src/mcp/impact.rs::impact` calls names_face — that's a real caller (production).
 
    Hmm wait, codegraph said names_face has 6 callers: overlay_rows.rs, cli/explain_report.rs, mcp/impact.rs, plan_rows.rs, +2 more. The +2 more are likely graft_plan_check.rs (x2). So codegraph's caller list agrees with xirang's, but codegraph claimed "no covering tests found" — a false negative, and importantly it *truncated* the +2 more which happen to be exactly the test-bearing file.
 

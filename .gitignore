@@ -2,15 +2,63 @@ target/
 # Local code graph index (codegraph): machine-local, regenerable, megabytes.
 # 本地代码图索引（codegraph）：机器本地、可重建、体积大，不入库。
 .codegraph/
+# Machine-local source bindings: where **this** checkout keeps a declared external source. It must
+# not travel with the project, because another machine keeps it somewhere else (or not at all).
+# 本机来源绑定：**这个**检出把已声明外部来源放在哪里。它不得随项目传播，因为另一台机器把它放在别处
+# （或者根本没有）。
+**/.xirang/source-bindings.tsv
 # AgentTeams runtime state and the workspace memory database: tool state, not source.
 # AgentTeams 运行期状态与工作区记忆库：属于工具状态，不是源码，不入库。
 .agent-teams/
 .dsh-meow/
+# Keep local research private while shipping the README's two user guides.
+# 本地研究仍忽略；README 的两份使用指南随仓库保存。
+/docs/*
+!/docs/using-xirang.md
+!/docs/extending-languages.md
 # Python measurement/evaluation scripts (benches, judges, extractors) are local tooling rather
 # than a published surface: they run against this checkout and are not committed.
 # Python 度量/评测脚本（bench、判分、抽取器）是本地工具而不是发布面：它们只对着本检出跑，不提交。
 *.py
+# Reproducible MCP measurements and their regression tests belong to this checkout.
+# 可复现的 MCP 度量与回归测试随检出保存。
+!bench/score-m1.py
+!bench/test_score_m1.py
+!bench/mcp-callgraph-bench.py
+!bench/mcp-codegraph-bench.py
+!bench/test_token_accounting.py
+!bench/mcp-scale-bench.py
+!bench/mcp-context-bench.py
+!bench/mcp-update-bench.py
+!bench/mcp-responsibility-bench.py
+!bench/mcp-repair-loop-bench.py
+!bench/mcp-completion-bench.py
+!bench/agent-ab.py
+!bench/agent_ab_fixtures.py
+!bench/agent_ab_audit.py
+!bench/agent_ab_review.py
+!bench/test_agent_ab.py
+!bench/coordinate-ab.py
+!bench/coordinate_model.py
+!bench/coordinate_fixture.py
+!bench/coordinate_judge.py
+!bench/coordinate_report.py
+!bench/coordinate_regression_probe.py
+!bench/test_coordinate.py
+!bench/evolution-maintenance.py
+!bench/evolution-ab.py
+!bench/evolution_fixture.py
+!bench/evolution_report.py
+!bench/evolution_audit.py
+!bench/evolution_rescore.py
+__pycache__/
 
 # 装置日志（wrapper 默认落点；每轮应由 BENCH_CALLS 指到 run 目录）
 calls.log
 bench/**/calls.log
+
+# .NET build outputs and npm links inside the SDK/example trees.
+# SDK/示例树里的 .NET 构建产物与 npm 链接。
+multilang/sdk/csharp/**/bin/
+multilang/sdk/csharp/**/obj/
+node_modules/

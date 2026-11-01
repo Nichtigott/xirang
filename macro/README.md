@@ -55,24 +55,13 @@ reports that a field's *shape* is wrong instead of recursing.
 归一化后的声明会重新发出为 `::xirang_toolchain::run_method::__xirang_object! { … }`
 （外部目标则为 `__external_object!`），调用方选择的 collector 模式因此得以保留。
 如果重排得到的正是收到的 token，前端会报告"某个字段的写法不对"，而不是无限递归。
-
-## The IDE mirror / 编辑器镜像
-
-An editor only reads a macro's token tree when it expands to a struct literal,
-so the front end also emits an editor-only mirror: a real, type-correct
-`FaceFields { … }` literal inside an anonymous `const`, gated behind
-`#[cfg(rust_analyzer)]`. It is never compiled into a host and its function is
-never called.
-
-编辑器只有看到展开成结构体字面量时才读得到宏的 token 树，因此前端还会发射一份仅供
-编辑器的镜像：匿名 `const` 里一个真实、类型正确的 `FaceFields { … }` 字面量，挂在
-`#[cfg(rust_analyzer)]` 下。它永不编进宿主，函数也永不执行。
-
-Each field is translated by its shape so the mirror stays valid Rust while
-keeping completion working:
-镜像按字段的写法逐类翻译，既保持合法 Rust，又不丢补全：
-
-| Shape / 写法 | Fields / 字段 | Mirror / 镜像 |
+The IDE-only field mirror that used to live here was **retired** in step ⑤ of A2e: the new
+face spelling is plain Rust, so an editor completes it natively and the macro no longer needs
+a `cfg(rust_analyzer)` splice. The reason it existed, and what replaced it, are in
+`docs/native-completion-design-2026-10-10.md`.
+这里原来的『仅供编辑器的字段镜像』已在 A2e 第⑤步**退役**：新的面拼法是普通 Rust，编辑器原生
+即可补全，宏不再需要 `cfg(rust_analyzer)` 拼接。它当初为何存在、如今由什么取代，见
+`docs/native-completion-design-2026-10-10.md`。
 | --- | --- | --- |
 | `Value` | `parent`, `flow`, `admission`, `source`, `plugin`, … | the author's expression, typed by `_` inference / 作者表达式，由 `_` 推导类型 |
 | `Type` | `kind`, `preset`, `parts`, `handle`, `flow_provider` | the author's tokens move into the annotation; the value is `loop {}` / 作者的 token 进入类型注解，值为 `loop {}` |

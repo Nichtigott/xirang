@@ -11,6 +11,133 @@
 use super::*;
 use crate::registry_core::lexicon::path_is_under;
 
+/// The **author-facing** declaration of a face (H/A2e): the value-like fields, plus a `DEFAULT` to spread.
+/// 面的**作者形**声明（H/A2e）：值类字段，外加一个供展开的 `DEFAULT`。
+///
+/// The four **type-like** fields a face declares — `preset`, `parts`, `params`, `handle` — are *not* here,
+/// because a struct literal cannot carry a type: they live as associated types on [`Face`]. That split is
+/// what keeps "a wrong type is a compile error" after the move away from the macro (measured: written as a
+/// literal, the preset could only have been a string).
+/// 面声明的四个**类型类**字段——`preset`、`parts`、`params`、`handle`——**不在这里**，因为结构体字面量装不下
+/// 类型：它们住在 [`Face`] 的关联类型上。这条分界正是"离开宏之后，写错类型仍然是编译错误"的保证（实测：写成
+/// 字面量时，preset 只能退化成字符串）。
+///
+/// Everything is `const`-constructible, so a face can write one declaration and spread the rest:
+/// 每个字段都能在 `const` 里构造，因此一个面可以只写它要改的那几个字段、其余展开：
+///
+/// ```ignore
+/// impl Card {
+///     pub const REGISTRATION: Registration = Registration {
+///         parent: crate::board::Board::REGISTRATION.parent,
+///         ..Registration::DEFAULT
+///     };
+/// }
+/// ```
+/// # Who supplies each field
+/// # 每个字段由谁供给
+///
+/// The audit that decides which half a field belongs to — asked of every field when the declaration
+/// spelling changed (H/A2e), because a value the **build** derives cannot be written by an author and must
+/// cross through [`FaceInputs`] instead:
+/// 决定一个字段属于哪一半的那次审计——在声明拼法改变时（H/A2e）对每个字段问过一遍，因为**构建**派生出来的值
+/// 作者写不出来，必须改经 [`FaceInputs`] 过境：
+///
+/// - **The author writes it** (sixteen of them): `parent`, `stable_name`, `name`, `summary`, `exports`,
+///   `needs_registry`, `getting_from_other_registry`, `registry_rule_path`, `admission`, `requires`,
+///   `provides`, `flow`, `flow_provider`, `runtime_checks`, `plugin` — everything a face declares about
+///   itself.
+/// - **The build supplies it** (two of them):
+///   - `registry_name` — the name a face owns among its siblings; the declaration macros derived it as
+///     `last_path_segment(module_path!())`, and it is not part of the declaration vocabulary, so a face
+///     written as a literal cannot state it. **Moved to `FaceInputs`** ✓.
+///   - `registry_rule` — the rule loaded from `registry_rule_path`; the macro spelling carried the loaded
+///     value in its declaration, so a literal-form face has nothing to carry and falls back to
+///     `RegistrationRule::ANY`, which silently stops the parent rule from rejecting anything.
+///     **Not moved yet** ✗ — the renderer has to expose the loaded rule first.
+/// - **作者的字段（十六个）**：`parent`、`stable_name`、`name`、`summary`、`exports`、`needs_registry`、
+///   `getting_from_other_registry`、`registry_rule_path`、`admission`、`requires`、`provides`、`flow`、
+///   `flow_provider`、`runtime_checks`、`plugin`——一个面对面自己声明的一切。
+/// - **构建供给的（两个）**：`registry_name`（**已搬进 `FaceInputs`** ✓）；`registry_rule`（宏式拼法把
+///   **加载后的规则值**带在声明里 ✓，字面量形没得可带 ⇒ 回落 `ANY` ⇒ 父规则静默失效 ✗。**尚未搬** ✗——
+///   需要渲染器先把加载后的规则暴露出来）。
+pub struct Registration {
+    /// Node identity of the face this one is registered under.
+    /// 本注册面所挂载到的父节点身份。
+    pub parent: NodeId,
+    /// Opt-in identity that survives a source-file move.
+    /// 可选的、能跨源码文件移动保持不变的逻辑身份。
+    pub stable_name: Option<&'static str>,
+    /// Human-readable name, in both languages.
+    /// 双语的人类可读名字。
+    pub name: LocalizedText,
+    /// Human-readable summary, in both languages.
+    /// 双语的人类可读摘要。
+    pub summary: LocalizedText,
+    /// Names this face exports to its children.
+    /// 本面导出给子面的名字。
+    pub exports: &'static [&'static str],
+    /// Whether this face owns a registry (its children must satisfy its rule).
+    /// 本面是否拥有注册机（其子对象必须满足它旁边的规则）。
+    pub needs_registry: bool,
+    /// Registry name this face is keyed by, when it is not the module's own name.
+    /// 本面据以索引的注册名（当它不是模块自身的名字时）。
+    pub registry_name: &'static str,
+    /// Object this face is taken from, when it comes from another registry.
+    /// 本面取自另一个注册机时的来源对象。
+    pub getting_from_other_registry: Option<&'static str>,
+    /// Sibling rule this face's children are checked against.
+    /// 本面的子对象据以校验的同目录规则。
+    pub registry_rule_path: &'static str,
+    /// The rule itself, when it is written inline.
+    /// 规则本身（内联书写时）。
+    pub registry_rule: RegistrationRule,
+    /// Which external paths this face admits.
+    /// 本面放行哪些外部路径。
+    pub admission: Admission,
+    /// Capabilities this face requires.
+    /// 本面需要的capability。
+    pub requires: &'static [RequirementSpec],
+    /// Capabilities this face provides.
+    /// 本面提供的 capability。
+    pub provides: &'static [&'static str],
+    /// The flow contract this face fills, when it fills one.
+    /// 本面所填的流合同（若填了）。
+    pub flow: Option<FlowContract>,
+    /// The object whose flow this face provides, when it provides instead of filling.
+    /// 本面提供其流量的对象（当它是提供方而非填写方时）。
+    pub flow_provider: Option<&'static str>,
+    /// Runtime checks this face asks for.
+    /// 本面要求的运行期检查。
+    pub runtime_checks: &'static [RuntimeCheckSpec],
+    /// The plugin this face can be replaced by, when it is replaceable surface.
+    /// 本面可被哪个插件替换（当它是可替换表面时）。
+    pub plugin: Option<PluginManifest>,
+}
+
+impl Registration {
+    /// Every field at its empty value: what `..` spreads when the author writes only what matters.
+    /// 每个字段的空值：作者只写要改的那几个字段时，`..` 展开的就是它。
+    pub const DEFAULT: Registration = Registration {
+        parent: NodeId::from_raw([0; 16]),
+        stable_name: None,
+        name: LocalizedText { zh: "", en: "" },
+        summary: LocalizedText { zh: "", en: "" },
+        exports: &[],
+        needs_registry: false,
+        registry_name: "",
+        getting_from_other_registry: None,
+        registry_rule_path: "",
+        registry_rule: RegistrationRule::ANY,
+        admission: Admission::ANY,
+        requires: &[],
+        provides: &[],
+        flow: None,
+        flow_provider: None,
+        runtime_checks: &[],
+        plugin: None,
+    };
+}
+
 /// One capability requirement and the object expected to provide it.
 /// 一条能力需求，以及本应提供它的对象。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,6 +247,22 @@ impl RegistrationRule {
     /// 不含任何结构要求的规则，接纳任意注册面。
     pub const ANY: Self = Self::new();
 
+    /// Whether this rule constrains nothing — that is, whether it equals [`Self::ANY`].
+    /// 本规则是否不含任何约束——也就是它是否等于 [`Self::ANY`]。
+    ///
+    /// A face's rule has two possible suppliers: the author's declaration, and the build. The build
+    /// supplies it only when the declaration does not, and "does not" needs a `const` test, because a
+    /// face's declaration is assembled in a `const` context.
+    /// 一个面的规则有两个可能的供给方：作者的声明与构建。构建只在声明**没有**给的时候供给，而"没有给"需要一个
+    /// `const` 判定，因为面的声明是在 `const` 上下文里拼装的。
+    pub const fn is_any(&self) -> bool {
+        self.required_preset.is_none()
+            && self.required_parts.is_empty()
+            && self.required_exports.is_empty()
+            && self.required_handle_traits.is_empty()
+            && self.required_part_traits.is_empty()
+    }
+
     /// Start an unconstrained structural rule.
     /// 创建一个尚未添加结构要求的规则。
     pub const fn new() -> Self {
@@ -220,6 +363,201 @@ impl Default for RegistrationRule {
     fn default() -> Self {
         Self::new()
     }
+}
+
+impl RegistrationInfo {
+    /// Every field at its empty value: what a builder spreads when the author writes only what matters.
+    /// 每个字段的空值：作者只写要改的那些字段时，构造器展开的就是它。
+    pub const DEFAULT: RegistrationInfo = RegistrationInfo {
+        namespace: "",
+        id: NodeId::from_raw([0; 16]),
+        parent: NodeId::from_raw([0; 16]),
+        kind: "",
+        preset: "",
+        parts: "",
+        params: "",
+        handle: "",
+        stable_name: None,
+        name: LocalizedText { zh: "", en: "" },
+        summary: LocalizedText { zh: "", en: "" },
+        exports: &[],
+        needs_registry: false,
+        registry_name: "",
+        getting_from_other_registry: None,
+        registry_rule_path: "",
+        registry_rule: RegistrationRule::ANY,
+        admission: Admission::ANY,
+        requires: &[],
+        provides: &[],
+        contract: ObjectContract {
+            required_parts: &[],
+            provided_parts: &[],
+        },
+        flow: crate::FlowContract::NONE,
+        flow_provider: None,
+        handle_traits: &[],
+        part_traits: &[],
+        runtime_checks: &[],
+        plugin: None,
+        // A synthetic location, by the rule `SourceLocation::is_synthetic` states.
+        // 一个合成位置，按 `SourceLocation::is_synthetic` 写明的规则。
+        source: SourceLocation {
+            file: "<unset>",
+            line: 0,
+            column: 0,
+            function: "<unset>",
+        },
+    };
+
+    /// The same assembly, for a caller that has the face's **type** and not its two type parameters.
+    /// 同一次拼装，给手里只有面的**类型**、而没有它那两个类型参数的调用方。
+    ///
+    /// The two signatures exist because their callers differ: the declaration macros hold `preset` and
+    /// `parts` as types and must not add an `impl FaceContract for $kind` (a trait impl is keyed on the
+    /// type, so a crate that declares the same kind twice could not have two), while the build reading a
+    /// face written in the new spelling has only the face's name. Both delegate to the same body, so the
+    /// derivation of the contract records stays in one place.
+    /// 两个签名并存，是因为调用方不同：声明宏手里 `preset`/`parts` 就是类型，而它们**不能**加
+    /// `impl FaceContract for $kind`（trait impl 以类型为键，一个 crate 里同一 kind 声明两次就不可能有两条）；
+    /// 而构建读到用新拼法写的面时，手里只有那个面的名字。两者都委派给同一段函数体，因此合同记录的推导
+    /// 仍然只有一处。
+    pub const fn assemble_face<F: FaceContract>(
+        inputs: FaceInputs,
+        declaration: Registration,
+    ) -> RegistrationInfo {
+        RegistrationInfo::assemble::<F::Preset, F::Parts>(
+            FaceInputs {
+                handle_traits: F::HANDLE_TRAITS,
+                part_traits: F::PART_TRAITS,
+                ..inputs
+            },
+            declaration,
+        )
+    }
+
+    /// Assemble the owned snapshot both spellings of a declaration must produce (H/A2e).
+    /// 拼出两种声明拼法都必须产出的那份拥有型快照（H/A2e）。
+    ///
+    /// Two arguments, because a declaration has exactly two halves: the one **the build knows** and the
+    /// one **the author writes**. The type parameters carry the type-like half and are checked here
+    /// exactly as [`assert_contract`] checks them.
+    /// 两个参数，因为一份声明恰好有两半：**构建知道的**那一半，和**作者写的**那一半。类型类的那一半由类型
+    /// 参数承载，并在这里按 [`assert_contract`] 的同一套检查校验。
+    ///
+    /// Type parameters rather than a trait bound on the face: a trait impl is keyed on the **type**, so a
+    /// crate that declares the same kind twice (which the fixtures do on purpose) could not have two.
+    /// 用类型参数而不是给面加 trait 约束：trait impl 以**类型**为键，而一个 crate 里同一 kind 声明两次
+    /// （夹具就是这样用的）就会撞车。
+    pub const fn assemble<P, T>(inputs: FaceInputs, declaration: Registration) -> RegistrationInfo
+    where
+        P: PresetContract,
+        T: PartsContract<Output = P::Output>,
+    {
+        RegistrationInfo {
+            namespace: inputs.namespace,
+            id: inputs.id,
+            parent: declaration.parent,
+            kind: inputs.kind,
+            preset: inputs.preset,
+            parts: inputs.parts,
+            params: inputs.params,
+            handle: inputs.handle,
+            stable_name: declaration.stable_name,
+            name: declaration.name,
+            summary: declaration.summary,
+            exports: declaration.exports,
+            needs_registry: declaration.needs_registry,
+            registry_name: if declaration.registry_name.is_empty() {
+                inputs.registry_name
+            } else {
+                declaration.registry_name
+            },
+            getting_from_other_registry: declaration.getting_from_other_registry,
+            registry_rule_path: declaration.registry_rule_path,
+            registry_rule: if declaration.registry_rule.is_any() {
+                inputs.registry_rule
+            } else {
+                declaration.registry_rule
+            },
+            admission: declaration.admission,
+            requires: declaration.requires,
+            provides: declaration.provides,
+            contract: ObjectContract {
+                required_parts: P::REQUIRED_PARTS,
+                provided_parts: T::PROVIDED_PARTS,
+            },
+            flow: match declaration.flow {
+                Some(flow) => flow,
+                None => crate::FlowContract::NONE,
+            },
+            flow_provider: declaration.flow_provider,
+            handle_traits: inputs.handle_traits,
+            part_traits: inputs.part_traits,
+            runtime_checks: declaration.runtime_checks,
+            plugin: declaration.plugin,
+            source: inputs.source,
+        }
+    }
+}
+
+/// The half of a face declaration **only the build can supply** (H/A2e): namespace, identity, kind, the
+/// four type names, the derived trait labels and the source location.
+/// 面声明里**只有构建能供给**的那一半（H/A2e）：命名空间、身份、kind、四个类型名、推导出的 trait 标签与
+/// 源码位置。
+///
+/// The other half is the [`Registration`] the author writes; [`RegistrationInfo::assemble`] joins them.
+/// 另一半是作者写的 [`Registration`]；[`RegistrationInfo::assemble`] 把两半合起来。
+pub struct FaceInputs {
+    /// Package namespace that owns the declaration.
+    /// 拥有本声明的包命名空间。
+    pub namespace: &'static str,
+    /// Stable node identity the build assigned to this face.
+    /// 构建分配给本面的稳定节点身份。
+    pub id: NodeId,
+    /// Face kind name, which is the name of the type the face constructs.
+    /// 注册面种类名，也就是本面所构造的类型的名字。
+    pub kind: &'static str,
+    /// The name this face owns among its siblings, which is what decides whether two of them collide.
+    /// 本面在兄弟之间拥有的那个名字——两个兄弟面会不会撞名，由它决定。
+    ///
+    /// The declaration macros fill it with `last_path_segment(module_path!())`, and it is **not** part of
+    /// the declaration vocabulary: a face cannot write it. A face written as a `Registration` literal
+    /// therefore gets it from the build, which is the side that knows the module.
+    /// 声明宏把它填成 `last_path_segment(module_path!())`，而它**不在**声明词汇表里：面写不出它。因此写成
+    /// `Registration` 字面量的面从**构建**取它——知道模块的是构建那一侧。
+    pub registry_name: &'static str,
+    /// The structural rule this face imposes on the children it admits, as the build resolves it.
+    /// 本面对它接纳的子面所施加的结构规则，由构建解析得出。
+    ///
+    /// The declaration macros derived it from the face's own `registry_rule` module whenever the face
+    /// owns a registry (`needs_registry`), by naming that module's constant as a Rust path — so the value
+    /// is one only the compiler can evaluate, and a face written as a `Registration` literal has nothing
+    /// to carry. The build therefore supplies it, and the declaration wins whenever the author wrote one.
+    /// 只要面拥有注册机（`needs_registry`），声明宏就从面自己的 `registry_rule` 模块推导它——办法是把那个模块的
+    /// 常量写成一个 Rust 路径 —— 因此这个值只有**编译器**能求出来，而写成 `Registration` 字面量的面没得可带。
+    /// 于是由构建供给；而作者若自己写了，则以声明为准。
+    pub registry_rule: RegistrationRule,
+    /// Preset type path, as the build writes it.
+    /// preset 类型路径，由构建写出。
+    pub preset: &'static str,
+    /// Parts type path, as the build writes it.
+    /// parts 类型路径，由构建写出。
+    pub parts: &'static str,
+    /// Parameter type path this face declares for its construction input.
+    /// 本面为其构造输入声明的参数类型路径。
+    pub params: &'static str,
+    /// Handle type path that exposes this face to its owner.
+    /// 向其拥有者暴露本面的 handle 类型路径。
+    pub handle: &'static str,
+    /// Source location of the declaration site.
+    /// 声明点的源码位置。
+    pub source: SourceLocation,
+    /// Labels of the handle contracts this face asserts, derived from their types.
+    /// 本面断言的 handle 合同标签，由它们的类型推导而来。
+    pub handle_traits: &'static [&'static str],
+    /// Labels of the part contracts this face asserts, derived from their types.
+    /// 本面断言的 part 合同标签，由它们的类型推导而来。
+    pub part_traits: &'static [&'static str],
 }
 
 /// Declarative information for an ordinary object or a registry owner.
@@ -464,3 +802,7 @@ pub const FACE_FIELD_ORDER: &[&str] = &[
     crate::registry_core::lexicon::FACE_FIELD_PLUGIN,
     "runtime_checks",
 ];
+
+#[cfg(test)]
+#[path = "registration_tests.rs"]
+mod registration_tests;

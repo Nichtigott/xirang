@@ -1,0 +1,12 @@
+[package]
+name = "gauge"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[dependencies]
+xirang-toolchain = { path = "../../../toolchain", version = "0.2.0", features = ["native-record"] }
+
+[build-dependencies]
+xirang-toolchain = { path = "../../../toolchain", version = "0.2.0", features = ["native-record"] }

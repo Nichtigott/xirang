@@ -1,12 +1,12 @@
 # 独立验证：B1-4（Studio Edit 表单 / 检视器不再丢 deny，t52）
 
-- 被验证的修复：`studio/src/studio/app/source_index.rs` 的 `admission_text`（`studio/src/studio/app/source_index.rs:71`）——t52 让它在 allow 与 deny 同时非空时渲染**两个子句** `allow:…;deny:…`；两个消费方是 Edit 表单预填（`studio/src/studio/app/keyboard.rs:79`）与检视器那一行（`studio/src/studio/ui/panels.rs:151`，经 `studio/src/studio/ui/search.rs:97` 的 `format_admission` 别名）。
+- 被验证的修复：`studio/studio/app/source_index.rs` 的 `admission_text`（`studio/studio/app/source_index.rs:71`）——t52 让它在 allow 与 deny 同时非空时渲染**两个子句** `allow:…;deny:…`；两个消费方是 Edit 表单预填（`studio/studio/app/keyboard.rs:79`）与检视器那一行（`studio/studio/ui/panels.rs:151`，经 `studio/studio/ui/search.rs:97` 的 `format_admission` 别名）。
 - 复核人 / 独立性声明：复核人 **kernel-auditor**。t52 的作者是另一位成员（studio 路），我**不是**这条修复的作者。我所是的作者那条是 B1-1/t43（内核 `parse_admission_expression`），其独立验证是 t51 与 t55（t55 因此已由队长改派）。本报告是 B1-4 的**第一条独立验证**。
 - 结论：**证实**（范围内无证伪、无部分证实项）。修复在两条真实路径上都成立，且三条钉子都经变异证明是活的。
 
 ## 1. 我的装置（不复用作者的测试）
 
-装置在检出之外：`/tmp/nk-b14` = 工作树完整副本（`rsync -a --exclude target --exclude .git --exclude docs`，未改动检出）。我在副本里加了自己写的一个探针文件 `studio/src/studio/app/tests/b14_probe.rs`（经副本的 `studio/src/studio/app/tests.rs` 以 `#[path = …] mod b14_probe;` 挂载，与既有测试同形），以及自己的临时工程生成器。两条探针都在副本里跑：
+装置在检出之外：`/tmp/nk-b14` = 工作树完整副本（`rsync -a --exclude target --exclude .git --exclude docs`，未改动检出）。我在副本里加了自己写的一个探针文件 `studio/studio/app/tests/b14_probe.rs`（经副本的 `studio/studio/app/tests.rs` 以 `#[path = …] mod b14_probe;` 挂载，与既有测试同形），以及自己的临时工程生成器。两条探针都在副本里跑：
 
 1. `b14_prefill_and_inspector_keep_the_deny_veto` —— 一个真实往返：
    - 生成一次性宿主工程：`src/control/control.rs` 里一个 `control_object!` 面，其 `admission: crate::Admission::new(&["ui"], &["ui/experimental"])`（编辑器所写的构造形式）；
@@ -15,7 +15,7 @@
    - 判据是语义的，不是比文本：`parse_admission_owned(预填)` 重建出运行期门禁，然后断言 `gate.accepts("ui") == true` 且 **`gate.accepts("ui/experimental") == false`**；另用保存路径的渲染器 `render_admission(预填)` 断言写回源码的表达式仍含 deny。失败先收集、最后一次断言，因此一次运行报出所有被破坏的路径。
 2. `b14_kernel_grammar_refusals_hold` —— 直接问内核：4 个规范拼法（`ANY`/`allow:a,b`/`deny:c`/`allow:a,b;deny:c`）必须被渲染器逐字节复现；5 个畸形子句（`allow:a;allow:b`、`allow:a;veto:b`、`allow:a;deny:`、`allow:a;b`、`allow:`）必须被内核拒绝。
 
-作者的两个钉子（`both_lists_survive_the_compact_rendering`（`studio/src/studio/app/source_index.rs:153`）、`the_kernel_reads_back_every_value_this_renderer_emits`（`studio/src/studio/app/source_index.rs:172`））**不是**我的装置；它们只在变异阶段作为观察对象（确认它们真的会红）。
+作者的两个钉子（`both_lists_survive_the_compact_rendering`（`studio/studio/app/source_index.rs:153`）、`the_kernel_reads_back_every_value_this_renderer_emits`（`studio/studio/app/source_index.rs:172`））**不是**我的装置；它们只在变异阶段作为观察对象（确认它们真的会红）。
 
 ## 2. 绿（原样输出）
 
@@ -69,12 +69,12 @@ test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 99 filtered out;
 副本里把子句渲染改成产出 `allow:;deny:`（内核拒绝的畸形值）：
 
 ```
-thread '…b14_prefill_and_inspector_keep_the_deny_veto' panicked at studio/src/studio/app/source_index.rs:85:5:
+thread '…b14_prefill_and_inspector_keep_the_deny_veto' panicked at studio/studio/app/source_index.rs:85:5:
 the rendered value must be one the kernel's compact parser reads: allow:;deny:
 test result: FAILED. 0 passed; 1 failed; … ASSERT_PROBE_EXIT=101
 ```
 
-即 `admission_text` 里那条 `debug_assert!`（`studio/src/studio/app/source_index.rs:85`）不是装饰：产出值一旦不是内核能读的拼法，测试构建马上 panic，并报出被拒绝的那个值。
+即 `admission_text` 里那条 `debug_assert!`（`studio/studio/app/source_index.rs:85`）不是装饰：产出值一旦不是内核能读的拼法，测试构建马上 panic，并报出被拒绝的那个值。
 
 ## 5. 门禁（静置树，检出内原样输出）
 

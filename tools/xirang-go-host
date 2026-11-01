@@ -1,0 +1,154 @@
+#!/bin/sh
+# Gate: a Go-declared face really lands in the runtime registration tree, produced by a real Go
+# generator — no committed record file, the build runs the producer.
+# 门禁：Go 声明的面真的落进运行期注册树，由真实 Go 生成器产出——没有入库的记录文件，构建自己运行生产者。
+#
+#   XIRANG_GO=/path/to/go tools/xirang-go-host
+#
+# Why it exists: the record-file gate proves the carrier with a producer stand-in. This one replaces
+# the stand-in with the real Go toolchain: the build runs `[record] command`, the generator parses
+# the package's sources (no import, no execution), writes version-3 records, and the Rust build
+# reads them. The negative controls prove the generator's refusals have teeth: a parent that is not
+# 32 hex characters and an unknown field must both fail, by name.
+# 为什么需要它：记录文件门禁用生产者替身证明载体。这一条用真实 Go 工具链替换替身：构建运行
+# `[record] command`，生成器解析包的源码（不导入、不执行）、写版本 3 记录，Rust 构建读它们。反控证明生成器
+# 的拒绝有牙：不是 32 个十六进制字符的父级与未知字段都必须按名失败。
+#
+# A machine without Go reports "not run" (exit 2) instead of failing a face it cannot build.
+# 没有 Go 的机器报"未跑"（exit 2），而不是让一个它构建不了的面失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+go=${XIRANG_GO:-}
+if [ -z "$go" ]; then
+    go=$(command -v go || true)
+fi
+if [ -z "$go" ]; then
+    echo "xirang-go-host: no Go toolchain; set XIRANG_GO or install go" >&2
+    exit 2
+fi
+echo "go     $go ($("$go" version))"
+
+# A shared writable build cache: the checkout's default cache may be read-only on this machine.
+# 一个可写共享构建缓存：本机的默认缓存可能是只读的。
+export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/xirang-go-cache}"
+export GOPATH="${GOPATH:-${TMPDIR:-/tmp}/xirang-go-path}"
+mkdir -p "$GOCACHE" "$GOPATH"
+
+sdk="$root/multilang/sdk/go"
+if [ ! -d "$sdk/xirang" ] || [ ! -d "$sdk/cmd/xirang-faces" ]; then
+    echo "xirang-go-host: the Go SDK is not at $sdk; the crate's SDK location and this gate disagree" >&2
+    exit 2
+fi
+example="$root/examples/go-gauge/gauge"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/xirang-go-host-XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# 1. Build from scratch: no committed record file, so the build has to run the producer.
+# 1. 从零构建：没有入库的记录文件，因此构建必须运行生产者。
+rm -rf "$example/native/gauge.faces" "$example/go/src/gauge/faces.go"
+cd "$root/examples/go-gauge"
+XIRANG_GO="$go" CARGO_NET_OFFLINE=true cargo clean -p gauge >/dev/null
+XIRANG_GO="$go" CARGO_NET_OFFLINE=true cargo test --offline
+
+# 2. The producer really ran and wrote one version-3 record.
+# 2. 生产者真的运行了，并写出一条版本 3 记录。
+record="$example/native/gauge.faces"
+if [ ! -f "$record" ]; then
+    echo "xirang-go-host: the build succeeded but produced no record file; the run did not prove a producer" >&2
+    exit 1
+fi
+bytes=$(wc -c <"$record")
+if [ "$bytes" -ne 1228 ]; then
+    echo "xirang-go-host: the record file is $bytes bytes; a version-3 record is 1228" >&2
+    exit 1
+fi
+# The build also wrote the constants file the declaration names its parent through.
+# 构建还写出了声明点名父级所用的常量文件。
+constants="$example/go/src/gauge/faces.go"
+if [ ! -f "$constants" ]; then
+    echo "xirang-go-host: the build produced no constants file; a non-root parent cannot be named" >&2
+    exit 1
+fi
+if ! grep -q "xirangFacePanel" "$constants"; then
+    echo "xirang-go-host: the constants file does not name the Rust parent module:" >&2
+    cat "$constants" >&2
+    exit 1
+fi
+
+# 3. Negative control 1: a parent that is not 32 hex characters must fail the generator.
+# 3. 反控一：不是 32 个十六进制字符的父级必须让生成器失败。
+mkdir -p "$tmp/bad-parent"
+cat >"$tmp/bad-parent/bad.go" <<'BAD'
+package badparent
+
+import "xirang.dev/sdk/xirang"
+
+var _ = xirang.Soil{Parent: "not-hex", Named: "Bad"}
+BAD
+cd "$sdk"
+if "$go" run ./cmd/xirang-faces -source "$tmp/bad-parent" -root "$tmp" \
+    -out "$tmp/bad.faces" >"$tmp/bad.out" 2>&1; then
+    echo "xirang-go-host: the generator accepted a parent that is not hex; its refusal has no teeth" >&2
+    exit 1
+fi
+if ! grep -q "hexadecimal\|32 hex" "$tmp/bad.out"; then
+    echo "xirang-go-host: the generator failed, but not by the parent check:" >&2
+    cat "$tmp/bad.out" >&2
+    exit 1
+fi
+
+# 4. Negative control 2: a field the generator does not know must fail by name.
+# 4. 反控二：生成器不认识的字段必须按名失败。
+mkdir -p "$tmp/bad-field"
+cat >"$tmp/bad-field/bad.go" <<'BAD'
+package badfield
+
+import "xirang.dev/sdk/xirang"
+
+var _ = xirang.Soil{Parent: "d50df7e06896ebbf0b0912f3603dbc67", Named: "Bad", Exportz: []string{"x"}}
+BAD
+if "$go" run ./cmd/xirang-faces -source "$tmp/bad-field" -root "$tmp" \
+    -out "$tmp/bad2.faces" >"$tmp/bad2.out" 2>&1; then
+    echo "xirang-go-host: the generator accepted an unknown field; a typo would silently drop a field" >&2
+    exit 1
+fi
+if ! grep -q "unknown field" "$tmp/bad2.out"; then
+    echo "xirang-go-host: the generator failed, but not by the unknown-field check:" >&2
+    cat "$tmp/bad2.out" >&2
+    exit 1
+fi
+
+# 5. A declaration that names a constant the build did not write must fail the generator.
+# 5. 点名构建没写过的常量的声明必须让生成器失败。
+mkdir -p "$tmp/missing-constant"
+cat >"$tmp/missing-constant/bad.go" <<'BAD'
+package missingconstant
+
+import "xirang.dev/sdk/xirang"
+
+var _ = xirang.Soil{Parent: xirangFaceNope, Named: "Bad"}
+BAD
+if "$go" run ./cmd/xirang-faces -source "$tmp/missing-constant" -root "$tmp" \
+    -out "$tmp/missing.faces" >"$tmp/missing.out" 2>&1; then
+    echo "xirang-go-host: the generator accepted a constant the package does not declare" >&2
+    exit 1
+fi
+if ! grep -q "is not a constant this package declares" "$tmp/missing.out"; then
+    echo "xirang-go-host: the generator failed, but not by the missing-constant check:" >&2
+    cat "$tmp/missing.out" >&2
+    exit 1
+fi
+
+# 6. The authoring adapter plans the same declaration the build reads: create reads back, modify
+#    preserves the business type, and the generated source really compiles with the SDK.
+# 5. 创作适配器规划出构建读取的同一种声明：create 能读回、modify 保留业务类型、生成的源码真的能在 SDK 下编译。
+cd "$root"
+XIRANG_GO="$go" CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-go --offline \
+    --lib -- languages::go
+
+# 7. The producer refusals keep their teeth (failing command, zero-with-no-output, table shape).
+# 6. 生产者的拒绝保住牙（失败命令、退出 0 但无输出、表的形状）。
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,native-record --offline --lib \
+    -- record_file
+
+echo "xirang-go-host: ok (the Go generator and constants file work, and bad parents/unknown fields/missing constants are refused)"

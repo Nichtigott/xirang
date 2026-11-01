@@ -1,0 +1,7 @@
+# xirang-generation: 0
+# Added by XiRang's partition action: the remap keeps every mounted face's `file!()`
+# spelling identical to the host's, which is what keeps its identity (audit `M7`, P3.3).
+# 由 XiRang 的拆分动作添加：remap 让每个被挂载面的 `file!()` 拼写与宿主一致，
+# 而这正是保住它身份的东西（审计 `M7`，P3.3）。
+[build]
+rustflags = ["--remap-path-prefix=/home/nich/Moirai_N3/nichlink/examples/zig-gauge/gauge/src/="]

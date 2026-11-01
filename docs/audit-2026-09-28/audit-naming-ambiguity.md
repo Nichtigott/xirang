@@ -80,12 +80,12 @@
 
 - **严重度**：MAJOR　**类别**：1（Cargo 惯用名）
 - **行为清单**：
-  1. 发现源码树并预热身份缓存：`build_method/src/pipeline.rs:55`（`prime_node_id_cache`）、`build_method/src/identity_cache.rs:13-65`（读 `<target>/xirang/cache/units/*.tsv`）。
-  2. 推断构建作用域：`build_method/src/scope.rs`，读取侧 `build_method/src/scope_view.rs:109-118`（`keeps`，按 `::` 段判子树）。
-  3. 校验注册面/合同/静态计划：`build_method/src/registration_check.rs`、`contracts.rs:15-111`、`static_plan.rs:110-125`。
-  4. 渲染生成的计划：`build_method/src/renderer/tree.rs:68-70`、`renderer/pass.rs`。
-  5. 把清单发布到 `OUT_DIR`：`build_method/src/pipeline.rs:155-184`（先指纹后五份载荷）、`manifests.rs:14-22`。
-  6. 入口（被宿主 `build.rs` 调用）：`build_method/src/lib.rs:137 pub fn run()`、`:153 run_for`、`:179 check_for`。
+  1. 发现源码树并预热身份缓存：`build_method/pipeline.rs:55`（`prime_node_id_cache`）、`build_method/identity_cache.rs:13-65`（读 `<target>/xirang/cache/units/*.tsv`）。
+  2. 推断构建作用域：`build_method/scope.rs`，读取侧 `build_method/scope_view.rs:109-118`（`keeps`，按 `::` 段判子树）。
+  3. 校验注册面/合同/静态计划：`build_method/registration_check.rs`、`contracts.rs:15-111`、`static_plan.rs:110-125`。
+  4. 渲染生成的计划：`build_method/renderer/tree.rs:68-70`、`renderer/pass.rs`。
+  5. 把清单发布到 `OUT_DIR`：`build_method/pipeline.rs:155-184`（先指纹后五份载荷）、`manifests.rs:14-22`。
+  6. 入口（被宿主 `build.rs` 调用）：`build_method/lib.rs:137 pub fn run()`、`:153 run_for`、`:179 check_for`。
 - **角色一句话**：它是「构建期把宿主源码变成生成的注册计划与清单的那一半——构建脚本背后的组织单位」。
 - **命名**：**方向对、词不对**。`build_method` 确实在说「谁」（维护者认可的「说的是这个是谁」），但 `method` 在 Rust 里首先读成「类型上的函数」（R-4b），而 `build` 与 Cargo 的 build 家族（`build.rs`/`[build-dependencies]`/`cargo build`）同词。建议 **`build_time`**（AGENTS.md 对本 crate 的自述就是 "Build-time filesystem / `OUT_DIR` orchestration"），入口写成 `build_time::run()`。
 - **辅助判据**：读者把 `build_method/` 当成「构建脚本相关的东西」或「一个构建方法」；`grep -rn build.rs` 全仓 4 个文件 3 种角色（真构建脚本 2、CLI 命令实现 1、模块文件 1）。判据/命令：`find . -name build.rs -not -path '*/target/*' | sort`。
@@ -95,11 +95,11 @@
 
 - **严重度**：MAJOR　**类别**：2（跨生态阅读）
 - **行为清单**：
-  1. 承载运行期注册状态：`run_method/src/lib.rs:27`（`pub mod runtime`）、`run_method/src/runtime/runtime.rs`。
-  2. 记录并绑定调用 trace：`run_method/src/runtime/trace/`，`runtime/trace/call_trace.rs:100`（`pub fn runtime()`）。
-  3. 执行创作写盘：`run_method/src/authoring/operations/operations.rs:320-334`（`edit_module_face` 入口 + `apply_module_face_values`）、`operations/face_write.rs:58-79`（字段序）。
-  4. 提供宿主宏：`run_method/src/macros/face_registration.rs:160-171`（`development`/`debug`/`linked` 三个 collector 臂）、`host!`/`application!`。
-  5. 保留历史路径：`run_method/src/plugin/plugin.rs:1-7`（6 行 shim）、`run_method/src/lib.rs:29-38`（`pub use xirang::registry_core::*`）。
+  1. 承载运行期注册状态：`run_method/lib.rs:27`（`pub mod runtime`）、`run_method/runtime/runtime.rs`。
+  2. 记录并绑定调用 trace：`run_method/runtime/trace/`，`runtime/trace/call_trace.rs:100`（`pub fn runtime()`）。
+  3. 执行创作写盘：`run_method/authoring/operations/operations.rs:320-334`（`edit_module_face` 入口 + `apply_module_face_values`）、`operations/face_write.rs:58-79`（字段序）。
+  4. 提供宿主宏：`run_method/macros/face_registration.rs:160-171`（`development`/`debug`/`linked` 三个 collector 臂）、`host!`/`application!`。
+  5. 保留历史路径：`run_method/plugin/plugin.rs:1-7`（6 行 shim）、`run_method/lib.rs:29-38`（`pub use xirang::registry_core::*`）。
 - **角色一句话**：它是「运行期承载注册状态、记录已发生的调用、并执行创作写盘的那一半」。
 - **命名**：**否**。`run`/`run_method` 会被读成前端 runtime 目录（维护者原话）、`cargo run`、程序入口 `run()`；而它实际是「运行期那一半」。建议 **`runtime`**（与 AGENTS.md 自述 "Runtime state instance + trace binding" 同词）——顺带消掉方案里 `pub mod run` 与 `pub use build::run` 的 **E0428**（`docs/audit-2026-09-28/audit-publish-surface-merge-plan.md:167``）。
 - **辅助判据**：全仓 5 个 `run` 系公开名（`build_method::run`、`cli::run`、`mcp::run`、`RuntimeCheckSpec::run`、`CallTrace::runtime`，见 AMB-20）。判据/命令：`grep -rnE '^pub fn run\b' --include=*.rs build_method/src cli/src mcp/src`。
@@ -129,7 +129,7 @@
   4. 导出视图与身份：`core/src/registry_core/tree/inspection.rs`、`identity/node_id.rs:52`。
 - **角色一句话**：它是「已注册的注册面组成的**树**——可注册、可查询、可嫁接的那一个数据结构」。
 - **命名**：**否（但改名代价大）**。`Registry` 是「登记处/登记机构」这个机构名词，而它是**树**（文件就住在 `tree/` 下）；更糟的是 Cargo/Cargo.toml 语境里 "the registry" 默认指 **crates.io**，本仓的 `tools/xirang-publish:80,189,192,722` 正是这个含义。建议：**保留 `Registry`**（公开类型 + docs.rs + 大量派生词），但要求两件事都做——① 模块 `registry_core` 与类型文档首行点明「注册树 ≠ crates.io」；② 写进 §5 词表。若允许公开面变更，角色名是 `RegistrationTree`。
-- **辅助判据**：读者/agent 把 `Registry`/`registry_core`/MCP 工具 `xirang.registry`（`mcp/src/tools.rs:114`）当成包注册表。判据/命令：`grep -n "pub struct Registry" core/src/registry_core/tree/registry.rs`；`grep -n "index.crates.io\|the registry" tools/xirang-publish`。
+- **辅助判据**：读者/agent 把 `Registry`/`registry_core`/MCP 工具 `xirang.registry`（`mcp/tools.rs:114`）当成包注册表。判据/命令：`grep -n "pub struct Registry" core/src/registry_core/tree/registry.rs`；`grep -n "index.crates.io\|the registry" tools/xirang-publish`。
 - **影响面**：公开类型（docs.rs 页面）与 MCP 工具名（agent 的调用契约）；`registry` 是 D-9 的保留词，本条的登记行与 D-9 共用一份词表；63 处 `core/…rs:NN` 锚点中与该类型相关者。
 
 ### AMB-06 —— 顶层 `examples/`
@@ -150,7 +150,7 @@
 - **严重度**：MINOR　**类别**：1（Cargo 惯用名）+ 3（同族）
 - **行为清单**：
   1. 提供编译期收集器入口：`debug_method/src/lib.rs:26`（`pub use inventory`）、`:32`（`pub struct CollectedRegistration`）。
-  2. 收集器由宏臂发出，且只在 debug 构建里生效：`run_method/src/macros/face_registration.rs:164-167`（`debug` 臂 + `#[cfg(debug_assertions)]`）。
+  2. 收集器由宏臂发出，且只在 debug 构建里生效：`run_method/macros/face_registration.rs:164-167`（`debug` 臂 + `#[cfg(debug_assertions)]`）。
   3. 聚合静态调用候选与真实调用：`debug_method/src/lib.rs:37`（`UnifiedCallGraph`、`CallEvidence`、`MirGraph` 等重导出）。
 - **角色一句话**：它是「把编译期登记与运行期观测的调用证据汇成可查询证据的那个组织单位」。
 - **命名**：**否**。`debug_method` 的两个词都不指向角色：`debug` 在 Cargo 里是 profile/`target/debug`（而它确实只在 debug 断言下收集，这层因果让歧义更难讲清），`method` 不是角色词。建议 **`call_evidence`**（`docs/audit-2026-09-28/audit-publish-surface-merge-plan.md:40`` 已如此，t31 在 `audit-naming-verify2.md:42-47` 已裁定）。
@@ -161,12 +161,12 @@
 
 - **严重度**：MINOR　**类别**：3（同族易混）
 - **行为清单**：
-  1. 常驻并重建 Studio：`studio/src/bin/xirang-dev.rs:1-7`（"Resident rebuild supervisor for XiRang Studio"）。
+  1. 常驻并重建 Studio：`studio/bin/xirang-dev.rs:1-7`（"Resident rebuild supervisor for XiRang Studio"）。
   2. 只在本检出可用，故被门控：`studio/Cargo.toml:95-99`（`required-features = ["dev-supervisor"]`）。
   3. 启动检出自己的 `target/debug`：同文件 `:4-7`。
 - **角色一句话**：它是「开发期重建并启动 Studio 的**监督器**」。
 - **命名**：**否**。bin 叫 `-dev`（生态里 `x-dev` = 「x 的开发构建」），feature 叫 `supervisor`——同一件东西两个词。建议 bin 改 **`xirang-supervisor`** 或 `xirang-dev-supervisor`，与 feature 同词。
-- **辅助判据**：读者以为 `xirang-dev` 是 studio 的开发版二进制。判据/命令：`ls studio/src/bin/`；`grep -n "required-features" -B 4 studio/Cargo.toml`。
+- **辅助判据**：读者以为 `xirang-dev` 是 studio 的开发版二进制。判据/命令：`ls studio/bin/`；`grep -n "required-features" -B 4 studio/Cargo.toml`。
 - **影响面**：bin 名（README/CI/`docs/audit-2026-09-28/audit-publish-surface-merge-plan.md:125``）。
 
 ### AMB-09 —— 顶层 `picture/`
@@ -221,7 +221,7 @@
 - **严重度**：MINOR　**类别**：1（Cargo 惯用名）
 - **行为清单**：
   1. 描述发布态保留的紧凑拓扑：`core/src/registry_core/release/release.rs:9`（`pub struct StaticFace`）、`:49`（`pub struct StaticPlan`）。
-  2. 由构建期生成静态计划时消费（`build_method/src/static_plan.rs`、`renderer/` 生成 `StaticFace::new` 调用）。
+  2. 由构建期生成静态计划时消费（`build_method/static_plan.rs`、`renderer/` 生成 `StaticFace::new` 调用）。
 - **角色一句话**：它是「发布态保留的注册拓扑与静态计划——被剪枝后仍然存在的那一份」。
 - **命名**：**否（轻度）**。`release` 在 Cargo 语境默认指 `[profile.release]`/`--release`，本仓另有 `tools/xirang-release-audit` 与发布工作流。建议保留 + 词表登记；若加限定词，**`release_plan`** 比 `release` 更贴职责。
 - **辅助判据**：读者以为与 release 构建配置有关。判据/命令：`head -1 core/src/registry_core/release/release.rs`；`ls core/src/registry_core/release/`（只有 `release.rs`，D-3 的「无载荷目录」另计）。
@@ -256,12 +256,12 @@
 - **严重度**：MINOR　**类别**：4　**= D-9 的保留词 `artifact`**（D-9 计文件 stem；本条计类型名，不重复计数）
 - **行为清单**：
   1. 插件工件（字节 + 注册声明 + 校验状态）：`core/src/registry_core/plugin/artifact/artifact.rs`（`PluginArtifact`、`verify_artifact`/`verify_signed`）。
-  2. MIR 工件（本仓自造的 JSONL 快照）：`mcp/src/mir.rs:20-26`（快照表头 = 来源凭据）。
-  3. trace 工件（`.xirang/traces/xirang.trace`）：`run_method/src/runtime/trace/artifact/`。
+  2. MIR 工件（本仓自造的 JSONL 快照）：`mcp/mir.rs:20-26`（快照表头 = 来源凭据）。
+  3. trace 工件（`.xirang/traces/xirang.trace`）：`run_method/runtime/trace/artifact/`。
   4. Cargo/CI 语里的构建产物（`target/`）。
 - **角色一句话**：在本仓它一律是「**本工具写出并读回的自描述文件**（自带来源/校验信息）」。
 - **命名**：**否（轻度）**。CI 的 `actions/upload-artifact` 让读者先当成「上传的产物包」。建议保留 `PluginArtifact`（公开面），把定义写进词表，并要求新类型一律带限定（`MirSnapshot`/`TraceArtifact`/`PluginArtifact` 已是这个形状）。
-- **辅助判据**：判据/命令：`grep -rn "artifact" mcp/src/mir.rs run_method/src/runtime/trace/artifact/*.rs | head -6`。
+- **辅助判据**：判据/命令：`grep -rn "artifact" mcp/mir.rs run_method/runtime/trace/artifact/*.rs | head -6`。
 - **影响面**：`PluginArtifact`/`VerifiedPluginArtifact` 是插件公开面；MIR/trace 工件是 CLI/MCP 的格式契约（改类型名不动格式）。
 
 ### AMB-17 —— `index` 一名三义
@@ -269,18 +269,18 @@
 - **严重度**：MINOR　**类别**：4　**= D-9 的保留词 `index`**（同上，不计入 D-9 违规数）
 - **行为清单**：
   1. 注册树的扁平查找索引：`core/src/registry_core/tree/index/index.rs:13`（`pub struct RegistryIndex`）、`:79`（`Registry::index()` 建表 `by_id`/`by_path`/`by_kind`）。
-  2. MCP 的源码索引（列文件/函数）：`mcp/src/index.rs:35`（`load_sources`）、`:129`（`load_one`）、`:167`（`is_safe_child`）。
+  2. MCP 的源码索引（列文件/函数）：`mcp/index.rs:35`（`load_sources`）、`:129`（`load_one`）、`:167`（`is_safe_child`）。
   3. crates.io 的 index：`tools/xirang-publish:80`（`index_url="https://index.crates.io"`）。
 - **角色一句话**：(1) 是「注册树的查找表」、(2) 是「源码文本的索引器」，两者都不是 crates.io 的 index。
-- **命名**：**否（轻度）**。建议 `RegistryIndex` 保留（限定词已在前）、`mcp/src/index.rs` 按 D-9 方向改 **`source_index.rs`**、词表登记。
+- **命名**：**否（轻度）**。建议 `RegistryIndex` 保留（限定词已在前）、`mcp/index.rs` 按 D-9 方向改 **`source_index.rs`**、词表登记。
 - **辅助判据**：JS 的 `index.{js,ts}` 与 Cargo 的 registry index 都在读者预期里。判据/命令：`grep -n "pub struct RegistryIndex\|pub fn index" core/src/registry_core/tree/index/index.rs`；`grep -n "index.crates.io" tools/xirang-publish`。
-- **影响面**：`RegistryIndex` 是内核公开类型（改名需 shim）；`mcp/src/index.rs` 为内部模块。
+- **影响面**：`RegistryIndex` 是内核公开类型（改名需 shim）；`mcp/index.rs` 为内部模块。
 
 ### AMB-18 —— `host` 一名两义
 
 - **严重度**：MINOR　**类别**：4（本仓一名多义）
 - **行为清单**：
-  1. 宿主应用的入口声明：`run_method` 的 `host!()`/`application!()` 宏（`run_method/src/macros/`），`build_method` 解析 `HostEntry`（宿主入口文件）。
+  1. 宿主应用的入口声明：`run_method` 的 `host!()`/`application!()` 宏（`run_method/macros/`），`build_method` 解析 `HostEntry`（宿主入口文件）。
   2. 插件宿主：`plugin-host/` 提供「运行插件的宿主进程」（见 §2.1 的行为清单）。
 - **角色一句话**：`host` 在本仓有两个层级——「被 XiRang 托管的**宿主应用**」与「托管插件的**插件宿主**」。
 - **命名**：**否（轻度）**。通用计算语境里 `host` = 主机/容器。建议写法进词表（`host project`/`host!()` = 用户应用；`plugin host` = 运行插件的进程），并要求**不要**再出现单独以 `host` 命名的目录（现状 `plugin-host` 已带限定词，本条是防回归）。
@@ -305,17 +305,17 @@
 - **行为清单**（`[机器]`：831 个公开名的整名命中词表者 13 个，逐个读定义处）：
   | 公开名 | 它实际干什么（file:line） | 读者会先当成 |
   | --- | --- | --- |
-  | `cli::main()` | 读 `std::env::args_os()` → `argv_strings` → 调 `run`；定义在 `cli/src/lib.rs:94`（真入口是 `cli/src/bin/xirang.rs:10`） | 二进制的进程入口 |
-  | `build_method::run()` | 建 `out_dir` + `check_for`；定义在 `build_method/src/lib.rs:137`（`check_for` 在 `:179`） | 「运行构建方法」 |
-  | `mcp::run()` | 解析包根 + 逐帧跑 stdio 桥（`mcp/src/protocol.rs:71`） | 程序入口 |
-  | `cli::run(argv)` | argv 分发（`cli/src/lib.rs:124`） | 同上 |
+  | `cli::main()` | 读 `std::env::args_os()` → `argv_strings` → 调 `run`；定义在 `cli/lib.rs:94`（真入口是 `cli/bin/xirang.rs:10`） | 二进制的进程入口 |
+  | `build_method::run()` | 建 `out_dir` + `check_for`；定义在 `build_method/lib.rs:137`（`check_for` 在 `:179`） | 「运行构建方法」 |
+  | `mcp::run()` | 解析包根 + 逐帧跑 stdio 桥（`mcp/protocol.rs:71`） | 程序入口 |
+  | `cli::run(argv)` | argv 分发（`cli/lib.rs:124`） | 同上 |
   | `RuntimeCheckSpec::run()` | 拿 `RuntimeValue` 评估一条运行期检查（`core/src/registry_core/declaration/runtime_checks.rs:345`） | 「跑这个检查」（应为 `check`） |
-  | `CallTrace::runtime()` | 造一个运行期模式的 trace（`run_method/src/runtime/trace/call_trace.rs:100`） | 「运行期的那个 trace」 |
+  | `CallTrace::runtime()` | 造一个运行期模式的 trace（`run_method/runtime/trace/call_trace.rs:100`） | 「运行期的那个 trace」 |
   | `Registry::registry(id)` | 返回**包含**该节点的子注册机（`core/src/registry_core/tree/query/query.rs:52`） | 整棵树 |
   | `Registry::index()` | 构建扁平查找表（`core/src/registry_core/tree/index/index.rs:79`） | crates.io index |
   | `FaceField::requirements(name)` | 取该面的 requires 列表（`core/src/registry_core/syntax/fields.rs:159`） | 需求清单 |
   | `Diagnostic::source()` | 取诊断来源（`core/src/registry_core/diagnostic/error.rs:148`） | 源码文本 |
-  | `GraftPlan::target()`/`::graft()` | 取计划的目标身份/替换名（`run_method/src/authoring/external_graft/plan.rs:60`、`:72`） | Cargo 的 target |
+  | `GraftPlan::target()`/`::graft()` | 取计划的目标身份/替换名（`run_method/authoring/external_graft/plan.rs:60`、`:72`） | Cargo 的 target |
 - **角色一句话**：函数名应当是「**动作 + 宾语**」的角色（`run_from_env`、`owning_registry`、`build_index`、`evaluate`），
   只有**入口位**才允许裸动词（与 §D 的 D-5 同规则）。
 - **命名**：**否（4 个该改、7 个登记即可）**。最值：`cli::main` → **`run_from_env`**；`RuntimeCheckSpec::run` → **`check`**；
@@ -366,18 +366,18 @@
 - **影响面**：家族改名触及内核公开路径（`xirang::plugin::…` 被 `plugin-host`、`run_method` 与文档引用）+ shims 棘轮；
   子模块不动则影响面为零。
 
-### 2.3 `run_method/src/plugin/plugin.rs` —— shim 的角色与合并时的处置
+### 2.3 `run_method/plugin/plugin.rs` —— shim 的角色与合并时的处置
 
 - **行为清单**（全文 7 行）：
-  1. 声明自己的角色：`run_method/src/plugin/plugin.rs:1-4`（"The implementation lives in the kernel `plugin` module; this shim keeps the historical `xirang_run_method::plugin` path."）。
-  2. 转发两条重导出：`run_method/src/plugin/plugin.rs:6`（`pub use xirang::plugin;`）、`:7`（`pub use xirang::plugin::*;`）。
+  1. 声明自己的角色：`run_method/plugin/plugin.rs:1-4`（"The implementation lives in the kernel `plugin` module; this shim keeps the historical `xirang_run_method::plugin` path."）。
+  2. 转发两条重导出：`run_method/plugin/plugin.rs:6`（`pub use xirang::plugin;`）、`:7`（`pub use xirang::plugin::*;`）。
   3. 被门禁钉住：`conventions/src/shims.rs` 的 `SHIMS` 表逐条记录执行面 shim（`AGENTS.md` 规则 2：执行面用 shim 保留历史路径）。
 - **角色一句话**：它是「**保留历史公开路径的转发层**（shim）——本身不实现任何插件逻辑」。
-- **命名**：**是**。shim 的命名惯例就是**与被转发目标同名**（同族的 `build_method/src/identity.rs` → 挂成 `registry_identity`；见 `audit-naming-review.md` §C 的 NAM-43 第 1 族），所以 `plugin/plugin.rs` 这个名字是**对的**。
+- **命名**：**是**。shim 的命名惯例就是**与被转发目标同名**（同族的 `build_method/identity.rs` → 挂成 `registry_identity`；见 `audit-naming-review.md` §C 的 NAM-43 第 1 族），所以 `plugin/plugin.rs` 这个名字是**对的**。
 - **合并时怎么处理**（角色决定动作）：
   1. **合并期**：随 `run_method` 一起进 `toolchain/src/run/plugin.rs`（或等价位置），**保留** `pub use` 两行 —— shims 门禁要求的历史路径在合并后再活一个版本线。
   2. **一次性删除的时机**：与所有 `run_method::*` shim 一起，在**允许公开面变更**的那次版本（`docs/audit-2026-09-28/audit-publish-surface-merge-plan.md:308-310`` 已列出名字/readme/documentation 的替换清单）统一删除，并同步删 `conventions/src/shims.rs` 的对应条目（棘轮只许变短，删除即是一步）。
-  3. **判据**：`grep -n "run_method/src/plugin/plugin.rs" conventions/src/shims.rs`（若在该表里，说明它是被承诺的公开路径，必须先保留）。
+  3. **判据**：`grep -n "run_method/plugin/plugin.rs" conventions/src/shims.rs`（若在该表里，说明它是被承诺的公开路径，必须先保留）。
 
 ---
 
@@ -392,9 +392,9 @@
 | `run` | = AMB-03 的五条（运行期状态/trace/创作执行/宏/shim） | 「运行期承载注册状态、记录调用并执行创作的那一半」 | **否**：`run` 是无宾语动词；它正是 E0428 的成因（`:167`），并逼出「只 glob `run`」的规则（`:185`） | **`runtime`**（顺带消掉 E0428） |
 | `plugins` | = §2.1 的五条（验签/准入/隔离执行/懒激活/部署） | 「把锁里写下的插件变成正在运行的插件的那一半（**插件宿主**）」 | **否**：`plugins/` 在生态里放插件**本体**，而本仓 `.xirang/plugins/`（`plugin-host/src/admission.rs:38`）真的是用户插件所在地 | **`plugin_host`** |
 | `call_evidence` | = AMB-07 的三条（收集器/宏臂/聚合） | 「把编译期登记与运行期观测汇成证据的那一半」 | **是**（限定词 + 与 `CallEvidence` 同词；t31 已裁定） | 保留；feature 仍叫 `evidence`，README 加一行对照 |
-| `studio` | = Studio TUI（`studio/src/{lib,main}.rs`，创作/检视面） | 「面向人的 Ratatui 创作与检视面」 | **是**（产品名，本仓三处一致） | 保留 |
-| `mcp` | = MCP 桥（`mcp/src/protocol.rs:71` 起，17 个工具） | 「面向 AI 客户端的 stdio 桥」 | **是**（协议缩写） | 保留 |
-| `cli` | = argv 分发 + cargo 子进程（`cli/src/lib.rs:124`、`commands/`） | 「面向命令行的分发面」 | **是（轻度）**：约定的缩写，无更优词 | 保留 + 对照表 |
+| `studio` | = Studio TUI（`studio/{lib,main}.rs`，创作/检视面） | 「面向人的 Ratatui 创作与检视面」 | **是**（产品名，本仓三处一致） | 保留 |
+| `mcp` | = MCP 桥（`mcp/protocol.rs:71` 起，17 个工具） | 「面向 AI 客户端的 stdio 桥」 | **是**（协议缩写） | 保留 |
+| `cli` | = argv 分发 + cargo 子进程（`cli/lib.rs:124`、`commands/`） | 「面向命令行的分发面」 | **是（轻度）**：约定的缩写，无更优词 | 保留 + 对照表 |
 
 **同时判定方案的两个新 crate 名与两个 feature 事实**：
 
@@ -453,7 +453,7 @@ core std alloc proc_macro build target dist out vendor tests benches examples sr
 | 保留词 | 本仓语义（读者会先当成什么） | D-9 对象：文件 stem 现状 | R-2 对象：命名空间名现状 | 处置 |
 | --- | --- | --- | --- | --- |
 | `registry` | 注册树（≠ Cargo/crates.io 的 registry） | `tree/registry/registry.rs` 等（D-9 已计） | 模块 `registry`（`core/src/registry_core/tree/registry.rs` 所在目录）、`registry_core`；类型 `Registry`；MCP 工具 `xirang.registry`（AMB-05） | 保留 + 文档首行消歧 + 登记 |
-| `evidence` | 证据（构建产物证据 / 已观测调用证据） | `runtime/evidence.rs`、`mcp/src/evidence.rs`（D-9 已计；NAM-11 已裁定 `build_evidence.rs`） | 模块 `evidence`；feature `evidence` | 已带限定/已裁定 |
+| `evidence` | 证据（构建产物证据 / 已观测调用证据） | `runtime/evidence.rs`、`mcp/evidence.rs`（D-9 已计；NAM-11 已裁定 `build_evidence.rs`） | 模块 `evidence`；feature `evidence` | 已带限定/已裁定 |
 | `index` | 查找索引（树索引 / 源码索引 / crates.io index） | `tree/index/index.rs`（D-9 已计） | 模块 `index`、`RegistryIndex`、`Registry::index()`（AMB-17） | 加限定（`source_index`） |
 | `artifact` | 本工具写出并读回的自描述文件 | `plugin/artifact/*`（D-9 已计） | 类型 `PluginArtifact`；MIR/trace artifact（AMB-16） | 保留 + 登记 |
 | `face` `graft` `trace` | 注册面 / 嫁接记录与切口 / 已记录调用 | D-9 已计（`face*`/`graft*`/`trace*` 文件） | 模块 `face`、`graft`、`trace`（§4 已判"领域词、不是缺陷"） | 登记豁免 |
@@ -617,54 +617,54 @@ PY
     lib名     xirang_run_method
     lib名     xirang_build_method
     lib名     xirang_debug_method
-    模块名      data  -> [('studio/src/studio/ui/graph.rs', 20, 'graph')]
-    模块名      face_helpers  -> [('run_method/src/macros/face.rs', 7, 'face')]
-    模块名      misc  -> [('studio/src/studio/app/state/state.rs', 14, 'state')]
-    模块名      support  -> [('studio/src/studio/app/app.rs', 34, 'app')]
-    模块名      test_support  -> [('build_method/src/renderer.rs', 32, 'renderer')]
-    [顺序=walk] add: 访问序 [('studio/src/studio/app/keyboard_overlay.rs', 10)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] apply: 访问序 [('mcp/src/lib.rs', 67), ('core/src/registry_core/tree/graft_ops/record.rs', 40)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    模块名      data  -> [('studio/studio/ui/graph.rs', 20, 'graph')]
+    模块名      face_helpers  -> [('run_method/macros/face.rs', 7, 'face')]
+    模块名      misc  -> [('studio/studio/app/state/state.rs', 14, 'state')]
+    模块名      support  -> [('studio/studio/app/app.rs', 34, 'app')]
+    模块名      test_support  -> [('build_method/renderer.rs', 32, 'renderer')]
+    [顺序=walk] add: 访问序 [('studio/studio/app/keyboard_overlay.rs', 10)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] apply: 访问序 [('mcp/lib.rs', 67), ('core/src/registry_core/tree/graft_ops/record.rs', 40)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
     [顺序=walk] build: 访问序 [('core/src/registry_core/diagnostic/diagnostic.rs', 14)] | 新逻辑(逐站点) 报出 0 处, 豁免 1 处 | 旧逻辑(只看首站点) 豁免
-    [顺序=walk] converge: 访问序 [('mcp/src/lib.rs', 91)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] create: 访问序 [('run_method/src/authoring/operations/operations.rs', 9)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] delete: 访问序 [('studio/src/studio/app/keyboard_overlay.rs', 12), ('studio/src/studio/ui/forms.rs', 16), ('run_method/src/authoring/operations/operations.rs', 12)] | 新逻辑(逐站点) 报出 3 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] diff: 访问序 [('mcp/src/lib.rs', 85)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] edit: 访问序 [('studio/src/studio/app/tests.rs', 59), ('studio/src/studio/app/keyboard_overlay.rs', 14)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] explain: 访问序 [('cli/src/lib.rs', 19)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] install: 访问序 [('build_method/src/scaffold.rs', 14)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] parse: 访问序 [('core/src/registry_core/authoring/authoring.rs', 21), ('run_method/src/authoring/authoring.rs', 29), ('run_method/src/authoring/manifest/manifest.rs', 9), ('run_method/src/runtime/trace/artifact/artifact.rs', 28)] | 新逻辑(逐站点) 报出 4 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] preview: 访问序 [('mcp/src/lib.rs', 73)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] render: 访问序 [('core/src/registry_core/mir/mir.rs', 29), ('run_method/src/authoring/manifest/face/face.rs', 18)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] search: 访问序 [('mcp/src/lib.rs', 115), ('studio/src/studio/app/keyboard_overlay.rs', 22), ('studio/src/studio/app/state/state.rs', 22), ('studio/src/studio/ui/ui.rs', 33)] | 新逻辑(逐站点) 报出 4 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
-    [顺序=walk] verify: 访问序 [('mcp/src/lib.rs', 100)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] converge: 访问序 [('mcp/lib.rs', 91)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] create: 访问序 [('run_method/authoring/operations/operations.rs', 9)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] delete: 访问序 [('studio/studio/app/keyboard_overlay.rs', 12), ('studio/studio/ui/forms.rs', 16), ('run_method/authoring/operations/operations.rs', 12)] | 新逻辑(逐站点) 报出 3 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] diff: 访问序 [('mcp/lib.rs', 85)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] edit: 访问序 [('studio/studio/app/tests.rs', 59), ('studio/studio/app/keyboard_overlay.rs', 14)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] explain: 访问序 [('cli/lib.rs', 19)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] install: 访问序 [('build_method/scaffold.rs', 14)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] parse: 访问序 [('core/src/registry_core/authoring/authoring.rs', 21), ('run_method/authoring/authoring.rs', 29), ('run_method/authoring/manifest/manifest.rs', 9), ('run_method/runtime/trace/artifact/artifact.rs', 28)] | 新逻辑(逐站点) 报出 4 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] preview: 访问序 [('mcp/lib.rs', 73)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] render: 访问序 [('core/src/registry_core/mir/mir.rs', 29), ('run_method/authoring/manifest/face/face.rs', 18)] | 新逻辑(逐站点) 报出 2 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] search: 访问序 [('mcp/lib.rs', 115), ('studio/studio/app/keyboard_overlay.rs', 22), ('studio/studio/app/state/state.rs', 22), ('studio/studio/ui/ui.rs', 33)] | 新逻辑(逐站点) 报出 4 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
+    [顺序=walk] verify: 访问序 [('mcp/lib.rs', 100)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
     [顺序=walk] walk: 访问序 [('core/src/registry_core/source/source.rs', 17)] | 新逻辑(逐站点) 报出 1 处, 豁免 0 处 | 旧逻辑(只看首站点) 报出
 
 [R-4b] 严格口径：违规声明处 26 违规名字 15 豁免声明处 1
-     ('add', 'studio/src/studio/app/keyboard_overlay.rs', 10, 'keyboard_overlay')
-     ('apply', 'mcp/src/lib.rs', 67, '<crate root>')
+     ('add', 'studio/studio/app/keyboard_overlay.rs', 10, 'keyboard_overlay')
+     ('apply', 'mcp/lib.rs', 67, '<crate root>')
      ('apply', 'core/src/registry_core/tree/graft_ops/record.rs', 40, 'record')
-     ('converge', 'mcp/src/lib.rs', 91, '<crate root>')
-     ('create', 'run_method/src/authoring/operations/operations.rs', 9, 'operations')
-     ('delete', 'studio/src/studio/app/keyboard_overlay.rs', 12, 'keyboard_overlay')
-     ('delete', 'studio/src/studio/ui/forms.rs', 16, 'forms')
-     ('delete', 'run_method/src/authoring/operations/operations.rs', 12, 'operations')
-     ('diff', 'mcp/src/lib.rs', 85, '<crate root>')
-     ('edit', 'studio/src/studio/app/tests.rs', 59, 'tests')
-     ('edit', 'studio/src/studio/app/keyboard_overlay.rs', 14, 'keyboard_overlay')
-     ('explain', 'cli/src/lib.rs', 19, '<crate root>')
-     ('install', 'build_method/src/scaffold.rs', 14, 'scaffold')
+     ('converge', 'mcp/lib.rs', 91, '<crate root>')
+     ('create', 'run_method/authoring/operations/operations.rs', 9, 'operations')
+     ('delete', 'studio/studio/app/keyboard_overlay.rs', 12, 'keyboard_overlay')
+     ('delete', 'studio/studio/ui/forms.rs', 16, 'forms')
+     ('delete', 'run_method/authoring/operations/operations.rs', 12, 'operations')
+     ('diff', 'mcp/lib.rs', 85, '<crate root>')
+     ('edit', 'studio/studio/app/tests.rs', 59, 'tests')
+     ('edit', 'studio/studio/app/keyboard_overlay.rs', 14, 'keyboard_overlay')
+     ('explain', 'cli/lib.rs', 19, '<crate root>')
+     ('install', 'build_method/scaffold.rs', 14, 'scaffold')
      ('parse', 'core/src/registry_core/authoring/authoring.rs', 21, 'authoring')
-     ('parse', 'run_method/src/authoring/authoring.rs', 29, 'authoring')
-     ('parse', 'run_method/src/authoring/manifest/manifest.rs', 9, 'manifest')
-     ('parse', 'run_method/src/runtime/trace/artifact/artifact.rs', 28, 'artifact')
-     ('preview', 'mcp/src/lib.rs', 73, '<crate root>')
+     ('parse', 'run_method/authoring/authoring.rs', 29, 'authoring')
+     ('parse', 'run_method/authoring/manifest/manifest.rs', 9, 'manifest')
+     ('parse', 'run_method/runtime/trace/artifact/artifact.rs', 28, 'artifact')
+     ('preview', 'mcp/lib.rs', 73, '<crate root>')
      ('render', 'core/src/registry_core/mir/mir.rs', 29, 'mir')
-     ('render', 'run_method/src/authoring/manifest/face/face.rs', 18, 'face')
-     ('search', 'mcp/src/lib.rs', 115, '<crate root>')
-     ('search', 'studio/src/studio/app/keyboard_overlay.rs', 22, 'keyboard_overlay')
-     ('search', 'studio/src/studio/app/state/state.rs', 22, 'state')
-     ('search', 'studio/src/studio/ui/ui.rs', 33, 'ui')
-     ('verify', 'mcp/src/lib.rs', 100, '<crate root>')
+     ('render', 'run_method/authoring/manifest/face/face.rs', 18, 'face')
+     ('search', 'mcp/lib.rs', 115, '<crate root>')
+     ('search', 'studio/studio/app/keyboard_overlay.rs', 22, 'keyboard_overlay')
+     ('search', 'studio/studio/app/state/state.rs', 22, 'state')
+     ('search', 'studio/studio/ui/ui.rs', 33, 'ui')
+     ('verify', 'mcp/lib.rs', 100, '<crate root>')
      ('walk', 'core/src/registry_core/source/source.rs', 17, 'source')
     豁免: [('build', 'core/src/registry_core/diagnostic/diagnostic.rs', 14, 'diagnostic')]
     放宽口径(含 graft/plan/record/pass): 名字 19 声明处 36
@@ -733,17 +733,17 @@ inline `mod X {` 对 R-4b 的贡献是 **0 处**（R-4b 只收单 token 名字�
 | 现名 | 角色（它是「……的东西」） | 建议 |
 | --- | --- | --- |
 | `build_method` / `run_method` / `debug_method` | 构建期那一半 / 运行期那一半 / 证据那一半 | `build_time` / `runtime` / `call_evidence` |
-| `data`（`studio/src/studio/ui/graph.rs:20`，父 `graph`） | 图面板的数据装载 | `graph_data`（保留词加限定） |
-| `face_helpers`（`run_method/src/macros/face.rs:7`，父 `face`） | 面宏阶梯的辅助函数集 | `face_field_helpers` 或并入 `face_fields`（D-1 的同类建议） |
-| `test_support`（`build_method/src/renderer.rs:32`，父 `renderer`） | 渲染器的测试夹具 | `test_fixtures`（`fixtures` 在本仓已是同类模块名） |
+| `data`（`studio/studio/ui/graph.rs:20`，父 `graph`） | 图面板的数据装载 | `graph_data`（保留词加限定） |
+| `face_helpers`（`run_method/macros/face.rs:7`，父 `face`） | 面宏阶梯的辅助函数集 | `face_field_helpers` 或并入 `face_fields`（D-1 的同类建议） |
+| `test_support`（`build_method/renderer.rs:32`，父 `renderer`） | 渲染器的测试夹具 | `test_fixtures`（`fixtures` 在本仓已是同类模块名） |
 | `support` / `misc`（studio） | 见 NAM-01/NAM-02 | **不在本轮重复给建议**（= D-1/Nam-01/02 的既有结论） |
 | `parse`（`core/.../authoring/parse/`） | 把清单文本变成结构的解析器 | `parser`（`renderer/` 已经是这个形状） |
 | `render`（`core/.../mir/mir.rs:29`、`run_method/.../face/face.rs:18`） | 把结构变成文本的渲染器 | `renderer`（`build_method` 已有 `renderer.rs`，重名则 `render_pass`） |
 | `walk`（`core/.../source/source.rs:17`） | 遍历源码目录的遍历器 | `walker`（或并入 `source_lexer`） |
-| `install`（`build_method/src/scaffold.rs:14`） | 装插件的动作 | `installer`（或 `installation`） |
-| `verify`（`mcp/src/lib.rs:100`） | 跑内核校验并报差异的工具 | `verification`（`plugin-host/src/verifier.rs` 已占用 `verifier`） |
-| `preview`（`mcp/src/lib.rs:73`） | 预览副本与 diff | `preview_copy` / `preview_report` |
-| `apply`（`mcp/src/lib.rs:67`、`core/.../graft_ops/record.rs:40`） | 带预览的创作写入 / 应用一条记录 | `authoring_write` / `apply_record`（工具名仍叫 `xirang.apply`） |
+| `install`（`build_method/scaffold.rs:14`） | 装插件的动作 | `installer`（或 `installation`） |
+| `verify`（`mcp/lib.rs:100`） | 跑内核校验并报差异的工具 | `verification`（`plugin-host/src/verifier.rs` 已占用 `verifier`） |
+| `preview`（`mcp/lib.rs:73`） | 预览副本与 diff | `preview_copy` / `preview_report` |
+| `apply`（`mcp/lib.rs:67`、`core/.../graft_ops/record.rs:40`） | 带预览的创作写入 / 应用一条记录 | `authoring_write` / `apply_record`（工具名仍叫 `xirang.apply`） |
 | `search` / `explain` / `diff` / `converge`（mcp） | 各工具的查询实现 | `search_tool` / `explain_tool` / `diff_tool` / `converge_tool`；若维护者更看重"文件名 = 工具动词"的镜像，整族写进允许表并登记 |
 | `add`/`edit`/`delete`/`create`（`run_method/.../operations.rs:9/12`、studio 的键盘层） | 事务与表单的操作 | 父路径限定（`operations`/`transaction`）可写进允许表；若要改名：`addition`/`editing`/`deletion`/`creation` |
 | R-4c 的 7 对 | 见下 | `app`↔`apply`/`application`：strudio 的 `app` 与 mcp 的 `apply` 至少一个加限定；`json`↔`jsonl`：`json` 改 `json_text`（AMB-12）后自然消解；`lex`↔`lexicon`：`lex` → `lexer`；`mir`↔`mirror`：`mirror` 是宏镜像，建议 `face_mirror`；`ide`↔`identity`：`ide` → `ide_mirror`；`render`↔`renderer`：随 R-4b 的 `render` 一起消解 |

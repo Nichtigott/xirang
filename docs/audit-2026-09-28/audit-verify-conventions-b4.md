@@ -42,7 +42,7 @@
 **读到的出厂码**（`conventions/src/lint.rs:215` 起的 `carries_the_lint`，接受分支在 `:231`）：只接受 `#![warn(…missing_docs…)` / `#![deny(…missing_docs…)`，且属性必须出现在第一个条目之前；旧的特例（`trimmed == "#![deny(warnings)]"`）已删，删除理由写在 `:247` 起的注释里。
 
 - **有牙**：M1a（crate 根的属性被换成 `#![deny(warnings)]`）⇒ 门禁红并**点名** `debug_method/src/lib.rs`；M2（`#[allow(missing_docs)]`）⇒ 红并点名 `debug_method/src/lib.rs:43`。两条消息都给了「改为补文档」的行动指引。
-- **不误报**：副本基线 131 passed；真树上 `the_published_roots_keep_the_lint_on` 与 `no_item_silences_the_lint` 均绿（九个已发布库根 + `conventions` 自己 + `mcp/src/main.rs`）。
+- **不误报**：副本基线 131 passed；真树上 `the_published_roots_keep_the_lint_on` 与 `no_item_silences_the_lint` 均绿（九个已发布库根 + `conventions` 自己 + `mcp/main.rs`）。
 - **变异反证**：M1b——把特例加回门禁，**同一棵坏树**立刻转绿 ⇒ 删掉特例正是这条门禁的牙。
 
 ### 2.2 `LGC-LG-26`：新的 token-job pin 门禁
@@ -104,7 +104,7 @@
 | `cargo fmt --all -- --check` | **exit 0**，无 Diff |
 | `tools/xirang-publish --check-table` | **exit 0** |
 
-副本基线（同一套装置）：131 passed / 0 failed，exit 0。本轮未遇并发红（t38 报告里的并发写者 `run_method/src/authoring/manifest/face/render.rs` 640 行已在 t43 拆走，现在 370 行）。
+副本基线（同一套装置）：131 passed / 0 failed，exit 0。本轮未遇并发红（t38 报告里的并发写者 `run_method/authoring/manifest/face/render.rs` 640 行已在 t43 拆走，现在 370 行）。
 
 ## 6. 结论
 

@@ -106,7 +106,7 @@ git diff 哈希一致: YES  (1955a873bd3ac045f4804ceefec115636417ffc4d90d6c7d7cf
 
 ## 4. 门禁（静置树）
 
-静置判定：轮询直到 `find core studio run_method build_method mcp cli -name '*.rs' -newermt '-90 seconds'` 为空 → **18:34:10 静置**；跑完两条门禁后再查“自 18:34:10 起有新写入的文件”为空，且被验证文件的 sha 未变（`admission.rs c14af278…`、`build_method/src/node_id.rs 6ffd5f2c…`、`build_method/src/identity_cache.rs c1d8411e…`）。HEAD 仍 `a524956`。
+静置判定：轮询直到 `find core studio run_method build_method mcp cli -name '*.rs' -newermt '-90 seconds'` 为空 → **18:34:10 静置**；跑完两条门禁后再查“自 18:34:10 起有新写入的文件”为空，且被验证文件的 sha 未变（`admission.rs c14af278…`、`build_method/node_id.rs 6ffd5f2c…`、`build_method/identity_cache.rs c1d8411e…`）。HEAD 仍 `a524956`。
 
 **门禁 1：`cargo test -p xirang-core --offline --features syntax`（exit 0）**
 
@@ -123,7 +123,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 （无任何 FAILED 行；52 个 test binary 全部 test result: ok）
 ```
 
-**我为什么特意等到 18:34:10**：第一次（非静置）跑 workspace 时看到的是别人的在途写入造成的瞬时红——`build_method::identity_cache` 两条（`build_method/src/node_id.rs` 当时刚在 18:31:34 被写）与 `admission` 钉子一条（18:31:56）；其中 admission 那条在同一份 sha 下隔离复跑是绿的，`identity_cache` 两条随后也消失。按契约“静置树上贴输出”，以 §4 这两段为准；第一次的红与 B1-1 的结论无关，故只作说明、不列为发现。
+**我为什么特意等到 18:34:10**：第一次（非静置）跑 workspace 时看到的是别人的在途写入造成的瞬时红——`build_method::identity_cache` 两条（`build_method/node_id.rs` 当时刚在 18:31:34 被写）与 `admission` 钉子一条（18:31:56）；其中 admission 那条在同一份 sha 下隔离复跑是绿的，`identity_cache` 两条随后也消失。按契约“静置树上贴输出”，以 §4 这两段为准；第一次的红与 B1-1 的结论无关，故只作说明、不列为发现。
 
 ## 5. 结论
 

@@ -1,0 +1,5 @@
+# 一个混合示例：Rust 面 + 声明在 C++ 里的面，按子树拆成 crate。
+# A mixed example: Rust faces with a C++-declared face, split into crates by subtree.
+[workspace]
+resolver = "3"
+members = ["shop", "crates/shop-facade", "crates/shop-panel", "verify"]

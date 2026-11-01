@@ -170,10 +170,10 @@
 
 ### W4/W5 的落点侦察（2026-10-01，先量后做）
 
-- `toolchain/src/mcp/src/registry.rs` 的入口**都返回渲染好的字符串**（`registry` / `registry_brief` /
+- `toolchain/src/mcp/registry.rs` 的入口**都返回渲染好的字符串**（`registry` / `registry_brief` /
   `registry_with` / `registry_body` / `namespace`），**没有**"结构化面清单"可用；
 - 带 `parts` / `exports` / `handle_traits` / `part_traits` 这些字段的**结构化发现**在
-  `toolchain/src/build_method/src/discovery_cache.rs`（那里逐个字段名遍历）；
+  `toolchain/src/build_method/discovery_cache.rs`（那里逐个字段名遍历）；
 - ⇒ **W4 `consistency` 与 W5 `conformance` 都需要先把"结构化面清单（parent + 声明字段 + 成员归属）"
   接到 mcp 面**（一条只读的、与 `registry` 同源的分支），再谈"同族 × 属性"与"标本形状指纹"。
   这也是唯一一处**必须新增解析管线**的地方（W1–W3/W6 都只用现有事实）。**先做这件事，再做 W4/W5**；
@@ -191,7 +191,7 @@
 - 声明字段（`parts`/`exports`/`handle_traits`）留给 **W5 `conformance`** 从台账标本那一侧推导
   （标本的字段在**它的源文件**里，可以用同一条内核语法/文本路径读），不要为此先造第二套解析。
   ⇒ 这样 W4 **不需要**先重构 `registry_body`；第二轮回读里那条"拆 `face_rows`"仍是 W5 的前置。**第二轮回读（同日晚些，把落点收窄到函数级）**：结构化数据就在 `registry_body(&member, &arguments)`
-（`toolchain/src/mcp/src/registry.rs:141`）**内部推导出来的那批面**身上——`build_time` 的
+（`toolchain/src/mcp/registry.rs:141`）**内部推导出来的那批面**身上——`build_time` 的
 `discovery_cache.rs` 只是**缓存**（`FaceSyntax` 的字段读法见它第 157 行：对
 `["parts","exports","handle_traits","part_traits"]` 逐个 `face.field(name)`），入口是
 `update_discovery_cache` / `cached_parent_id`，**不适合**当只读查询面。⇒ 正确的接法：**在

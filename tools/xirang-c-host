@@ -1,0 +1,76 @@
+#!/bin/sh
+# Gate: the C-declared face really lands in the runtime registration tree.
+# 门禁：C 声明的面真的落进了运行期注册树。
+#
+#   tools/xirang-c-host
+#
+# Why it exists: the C path shares the cc/object/archive infrastructure with C++, and this is the
+# end-to-end proof that the same driver carries a third spelling. A machine without `cc` reports
+# "not run" (exit 2) instead of failing.
+# 为什么需要它：C 与 C++ 共用 cc/对象/归档基础设施，而这是"同一个驱动承载第三种拼法"的端到端证明。
+# 没有 `cc` 的机器报"未跑"（exit 2），而不是失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cc=${XIRANG_CC:-}
+if [ -z "$cc" ]; then
+    cc=$(command -v cc || true)
+fi
+if [ -z "$cc" ]; then
+    echo "xirang-c-host: no C compiler; set XIRANG_CC or install cc" >&2
+    exit 2
+fi
+example="$root/examples/c-gauge"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/xirang-c-host-XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# 1. Build from scratch: the record lives in the object's section, so a stale object would hide a
+#    missing producer.
+# 1. 从零构建：记录住在目标文件的段里，陈旧的目标文件会掩盖"生产者没跑"。
+cd "$example"
+CARGO_NET_OFFLINE=true cargo clean -p gauge >/dev/null
+CARGO_NET_OFFLINE=true cargo test --offline
+
+# 2. The build wrote the header that names the Rust parent, and the declaration uses it.
+# 2. 构建写出了点名 Rust 父的头，而声明用的正是它。
+header=$(find "$example/target/debug/build" -path '*/out/xirang/faces.h' | head -1)
+if [ -z "$header" ]; then
+    echo "xirang-c-host: the build produced no xirang/faces.h" >&2
+    exit 1
+fi
+if ! grep -q "XIRANG_FACES_PANEL" "$header"; then
+    echo "xirang-c-host: the generated header does not name the Rust parent module:" >&2
+    cat "$header" >&2
+    exit 1
+fi
+
+# 3. Negative control: a parent constant the header does not define must fail the compile.
+# 3. 反控：头文件没有定义的父常量必须让编译失败。
+cat >"$tmp/bad.c" <<'BAD'
+#include "xirang/faces.h"
+#include "xirang/soil.h"
+
+XIRANG_SOIL bad = {
+    XIRANG_RECORD_HEADER,
+    .parent = XIRANG_FACES_NOPE,
+    .kind = "Bad",
+};
+BAD
+if "$cc" -c -I "$root/multilang/sdk/c" -I "$(dirname "$(dirname "$header")")" \
+    "$tmp/bad.c" -o "$tmp/bad.o" >"$tmp/bad.out" 2>&1; then
+    echo "xirang-c-host: the compiler accepted a parent constant the header does not define" >&2
+    exit 1
+fi
+if ! grep -q "XIRANG_FACES_NOPE" "$tmp/bad.out"; then
+    echo "xirang-c-host: the compile failed, but not by the missing-constant check:" >&2
+    cat "$tmp/bad.out" >&2
+    exit 1
+fi
+
+# 4. The authoring adapter plans the same declaration the build reads (create reads back, modify
+#    preserves the business function, and the generated source really compiles with cc).
+# 4. 创作适配器规划出构建读取的同一种声明（create 能读回、modify 保留业务函数、生成的源码真的能在 cc 下编译）。
+cd "$root"
+XIRANG_CC="$cc" CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-c --offline \
+    --lib -- languages::c
+
+echo "xirang-c-host: ok (a C-declared face is in the runtime tree, and bad parents are refused)"

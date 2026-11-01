@@ -1,7 +1,7 @@
 # t3 变更报告：S1 —— `verify` 的第二行连接器判定
 
 切片 = `audit-mcp-workflow.md` 排序表 S1 行（:229），理由 :237-240，口径 :242-246；针对 F1
-（:114-119，t1 的 X1）。改动 `toolchain/src/mcp/src/verify.rs`（+26 行）、`verify_tests.rs`
+（:114-119，t1 的 X1）。改动 `toolchain/src/mcp/verify.rs`（+26 行）、`verify_tests.rs`
 （+52 行，1 条钉子）；未动内核、CLI `check`、`converge`、`usages`；驱动与截留在 `/tmp/t3/`。
 
 ## 1. 改前复现 X1（自己跑）

@@ -67,6 +67,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::{crate_directories, lines, relative, rust_sources};
 
@@ -211,18 +212,57 @@ fn is_mounted_as_test_within(crate_root: &Path, path: &Path, depth: usize) -> bo
 /// declaration, would resolve it relative to the file instead. This tree writes no such attribute.
 /// 边界：内联 `mod x { … }` 块里的 `#[path]` 在 rustc 中相对该块所在目录解析，而本解析器只读声明
 /// 正上方的属性，会相对文件解析。本树不写这种属性。
-fn declaration_of(crate_root: &Path, path: &Path) -> Option<(std::path::PathBuf, bool)> {
-    // Read the declaring file's own directory first. A module is almost always mounted by a
-    // file beside it, and the walk otherwise reads the whole crate for every candidate: this
-    // changes only how soon the declaration that matters is read, not which declarations are
-    // considered.
-    // 先读声明文件自己所在的目录。模块几乎总是由它旁边的文件挂载，否则这次遍历会为每个候选读完整
-    // 个 crate：这只改变要读的那一条声明多快被读到，不改变考虑哪些声明。
-    let directory = path.parent();
-    let (near, far): (Vec<PathBuf>, Vec<PathBuf>) = rust_sources(crate_root)
-        .into_iter()
-        .partition(|candidate| candidate.parent() == directory);
-    for candidate in near.into_iter().chain(far) {
+fn declaration_of(crate_root: &Path, path: &Path) -> Option<Declaration> {
+    declarations(crate_root).get(path).cloned()
+}
+
+/// Every `mod` declaration in a crate: the declared file, the file that declares it, and whether the declaration
+/// carries `#[cfg(test)]`.
+/// 一个 crate 里的每一条 `mod` 声明：被声明的文件、声明它的文件，以及那条声明是否带 `#[cfg(test)]`。
+///
+/// **One pass per crate**, because the per-file question used to be asked N times: `declaration_of` was called for
+/// every measured file, and each call walked the whole crate and read every candidate before giving up. Measured
+/// 2026-10-18: that quadratic read was **118.7 s of this gate — 98% of the whole conventions suite**, while the gate
+/// itself has nothing quadratic to say. Building the index once turns every question into a map lookup; a crate is a
+/// few hundred files, so the index is built once and reused for every file it is asked about.
+/// **每个 crate 一遍**，因为"这个文件是谁声明的"这个问题此前被问了 N 次：每个被度量文件各调一次
+/// `declaration_of`，而每次调用都遍历整个 crate、把每个候选读一遍才放弃。2026-10-18 实测：这份平方级的读取
+/// 占**本门禁的 118.7 s——整份 conventions 的 98%**，而门禁本身没有任何平方级的话要说。索引建一次，之后每个问题
+/// 都是一次查表；一个 crate 只有几百个文件，建一次就够回答它所有文件的问题。
+///
+/// The cache is keyed by the crate root and only used **inside this workspace**: a fixture test writes its own
+/// temporary crate, and caching that would answer a question about a tree another test has already rewritten. Every
+/// crate of the checkout is built once per process, which is exactly the sharing this gate needs.
+/// 缓存按 crate 根作键，且**只在本工作区内**使用：夹具测试会写自己的临时 crate，缓存它会让答案来自另一条测试已经
+/// 改写过的那棵树。检出里的每个 crate 每个进程建一次，正是本门禁需要的共享。
+fn declarations(crate_root: &Path) -> Declarations {
+    static CACHE: OnceLock<Mutex<BTreeMap<PathBuf, Declarations>>> = OnceLock::new();
+    if !crate_root.starts_with(crate::workspace_root()) {
+        return Arc::new(declarations_uncached(crate_root));
+    }
+    let cache = CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut guard = cache.lock().expect("the declaration cache is not poisoned");
+    if let Some(hit) = guard.get(crate_root) {
+        return hit.clone();
+    }
+    let built = Arc::new(declarations_uncached(crate_root));
+    guard.insert(crate_root.to_path_buf(), built.clone());
+    built
+}
+
+/// One crate's declaration index, shared between the files it answers for.
+/// 一个 crate 的声明索引，在它回答的那些文件之间共享。
+type Declarations = Arc<BTreeMap<PathBuf, Declaration>>;
+
+/// One declared file: the file that declares it, and whether that declaration is `#[cfg(test)]`-only.
+/// 一条被声明的文件：声明它的那个文件，以及那条声明是否只在 `#[cfg(test)]` 下。
+type Declaration = (PathBuf, bool);
+
+/// The one pass the index is built from.
+/// 建索引的那一遍。
+fn declarations_uncached(crate_root: &Path) -> BTreeMap<PathBuf, Declaration> {
+    let mut declared: BTreeMap<PathBuf, Declaration> = BTreeMap::new();
+    for candidate in rust_sources(crate_root) {
         let Ok(text) = std::fs::read_to_string(&candidate) else {
             continue;
         };
@@ -231,25 +271,46 @@ fn declaration_of(crate_root: &Path, path: &Path) -> Option<(std::path::PathBuf,
             let Some(stem) = declared_stem(line.trim()) else {
                 continue;
             };
-            if resolve_declaration(&candidate, &stem, &source, index).as_deref() != Some(path) {
+            let Some(target) = resolve_declaration(&candidate, &stem, &source, index) else {
                 continue;
-            }
-            let mut cursor = index;
-            while cursor > 0 {
-                cursor -= 1;
-                let previous = source[cursor].trim();
-                if is_cfg_test(previous) {
-                    return Some((candidate.clone(), true));
+            };
+            let under_test = declaration_is_under_cfg_test(&source, index);
+            // The declarer beside the declared file answers first, which is what the pre-index walk preferred: a
+            // module is almost always mounted by a file in its own directory, and when two files claim one path the
+            // neighbour is the one rustc's own resolution would reach.
+            // 与被声明文件同目录的声明者优先，这也是建索引之前那个遍历的偏好：模块几乎总是由它自己目录里的文件挂载，
+            // 而当两个文件都声称声明了同一个路径时，邻居那个才是 rustc 自己的解析会走到的。
+            let neighbour = candidate.parent() == target.parent();
+            match declared.get(&target) {
+                Some((existing, _)) if neighbour && existing.parent() != target.parent() => {
+                    declared.insert(target, (candidate.clone(), under_test));
                 }
-                if previous.starts_with("//") || previous.starts_with("#[") || previous.is_empty() {
-                    continue;
+                Some(_) => {}
+                None => {
+                    declared.insert(target, (candidate.clone(), under_test));
                 }
-                break;
             }
-            return Some((candidate.clone(), false));
         }
     }
-    None
+    declared
+}
+
+/// Whether the declaration at `index` sits under a `#[cfg(test)]` attribute.
+/// `index` 处的那条声明是否落在 `#[cfg(test)]` 之下。
+fn declaration_is_under_cfg_test(source: &[&str], index: usize) -> bool {
+    let mut cursor = index;
+    while cursor > 0 {
+        cursor -= 1;
+        let previous = source[cursor].trim();
+        if is_cfg_test(previous) {
+            return true;
+        }
+        if previous.starts_with("//") || previous.starts_with("#[") || previous.is_empty() {
+            continue;
+        }
+        break;
+    }
+    false
 }
 
 /// The module name a line declares, whatever visibility it carries.

@@ -1,16 +1,17 @@
 [workspace]
-members = ["kernel", "macro", "toolchain", "conventions", "examples/control-button", "examples/control-button-graft"]
+members = ["kernel", "macro", "multilang", "toolchain", "conventions", "examples/control-button", "examples/control-button-graft"]
 resolver = "2"
 
 
 # The internal dependencies live here so a version bump has **one** home beside `version` above.
 # 内部依赖住在这里，因此推进版本线时它和上面的 `version` 一样只有一个家。
 [workspace.dependencies]
-xirang-kernel = { path = "kernel", version = "0.1.0" }
-xirang-macro = { path = "macro", version = "0.1.0" }
+xirang-kernel = { path = "kernel", version = "0.2.0" }
+xirang-multilang = { path = "multilang", version = "0.2.0" }
+xirang-macro = { path = "macro", version = "0.2.0" }
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.96.0"
 license = "MIT"

@@ -31,8 +31,8 @@ fn a_get_that_is_an_option_is_exempt() {
 #[test]
 fn a_bare_verb_is_only_allowed_at_an_entry_position() {
     assert!(violations_in("toolchain/src/build_method/build.rs", "fn run() {}\n").is_empty());
-    assert!(violations_in("toolchain/src/cli/src/bin/xirang.rs", "fn main() {}\n").is_empty());
-    let found = violations_in("toolchain/src/runtime/src/lib.rs", "pub fn run() {}\n");
+    assert!(violations_in("toolchain/src/bin/xirang.rs", "fn main() {}\n").is_empty());
+    let found = violations_in("toolchain/src/runtime/lib.rs", "pub fn run() {}\n");
     assert_eq!(names(&found), vec!["run".to_owned()]);
 }
 
@@ -104,7 +104,7 @@ fn the_shipped_workspace_verb_table_holds() {
 fn a_declaration_inside_a_string_literal_is_not_a_declaration() {
     let source =
         "fn ghost_build_rs() -> String {\n    format!(\"fn main() {{\\n    work();\\n}}\\n\")\n}\n";
-    let violations = violations_in("toolchain/src/build_method/src/generator.rs", source);
+    let violations = violations_in("toolchain/src/build_method/generator.rs", source);
     assert!(
         violations.is_empty(),
         "a literal is not a declaration: {violations:?}"
@@ -113,6 +113,95 @@ fn a_declaration_inside_a_string_literal_is_not_a_declaration() {
     // stop the gate from working.
     // 对照：同一句声明**作为代码**仍然被判定，因此掩码没有把门禁变成不干活。
     let real = "fn main() {\n    work();\n}\n";
-    let violations = violations_in("toolchain/src/build_method/src/generator.rs", real);
+    let violations = violations_in("toolchain/src/build_method/generator.rs", real);
     assert_eq!(violations.len(), 1, "{violations:?}");
+}
+
+/// A verb in a frozen evaluation archive is history; the same verb in live sources still fails.
+/// 冻结评测归档里的动词是历史；活源码里的同一个动词仍然失败。
+#[test]
+fn archived_evaluation_sources_are_not_live_code() {
+    let root = std::env::temp_dir().join(format!(
+        "xirang-verb-archive-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let live = root.join("src/live.rs");
+    let archived =
+        root.join("docs/managed-maintenance/evaluation-2026-01-01/round-1/tree/src/eval.rs");
+    for path in [&live, &archived] {
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("dirs");
+        std::fs::write(path, "pub fn run() {}\n").expect("file");
+    }
+    let found = violations(&root);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].file, "src/live.rs");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A trait method's name belongs to the trait contract, not to this gate.
+/// trait 方法的名字属于 trait 契约，而不是本门禁。
+#[test]
+fn a_trait_method_is_named_by_its_trait() {
+    let source = "pub trait Reader {\n    fn read(&self, source: &str) -> String;\n}\n";
+    assert!(violations_in("multilang/src/registration.rs", source).is_empty());
+}
+
+/// A deprecated declaration is a compatibility entry; the same name without the marker is a finding.
+/// 被 `#[deprecated]` 标记的声明是兼容入口；同一名字去掉标记就是发现。
+#[test]
+fn a_deprecated_compatibility_entry_is_exempt() {
+    let with = "/// Use `read_declaration`.\n#[deprecated(note = \"compatibility\")]\npub fn read(source: &str) -> String { source.to_owned() }\n";
+    assert!(violations_in("kernel/src/registry_core/interchange.rs", with).is_empty());
+    let without = "pub fn read(source: &str) -> String { source.to_owned() }\n";
+    let found = violations_in("kernel/src/registry_core/interchange.rs", without);
+    assert_eq!(names(&found), vec!["read".to_owned()]);
+}
+
+/// The trait exemption stops at the trait's closing brace: an ordinary function after it is live code.
+/// trait 豁免在 trait 的闭合括号处结束：它之后的普通函数是活代码。
+#[test]
+fn a_function_after_a_closed_trait_is_still_checked() {
+    let source = "pub trait Reader {\n    fn read(&self) -> String;\n}\n\npub fn read() -> String { String::new() }\n";
+    let found = violations_in("x/src/lib.rs", source);
+    assert_eq!(names(&found), vec!["read".to_owned()], "{found:?}");
+}
+
+/// Likewise, a trait implementation's exemption does not leak past its closing brace.
+/// 同样，trait 实现的豁免不会漏过它的闭合括号。
+#[test]
+fn a_function_after_a_closed_trait_impl_is_still_checked() {
+    let source = "struct X;\npub trait Reader { fn read(&self); }\nimpl Reader for X {\n    fn read(&self) {}\n}\n\npub fn read() -> String { String::new() }\n";
+    let found = violations_in("x/src/lib.rs", source);
+    assert_eq!(names(&found), vec!["read".to_owned()], "{found:?}");
+}
+
+/// An inherent impl is not a trait implementation: its methods are named by this crate and checked.
+/// inherent impl 不是 trait 实现：它的方法由本 crate 命名，必须检查。
+#[test]
+fn an_inherent_impl_method_is_still_checked() {
+    let source = "struct X;\nimpl X {\n    pub fn read(&self) -> String { String::new() }\n}\n";
+    let found = violations_in("x/src/lib.rs", source);
+    assert_eq!(names(&found), vec!["read".to_owned()], "{found:?}");
+}
+
+/// A foreign declaration inside an `extern` block is not ours to rename.
+/// `extern` 块里的外部函数声明不归我们改名。
+#[test]
+fn a_foreign_declaration_is_not_checked() {
+    let source =
+        "unsafe extern \"C\" {\n    fn open(path: *const u8, flags: i32, ...) -> i32;\n}\n";
+    assert!(violations_in("toolchain/src/plugin_host/process/child.rs", source).is_empty());
+}
+
+/// A generic trait impl (`impl<T> Trait for Type`) is still a trait implementation.
+/// 泛型 trait 实现（`impl<T> Trait for Type`）仍然是 trait 实现。
+#[test]
+fn a_generic_trait_impl_method_is_exempt() {
+    let source = "struct X<T>(T);\nimpl<T> Reader for X<T> {\n    fn read(&self, source: &str) -> String { source.to_owned() }\n}\n";
+    assert!(violations_in("toolchain/src/plugin_host/process/child.rs", source).is_empty());
 }

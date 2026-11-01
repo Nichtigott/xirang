@@ -224,7 +224,7 @@
 ## 5. 本轮装置缺陷清单（我自己的，6 处）
 
 1. **泄漏**：禁令枚举了 `round7|8|9` 与 `docs/`，漏掉 `target/xirang-t1`（早几轮评测记录）、`hardbug-runs`（真值）、`probe-*`、`round8`、`round9/answers|logs`、`round7/answer-*` ⇒ 8 题判废。⇒ 纪律：**禁令不要枚举目录**（写成"除装置目录外全域禁读"），**不要举真实文件名当例子**（举过的例子会经任务书回显成新串源）。
-2. **隔离自伤**：`toolchain/src/mcp/src/client_tests.rs:503` 用 `include_str!` 引 `docs/design-scenario-cases.md`，隔离 `docs/` 后 `cargo test --features mcp` 编译失败，而该文件含 S7 期望值、不能移回。⇒ 隔离前先做反向引用查询。
+2. **隔离自伤**：`toolchain/src/mcp/client_tests.rs:503` 用 `include_str!` 引 `docs/design-scenario-cases.md`，隔离 `docs/` 后 `cargo test --features mcp` 编译失败，而该文件含 S7 期望值、不能移回。⇒ 隔离前先做反向引用查询。
 3. **任务书工作根写错**：`h1-supply-chain`/`h2-claim-unkept`/`h3-cross-file-chain` 的宿主包在 `host/` 子目录，我统一写 `--root <树根>` ⇒ 桥答"空树"。⇒ 加 `PKG_ROOT` 逐题覆盖表。
 4. **只读/可改分类错**：四道 hardbug 类被标成"可改"，而第九轮 BRIEF §3 的口径是**只读**（成员按树内 `BRIEF.md` 的 read-only 做才对）。
 5. **重跑前未复位树**：可改题的副本带着上一 attempt 的改动 ⇒ 注入缺陷不可观察。⇒ `reset_question()` + 每个成员**先跑基线并写进答案①**。

@@ -1,0 +1,183 @@
+#!/bin/sh
+# Gate: the committed mixed-language example still builds, still splits, and its C++ half is really
+# executed.
+# 门禁：入库的混合语言示例仍然构建、仍然拆分，而且它的 C++ 那一半真的被执行到。
+#
+#   tools/xirang-mixed-shop
+#
+# Why it exists: `examples/mixed-shop` answers a question prose kept answering badly — "can a Rust
+# parent face have a C++ implementation, and can that subtree move into its own crate without
+# touching the face files?" The example is the answer as code; without this gate it is a directory
+# nobody runs, and the ways it rots are all silent: the committed `crates/` drifts from what
+# `xirang crates --write` writes, the tests stop being members of the workspace, or the C++ body is
+# no longer reached while the assertions stay green.
+# 为什么需要它：`examples/mixed-shop` 回答的是一个散文一直答不好的问题——"Rust 父面能不能挂 C++ 实现，
+# 那棵子树能不能搬进自己的 crate 而不动面文件？" 示例就是这个答案的代码；没有这道门禁，它就是一个没人
+# 跑的目录，而它腐烂的方式全是静默的：入库的 `crates/` 与 `xirang crates --write` 写出的东西漂移、
+# 测试所在的包不再是工作区成员、或者 C++ 体其实已经调不到而断言仍然全绿。
+#
+# Four legs / 四条腿:
+#   1. the tree — `xirang check` still reports the three Rust faces (the C++ one is added by the
+#      build script, so the source scan cannot see it; leg 3 asserts the tree the build produces);
+#   2. the split — regenerate in place and compare byte for byte, so "declare once, split on submit"
+#      stays true instead of becoming a stale checked-in artifact;
+#   3. the tests — the host keeps only what it did not hand away (including the Area the C++ file
+#      declares), the two crates assemble one tree, and the C++ body is reached (`area(3, 4) == 12`);
+#      the leg also proves the tests
+#      **ran**, because a workspace that lost a member reports `0 passed` and looks green;
+#   4. the red control — change the C++ body by one and the assertion must fail, for the assertion's
+#      reason; a test that cannot go red is not evidence that the C++ half is executed.
+#   1. 树——`xirang check` 仍然报三个 Rust 面（C++ 那个由 build script 加入，源码扫描看不到；构建出的
+#      那棵树由第 3 腿断言）；
+#   2. 拆分——原地重新生成并逐字节比较，让"顶层声明一次、提交时生成"保持为真，而不是变成一份陈旧的
+#      入库产物；
+#   3. 测试——宿主只剩它没交出去的那一半（含 C++ 文件自己声明的 Area）、两个 crate 装成一棵树、
+#      面能调到 C++ 体（`area(3, 4) == 12`）；
+#      这一腿还要证明测试**真的跑了**，因为丢掉一个成员的工作区会报 `0 passed` 而看起来是绿的；
+#   4. 红控制——把 C++ 体改一处，断言必须失败、且失败原因是那条断言；一条红不了的测试不能证明
+#      C++ 那一半被执行了。
+set -eu
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+EXAMPLE="$ROOT/examples/mixed-shop"
+XIRANG="$ROOT/target/debug/xirang"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT INT TERM
+
+step() { printf '\n== %s\n' "$*"; }
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+
+step "building the CLI this gate drives"
+# Always rebuild: a pre-existing `target/debug/xirang` from another feature set must not decide
+# whether a mixed-language build passes. The C++ build path is gated on `lang-cpp`, so this gate
+# builds the binary with it and records the digest it actually exercised.
+# 总是重建：别处编译的 `target/debug/xirang`（另一套特性）不能决定混合语言构建是否通过。C++ 构建
+# 路径由 `lang-cpp` 门控，因此本门禁用它编译二进制，并记录实际受测的摘要。
+command cargo build --quiet --manifest-path "$ROOT/Cargo.toml" \
+    -p xirang-toolchain --features cli,lang-cpp --bin xirang || fail "cannot build $XIRANG"
+printf 'cli sha256: %s\n' "$(sha256sum "$XIRANG" | cut -d' ' -f1)"
+
+step "1/4 the committed example still reports its three Rust faces"
+if ! (cd "$EXAMPLE/shop" && "$XIRANG" check >"$WORK/check.txt" 2>&1); then
+    cat "$WORK/check.txt"
+    fail "xirang check refused the example"
+fi
+grep -q "4 face(s)" "$WORK/check.txt" || { cat "$WORK/check.txt"; fail "expected 4 face(s)"; }
+
+step "2/4 the committed split is what crates --write reproduces"
+# Regenerate **in place**, because the generated manifests spell the toolchain path relative to their
+# own depth: a copy elsewhere would legitimately produce different bytes, and the comparison would
+# then measure the copy rather than the committed split.
+# 原地重新生成，因为生成的清单按自己的深度拼工具链路径：复制到别处会合法地产生不同字节，比较就变成在
+# 量那个副本而不是入库的拆分。
+cp -a "$EXAMPLE/crates" "$WORK/crates.bak"
+cp "$EXAMPLE/Cargo.toml" "$WORK/workspace.bak"
+restore_split() {
+    rm -rf "$EXAMPLE/crates"
+    cp -a "$WORK/crates.bak" "$EXAMPLE/crates"
+    cp "$WORK/workspace.bak" "$EXAMPLE/Cargo.toml"
+}
+trap 'restore_split 2>/dev/null || true; rm -rf "$WORK"' EXIT INT TERM
+rm -rf "$EXAMPLE/crates"
+# The workspace still names the generated packages, and `verify` depends on one of them, so the
+# manifest goes back to its pre-split state before the writer runs — otherwise `cargo metadata`
+# refuses a member whose directory was just removed.
+# 工作区还写着那些生成的包、`verify` 又依赖其中一个，所以写入器重跑前清单要先回到拆分前状态，
+# 否则 `cargo metadata` 会拒绝一个目录刚被删掉的成员。
+sed -i 's|^members = .*|members = ["shop"]|' "$EXAMPLE/Cargo.toml"
+if ! (cd "$EXAMPLE/shop" && "$XIRANG" crates --write >"$WORK/write.txt" 2>&1); then
+    cat "$WORK/write.txt"
+    fail "crates --write refused the example"
+fi
+diff -ru "$WORK/crates.bak" "$EXAMPLE/crates" || fail "the committed crates drifted from what the tool writes"
+for member in 'crates/shop-panel' 'crates/shop-facade'; do
+    grep -q "\"$member\"" "$EXAMPLE/Cargo.toml" || fail "regeneration did not add $member to members"
+done
+restore_split
+
+step "3/4 the example's tests run and pass"
+if ! (cd "$EXAMPLE" && command cargo test --offline >"$WORK/test.txt" 2>&1); then
+    cat "$WORK/test.txt"
+    fail "the example's tests are red"
+fi
+for name in the_host_keeps_the_faces_it_did_not_hand_away \
+    the_two_crates_assemble_one_tree \
+    the_cpp_symbol_is_the_one_the_build_linked \
+    a_cpp_face_owns_the_face_declared_below_it \
+    the_child_cpp_symbol_runs_as_well; do
+    grep -q "^test $name \.\.\. ok" "$WORK/test.txt" || { tail -20 "$WORK/test.txt"; fail "test $name did not run"; }
+done
+# The source scan sees three Rust faces. The built tree has six rows: the declared C++ faces, the Rust
+# face under one of them, and the faces the host did not hand away — each at its own path.
+# 源码扫描只看到三个 Rust 面。构建出的树有六行：声明的 C++ 面、挂在其中一个下面的 Rust 面，以及宿主没有
+# 交出去的面——各自在自己的路径上。
+(cd "$EXAMPLE" && command cargo run --offline -q -p verify --bin tree >"$WORK/tree.txt" 2>&1) \
+    || { cat "$WORK/tree.txt"; fail "the example's tree printer failed"; }
+for row in "root/shop  kind=Shop" "root/shop/panel  kind=Panel" \
+    "root/shop/panel/Area  kind=Area" "root/shop/panel/button  kind=Button" \
+    "root/shop/panel/Area/Gauge  kind=Gauge" \
+    "root/shop/panel/Area/reading  kind=Reading"; do
+    grep -qxF "$row" "$WORK/tree.txt" || { cat "$WORK/tree.txt"; fail "the built tree is missing $row"; }
+done
+
+step "3b/4 the shared catalog names the same object in Rust and C++"
+# Both generators must emit `Area` from the same object relation; compare the identity bytes, not a
+# substring of prose. The C++ source and the Rust test use the exact same expression.
+# 两个生成器必须从同一对象关系发射 `Area`；比较身份字节，而不是散文子串。C++ 源码与 Rust 测试写同一个表达式。
+CPP_CATALOG=""
+for candidate in "$EXAMPLE"/target/debug/build/*/out/xirang/faces.hpp; do
+    [ -f "$candidate" ] || continue
+    if grep -q "namespace crate::catalog" "$candidate" && grep -q "namespace Area" "$candidate"; then
+        CPP_CATALOG="$candidate"
+        break
+    fi
+done
+[ -n "$CPP_CATALOG" ] || fail "no generated C++ header carries crate::catalog::shop::panel::Area"
+RUST_CATALOG=""
+RUST_AREA_BYTES=""
+CATALOG_COUNT=0
+for candidate in "$EXAMPLE"/target/debug/build/*/out/generated_lib.rs; do
+    [ -f "$candidate" ] || continue
+    if grep -q "pub mod Area" "$candidate"; then
+        CATALOG_COUNT=$((CATALOG_COUNT + 1))
+        bytes=$(sed -n '/pub mod Area {/,/^        }/p' "$candidate" \
+            | grep -m1 'pub const NODE_ID' | sed 's/.*from_raw(\[//; s/\].*//; s/,//g' | tr -d ' ')
+        if [ -z "$RUST_CATALOG" ]; then
+            RUST_CATALOG="$candidate"
+            RUST_AREA_BYTES="$bytes"
+        elif [ "$bytes" != "$RUST_AREA_BYTES" ]; then
+            fail "the same catalog Area has different identities in $candidate and $RUST_CATALOG"
+        fi
+    fi
+done
+[ "$CATALOG_COUNT" -ge 2 ] || fail "only $CATALOG_COUNT generated tree(s) carry catalog::Area; expected host and partitioned crates"
+cpp_bytes=$(sed -n '/namespace Area {/,/}  \/\/ namespace Area/p' "$CPP_CATALOG" \
+    | grep -m1 'NODE_ID = ::xirang::Id' | sed 's/.*{{//; s/}}.*//; s/,//g' | tr -d ' ')
+rust_bytes="$RUST_AREA_BYTES"
+[ -n "$cpp_bytes" ] || fail "the C++ catalog has no Area NODE_ID"
+[ -n "$rust_bytes" ] || fail "the Rust catalog has no Area NODE_ID"
+[ "$cpp_bytes" = "$rust_bytes" ] || fail "Rust/C++ Area identities differ: $rust_bytes vs $cpp_bytes"
+grep -q 'crate::catalog::shop::panel::Area::NODE_ID' "$EXAMPLE/shop/src/lib.rs" \
+    || fail "the Rust example does not use the exact catalog expression"
+grep -q 'crate::catalog::shop::panel::Area::NODE_ID' "$EXAMPLE/shop/native/area/gauge.cpp" \
+    || fail "the C++ example does not use the exact catalog expression"
+
+step "4/4 changing the C++ body turns the assertion red"
+AREA="$EXAMPLE/shop/native/area/area.cpp"
+cp "$AREA" "$WORK/area.cpp"
+restore_area() { cp "$WORK/area.cpp" "$AREA" 2>/dev/null || true; }
+trap 'restore_area; restore_split 2>/dev/null || true; rm -rf "$WORK"' EXIT INT TERM
+sed -i 's/return width \* height;/return width * height + 1;/' "$AREA"
+# A fresh target directory, because cargo caches the final link on the *Rust* inputs: re-running the
+# build script recompiles the archive, yet an unchanged binary would keep the old copy and the red
+# control would measure nothing (measured while writing this gate).
+# 全新的 target 目录，因为 cargo 把最终链接缓存挂在 **Rust** 输入上：重跑构建脚本会重编归档，但没变的
+# 二进制会继续用旧的那份，红控制就什么也没量到（写这道门禁时实测到的）。
+if (cd "$EXAMPLE" && CARGO_TARGET_DIR="$WORK/red-target" command cargo test --offline >"$WORK/red.txt" 2>&1); then
+    restore_area
+    fail "the tests still passed after the C++ body changed"
+fi
+grep -qE "assertion|FAILED" "$WORK/red.txt" || { cat "$WORK/red.txt"; restore_area; fail "the red run failed for a reason other than the assertion"; }
+restore_area
+
+printf '\nok: the mixed example is green, its split is reproducible, and its C++ half is really executed\n'

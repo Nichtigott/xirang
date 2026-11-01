@@ -1,0 +1,6 @@
+# 一个 C# 声明面的最小宿主：构建期运行 Roslyn 生成器写记录文件，构建读它并把面并进树。
+# A minimal host for a C#-declared face: the build runs the Roslyn generator to write the record
+# file, reads it, and folds the face into the tree.
+[workspace]
+resolver = "3"
+members = ["gauge"]

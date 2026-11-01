@@ -1,0 +1,100 @@
+[package]
+name = "xirang-multilang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository = "https://github.com/Nichtigott/xirang"
+homepage = "https://github.com/Nichtigott/xirang"
+description = "Language adapters for XiRang registration authoring"
+keywords = ["registration", "multilang", "authoring", "cpp"]
+categories = ["development-tools"]
+readme = "README.md"
+include = ["src/**/*.rs", "sdk/**", "Cargo.toml", "README.md"]
+
+[lib]
+name = "xirang_multilang"
+path = "src/lib.rs"
+
+# The decoder without any language: this target is the pin that `native-record` really stands alone.
+# 不带任何语言的解码器：这个 target 就是"`native-record` 真的独立成立"的钉子。
+[[test]]
+name = "native_record_without_cpp"
+path = "tests/native_record_without_cpp.rs"
+required-features = ["native-record"]
+
+[features]
+# Every language implementation is opt-in. The default build carries the adapter protocol and the
+# SDK locations, and no language-specific code: a pure-Rust host must not compile a C++ adapter it
+# never asks for.
+# 每种语言实现都是可选的。默认构建只带适配器协议与 SDK 位置，不含任何语言专属代码：纯 Rust 宿主
+# 不该编译它从不请求的 C++ 适配器。
+default = []
+# Rust syntax facts; the query layer turns them into the shared semantic protocol.
+# Rust 语法事实；查询层把它们变成共享语义协议。
+semantics = ["dep:syn", "dep:serde_json", "dep:proc-macro2"]
+# The `xirang.faces` record decoder. It is the language-neutral half of a native language: a
+# language that emits the record needs the decoder without the C++ adapter.
+# `xirang.faces` 记录解码器。它是原生语言中语言中立的那一半：发出记录的语言需要解码器，
+# 而不需要 C++ 适配器。
+native-record = []
+lang-cpp = ["semantics", "native-record"]
+lang-python = ["semantics"]
+# The Zig adapter: records and authoring. It does not carry `semantics` yet, so Zig files are not in
+# the call graph — a language can ship declarations and authoring before its front end exists.
+# Zig 适配器：记录与创作。暂不带 `semantics`，因此 Zig 文件还进不了调用图——一门语言可以先有声明与创作，
+# 再等它的语义前端。
+lang-zig = ["native-record"]
+# The C adapter: records and authoring; C shares the cc/object/archive path with C++.
+# C 适配器：记录与创作；C 与 C++ 共用 cc/对象/归档路径。
+lang-c = ["native-record"]
+# The JavaScript adapter: the import-time `soil.face({…})` carrier, its read/write half, and the
+# build-time static reader. It needs no native record: the declaration is source text, not a section.
+# JavaScript 适配器：导入期 `soil.face({…})` 载体、它的读写那一半，以及构建期静态读取器。它不需要原生
+# 记录：声明是源码文本，不是段。
+lang-js = []
+# The TypeScript adapter: the same call carrier with the SDK's type declaration behind it. It turns
+# `lang-js` on because the parser is shared — a build that only carried the `.ts` suffix and not the
+# parser would not compile, so the dependency is stated here rather than discovered at the first
+# `--features lang-ts` build.
+# TypeScript 适配器：同一种调用载体，背后是 SDK 的类型声明。它打开 `lang-js`，因为解析器是共用的——
+# 只带 `.ts` 后缀而不带解析器的构建根本编译不过，所以这条依赖写在这里，而不是等第一次
+# `--features lang-ts` 构建时才发现。
+lang-ts = ["lang-js"]
+# The Go adapter: the authoring side of the `xirang.Soil` carrier (read/create/modify/plan). The
+# build side is the `xirang-faces` generator in `sdk/go`, run by `[record] command`.
+# Go 适配器：`xirang.Soil` 载体的创作那一半（read/create/modify/plan）。构建那一半是 `sdk/go` 里由
+# `[record] command` 运行的 `xirang-faces` 生成器。
+lang-go = []
+# The Java adapter: the annotation carrier's authoring half (`read`/`create`/`modify`/`plan`). The
+# build half is `SoilProcessor` in `sdk/java`, run by `[record] command`.
+# Java 适配器：注解载体的创作那一半（`read`/`create`/`modify`/`plan`）。构建那一半是 `sdk/java` 里由
+# `[record] command` 运行的 `SoilProcessor`。
+lang-java = []
+# The C# adapter: the attribute carrier's authoring half (`read`/`create`/`modify`/`plan`). The
+# build half is the Roslyn generator in `sdk/csharp`, run by `[record] command`.
+# C# 适配器：特性载体的创作那一半（`read`/`create`/`modify`/`plan`）。构建那一半是 `sdk/csharp` 里由
+# `[record] command` 运行的 Roslyn 生成器。
+lang-csharp = []
+# The multilingual production pipeline (project resolution, planning, execution, packaging,
+# distribution). It carries `serde_json` because its plans and evidence documents are JSON; a host
+# that only authors registration faces does not compile it.
+# 多语言生产管线（项目解析、计划、执行、打包、分发）。它带着 `serde_json`，因为它的计划与证据文档是
+# JSON；只创作注册面的宿主不会编译它。
+production = ["dep:serde_json"]
+
+[dependencies]
+xirang-kernel = { workspace = true }
+serde_json = { version = "1", optional = true }
+syn = { version = "2", features = ["full", "parsing", "visit"], optional = true }
+proc-macro2 = { version = "1", features = ["span-locations"], optional = true }
+
+[[test]]
+name = "zig_record"
+path = "tests/zig_record.rs"
+required-features = ["native-record"]
+
+[[test]]
+name = "zig_build"
+path = "tests/zig_build.rs"
+required-features = ["lang-zig"]

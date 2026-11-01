@@ -46,6 +46,116 @@ use std::path::{Path, PathBuf};
 /// 嵌套拒绝所带的措辞，来自 `TooDeep` 的 `Display`。
 const REFUSAL: &str = "above the limit of";
 
+/// Set to `0` by the ten-face gate for every face except `default`.
+/// 十面门禁对除 `default` 之外的每个面都设成 `0`。
+///
+/// The census is a property of the **sources**, not of a feature combination, so running it once is
+/// the same promise as running it per face. Unset (a plain `cargo test`) keeps the old behavior and
+/// runs it: a developer should not have to know an environment variable to get the check.
+/// 普查是**源码**的性质，不是某个特性组合的性质，因此跑一次与每个面各跑一次是同一个承诺。未设置时
+/// （普通 `cargo test`）保持原行为照跑：开发者不该为了获得检查而必须先知道一个环境变量。
+const CENSUS_ENV: &str = "XIRANG_NESTING_CENSUS";
+
+/// Bumped when the census's own logic changes, so an old cache cannot survive a change to the rule.
+/// 普查自身逻辑改变时递增，使旧缓存不可能跨过一次规则变更继续生效。
+const CENSUS_CACHE_VERSION: &str = "v1";
+
+/// Where a successful census records its digest, under the workspace's own `target/`.
+/// 成功的普查把摘要记在工作区自己的 `target/` 下。
+const CENSUS_CACHE: &str = "target/nesting-census.tsv";
+
+/// Whether this face should run the census.
+/// 这个面是否应当跑普查。
+fn census_enabled() -> bool {
+    match std::env::var(CENSUS_ENV) {
+        Ok(value) => value != "0" && value != "skip",
+        Err(_) => true,
+    }
+}
+
+/// The workspace members named by the root manifest, or `None` when the manifest cannot be read.
+/// 根清单点名的 workspace 成员；读不到清单时为 `None`。
+///
+/// A minimal read of the `members = [...]` list rather than a TOML dependency: the test is about a
+/// repository convention, and adding a parser to it would be a dependency for a single array.
+/// 只做 `members = [...]` 的最小读取，不引入 TOML 依赖：这条测试管的是一个仓库约定，为单个数组加一个
+/// 解析器不值得。
+fn members_from_manifest(root: &Path) -> Option<Vec<String>> {
+    let text = std::fs::read_to_string(root.join("Cargo.toml")).ok()?;
+    let start = text.find("members")?;
+    let open = text[start..].find('[')? + start;
+    let close = text[open..].find(']')? + open;
+    let mut rest = &text[open + 1..close];
+    let mut members = Vec::new();
+    while let Some(quote) = rest.find('"') {
+        rest = &rest[quote + 1..];
+        let end = rest.find('"')?;
+        members.push(rest[..end].to_owned());
+        rest = &rest[end + 1..];
+    }
+    (!members.is_empty()).then_some(members)
+}
+
+/// The directories the census walks: the workspace members, or the whole root as a fallback.
+/// 普查遍历的目录：workspace 成员；读不到成员清单时退回整棵根。
+///
+/// The fallback is deliberate. A narrower walk must never be "the manifest changed and the census
+/// silently checked less": an unreadable or wildcard member list goes back to the old, wider walk
+/// and says so, where the old behavior still holds the promise.
+/// 退回是有意的。更窄的遍历绝不能变成"清单变了，普查就悄悄少查"：成员清单读不到或含通配符时退回旧的
+/// 更宽遍历，并说出来——那里旧行为仍然守住承诺。
+fn census_roots(root: &Path) -> (Vec<PathBuf>, bool) {
+    match members_from_manifest(root) {
+        Some(members) if !members.iter().any(|member| member.contains('*')) => (
+            members.iter().map(|member| root.join(member)).collect(),
+            false,
+        ),
+        _ => (vec![root.to_path_buf()], true),
+    }
+}
+
+/// One digest over every file the census will read: its relative path and its bytes.
+/// 对普查将读的每个文件算一个摘要：相对路径与字节。
+///
+/// Path and content both go in: a file moved to another member with identical bytes is still a
+/// different input, and a content change is what the cache must notice. A file that cannot be read
+/// contributes its path but no bytes, so it cannot match a cache written when it was readable.
+/// 路径与内容都进摘要：同样的字节搬到另一个成员仍是不同的输入，而内容变化正是缓存必须察觉的。读不到的
+/// 文件只贡献路径、不贡献字节，因此它不可能命中"它还可读时写下的"那份缓存。
+fn census_digest(files: &[PathBuf], root: &Path) -> String {
+    let mut input = format!("{CENSUS_CACHE_VERSION}\n").into_bytes();
+    for path in files {
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        input.extend_from_slice(relative.to_string_lossy().as_bytes());
+        input.push(0);
+        if let Ok(text) = std::fs::read_to_string(path) {
+            input.extend_from_slice(text.as_bytes());
+        }
+        input.push(0);
+    }
+    xirang_kernel::identity::sha256_hex(&input)
+}
+
+/// The digest a previous green census recorded, when the cache file is well-formed.
+/// 上一次绿色普查记下的摘要（缓存文件格式正确时）。
+fn cached_digest(root: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(root.join(CENSUS_CACHE)).ok()?;
+    let mut fields = text.split('\t');
+    let digest = fields.next()?.trim().to_owned();
+    let version = fields.next()?.trim();
+    (version == CENSUS_CACHE_VERSION && digest.len() == 64).then_some(digest)
+}
+
+/// Record a green census so the next face (and the next gate run) can reuse it.
+/// 记录一次绿色普查，供下一个面（以及下一次门禁）复用。
+fn record_census(root: &Path, digest: &str) -> std::io::Result<()> {
+    let path = root.join(CENSUS_CACHE);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{digest}\t{CENSUS_CACHE_VERSION}\n"))
+}
+
 /// Every `.rs` file under `directory`, skipping build output and version control.
 /// `directory` 下每个 `.rs` 文件，跳过构建输出与版本控制。
 fn rust_files(directory: &Path, found: &mut Vec<PathBuf>) {
@@ -57,7 +167,7 @@ fn rust_files(directory: &Path, found: &mut Vec<PathBuf>) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if path.is_dir() {
-            if name == "target" || name == ".git" {
+            if name == "target" || name == ".git" || name == ".codegraph" {
                 continue;
             }
             rust_files(&path, found);
@@ -130,8 +240,28 @@ fn no_source_in_this_workspace_is_refused_by_the_nesting_guard() {
         );
         return;
     }
+    if !census_enabled() {
+        // A skip that says so: this face is not the census face of the ten-face gate. The census is
+        // about the sources, so one face running it is the same promise; silence here would make a
+        // reader wonder whether the check ran at all.
+        // 明说的跳过：这个面不是十面门禁的普查面。普查是关于源码的，一个面跑它就是同一个承诺；在这里
+        // 沉默会让读者怀疑这项检查到底跑没跑。
+        eprintln!(
+            "skipping the nesting census: {CENSUS_ENV}=0 says another face already ran it over these sources"
+        );
+        return;
+    }
+    let (roots, fell_back) = census_roots(&root);
+    if fell_back {
+        eprintln!(
+            "note: the workspace member list could not be read, so the census walks the whole root"
+        );
+    }
     let mut files = Vec::new();
-    rust_files(&root, &mut files);
+    for directory in &roots {
+        rust_files(directory, &mut files);
+    }
+    files.sort();
     // A floor, so a walk that silently finds nothing cannot pass. The workspace
     // has hundreds of Rust files; the number is not asserted exactly because a
     // new module should not have to update this test.
@@ -144,6 +274,19 @@ fn no_source_in_this_workspace_is_refused_by_the_nesting_guard() {
         root.display()
     );
 
+    // The digest covers exactly the inputs below, so a cache hit means "these same bytes were
+    // already inspected". A hit is reported, not silent: the reader must know the run reused an
+    // earlier green census rather than parsed the tree again.
+    // 摘要恰好覆盖下面的输入，因此命中缓存意味着"同一批字节已经被检查过"。命中要说出来，不能沉默：
+    // 读者必须知道这次是复用了早先的绿色普查，还是又解析了一遍树。
+    let digest = census_digest(&files, &root);
+    if cached_digest(&root).as_deref() == Some(digest.as_str()) {
+        println!(
+            "the nesting census is unchanged: digest {digest} over {} Rust files (reused the cached green result)",
+            files.len()
+        );
+        return;
+    }
     let (refused, unreadable) = inspect(&files);
     assert!(
         unreadable.is_empty(),
@@ -158,6 +301,14 @@ fn no_source_in_this_workspace_is_refused_by_the_nesting_guard() {
         refused.len(),
         refused.join("\n")
     );
+    if let Err(error) = record_census(&root, &digest) {
+        // The census itself is green; failing to write the cache only costs the next run its
+        // speedup, so it is reported rather than turned into a failure.
+        // 普查本身是绿的；写缓存失败只会让下一次跑失去加速，因此报告它而不是把它变成失败。
+        eprintln!(
+            "note: the census result could not be cached ({error}); the next run will re-check"
+        );
+    }
     println!("the nesting guard accepted all {} Rust files", files.len());
 }
 
@@ -182,4 +333,93 @@ fn a_file_that_cannot_be_read_is_reported() {
     let _ = std::fs::remove_file(&path);
     assert!(refused.is_empty(), "{refused:#?}");
     assert_eq!(unreadable.len(), 1, "{unreadable:#?}");
+}
+
+/// **The census reads its roots from the workspace manifest, not from the whole checkout.**
+/// **普查从 workspace 清单读取要走的根，而不是整棵检出。**
+///
+/// The old walk crossed `docs/` (8+ GB, hundreds of thousands of files) to find a few fixtures. The
+/// promise did not need that: the sources this repository ships are the workspace members. This pin
+/// also spells the fallback: a manifest the test cannot read goes back to the whole root, because a
+/// narrower walk must never silently mean "checked less".
+/// 旧遍历为了几十个夹具穿过 `docs/`（8+ GB、几十万个文件）。那个承诺并不需要它：本仓出厂的源码就是
+/// workspace 成员。这条钉子也写明退回：读不到的清单退回整棵根，因为更窄的遍历绝不能悄悄变成"查得更少"。
+#[test]
+fn the_census_roots_are_the_workspace_members() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest.parent().expect("the kernel is unpacked somewhere");
+    let (roots, fell_back) = census_roots(root);
+    assert!(!fell_back, "this checkout has a readable member list");
+    let names = roots
+        .iter()
+        .map(|path| {
+            path.strip_prefix(root)
+                .expect("a member is under the root")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect::<Vec<_>>();
+    for expected in ["kernel", "toolchain", "multilang", "conventions"] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "the member `{expected}` is missing from {names:?}"
+        );
+    }
+    assert!(
+        !names.iter().any(|name| name.starts_with("docs")),
+        "docs is not a workspace member and must not be walked: {names:?}"
+    );
+}
+
+/// **A content change invalidates the cache digest, and an unchanged tree keeps it.**
+/// **内容变化使缓存摘要失效，未变的树保持同一摘要。**
+///
+/// The digest is the whole invalidation rule, so it is pinned directly: path and bytes in, a
+/// version salt, and the same bytes must produce the same digest across calls.
+/// 摘要就是整条失效规则，因此直接钉住它：路径与字节进摘要、带一个版本盐，同一批字节跨调用给出同一摘要。
+#[test]
+fn the_census_digest_tracks_content_and_path() {
+    let root = std::env::temp_dir().join(format!(
+        "xirang-nesting-digest-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("fixture root");
+    let first = root.join("a.rs");
+    let second = root.join("nested").join("b.rs");
+    std::fs::create_dir_all(second.parent().expect("nested")).expect("nested");
+    std::fs::write(&first, "fn a() {}\n").expect("a");
+    std::fs::write(&second, "fn b() {}\n").expect("b");
+    let files = vec![first.clone(), second.clone()];
+    let before = census_digest(&files, &root);
+    assert_eq!(
+        before,
+        census_digest(&files, &root),
+        "same bytes, same digest"
+    );
+    std::fs::write(&second, "fn b() { let _ = 1; }\n").expect("b changed");
+    let changed = census_digest(&files, &root);
+    assert_ne!(
+        before, changed,
+        "a content change must invalidate the cache"
+    );
+    std::fs::write(&second, "fn b() {}\n").expect("b restored");
+    assert_eq!(
+        before,
+        census_digest(&files, &root),
+        "restoring the bytes restores the digest"
+    );
+    // Moving a file to another member is another input even with identical bytes.
+    // 把文件搬到另一个成员是另一个输入，即使字节相同。
+    let moved = root.join("nested").join("c.rs");
+    std::fs::rename(&second, &moved).expect("moved");
+    assert_ne!(
+        before,
+        census_digest(&[first, moved], &root),
+        "a path change must invalidate the cache"
+    );
+    let _ = std::fs::remove_dir_all(root);
 }

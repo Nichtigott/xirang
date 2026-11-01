@@ -59,7 +59,7 @@ codegraph 的知识是"符号 + 文件 + 调用边"。它没有：包即命名�
 上面 §4 我写的是"逐成员建身份上下文再推导"。维护者指了更省也更真的路，实测确认成立：**整棵树的记录构建期已经写到盘上，而且 MCP 已经有读取器。**
 
 - **稳定记录集**：`<package>/target/xirang/out/` —— `source_scope.tsv`（`mode`/`selected` + `node source module`）、`pruning_manifest.tsv`、`graft_plan.tsv`（`cut graft full line column`）、`function_manifest.tsv`、`discovery.fingerprint`（一个哈希，可当新鲜度键）、以及 174 行的 `generated_lib.rs`。实测 `examples/control-button` 有全套 6 个文件。
-- **现成读取器**：`toolchain/src/mcp/src/build_evidence.rs` 读的就是这条路径，并且是**经 `build_method` 自己的读取器**读的（不是第二份推导）；其模块文档写明它与"读源码文本"会不一致（刚写下的文件还没进宿主编译出的树），并列出它**有意不报告**的东西：`static_graft_plan!` 的声明状态归 `grafts`、contract/admission 字段需要已加载的注册机。`lib.rs`/`tools.rs` 同样写明 `xirang.explain` 读构建**发布**的文件。
+- **现成读取器**：`toolchain/src/mcp/build_evidence.rs` 读的就是这条路径，并且是**经 `build_method` 自己的读取器**读的（不是第二份推导）；其模块文档写明它与"读源码文本"会不一致（刚写下的文件还没进宿主编译出的树），并列出它**有意不报告**的东西：`static_graft_plan!` 的声明状态归 `grafts`、contract/admission 字段需要已加载的注册机。`lib.rs`/`tools.rs` 同样写明 `xirang.explain` 读构建**发布**的文件。
 - **绝不要读 `target/debug/build/<pkg>-<hash>/out/`**：同一个包实测 **134 份**哈希分身、旧的还在，按 glob 取可能取到陈旧记录。
 - **可用性不对称（要处理的现实）**：`examples/control-button` 6 个文件 ✓；`examples/control-button-graft` **0** ✗；`toolchain/tests/fixtures/node-editor` **0** ✗。
 

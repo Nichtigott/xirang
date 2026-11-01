@@ -21,7 +21,7 @@ pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 /// A custom preset whose recorded name is distinguishable from the default.
 /// 一个自定义 preset，其记录名可与默认值区分。
 struct ProbePreset;
-
+struct ProbeParts;
 impl xirang_toolchain::run_method::PresetContract for ProbePreset {
     type Output = ();
     const REQUIRED_PARTS: &'static [&'static str] = &["probe"];
@@ -29,8 +29,6 @@ impl xirang_toolchain::run_method::PresetContract for ProbePreset {
 
 /// A custom parts whose recorded name is distinguishable from the default.
 /// 一个自定义 parts，其记录名可与默认值区分。
-struct ProbeParts;
-
 impl xirang_toolchain::run_method::PartsContract for ProbeParts {
     type Output = ();
     const PROVIDED_PARTS: &'static [&'static str] = &["probe"];
@@ -46,6 +44,7 @@ impl xirang_toolchain::run_method::PartsContract for ProbeParts {
 /// 把这两个字面 token 回派出去，接住它们的 arm 对 token 做了 `stringify!`，而不是命名
 /// 默认值。
 mod handle_without_preset_or_parts {
+
     xirang_toolchain::__control_object! {
         collector: development,
         kind: HandleDefaults,
@@ -58,6 +57,7 @@ mod handle_without_preset_or_parts {
 /// 上面形态的无 `handle` 版本。两个 arm 必须落到同一组默认名字上，因此测试直接比较
 /// 二者，而不是各自单独相信。
 mod without_handle_defaults {
+
     xirang_toolchain::__control_object! {
         collector: development,
         kind: NoHandleDefaults,
@@ -68,6 +68,7 @@ mod without_handle_defaults {
 /// back to the default.
 /// 只写 `preset:`：写下的名字保留，`parts` 回退到默认值。
 mod handle_with_preset_only {
+
     use crate::ProbePreset;
 
     xirang_toolchain::__control_object! {
@@ -80,6 +81,7 @@ mod handle_with_preset_only {
 /// `parts:` only, the mirror of the shape above.
 /// 只写 `parts:`，是上一形态的镜像。
 mod handle_with_parts_only {
+
     use crate::ProbeParts;
 
     xirang_toolchain::__control_object! {
@@ -92,6 +94,7 @@ mod handle_with_parts_only {
 /// Both bindings written.
 /// 两个绑定都写下。
 mod handle_with_preset_and_parts {
+
     use crate::{ProbeParts, ProbePreset};
 
     xirang_toolchain::__control_object! {

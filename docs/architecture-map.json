@@ -105,7 +105,7 @@
       "sublabel": "argv 分发 · cargo 子进程",
       "sources": [
         {
-          "path": "toolchain/src/cli/src/lib.rs",
+          "path": "toolchain/src/cli/lib.rs",
           "line": 143
         }
       ],
@@ -163,7 +163,7 @@
       "sublabel": "stdio 桥 · 17 个工具",
       "sources": [
         {
-          "path": "toolchain/src/mcp/src/tools.rs",
+          "path": "toolchain/src/mcp/tools.rs",
           "line": 261
         }
       ],
@@ -183,7 +183,7 @@
       "sublabel": "wasm / 进程插件 · 准入",
       "sources": [
         {
-          "path": "toolchain/src/plugin_host/src/admission.rs",
+          "path": "toolchain/src/plugin_host/admission.rs",
           "line": 150
         }
       ],
@@ -203,7 +203,7 @@
       "sublabel": "ratatui 创作与检视",
       "sources": [
         {
-          "path": "toolchain/src/studio/src/studio/app/writers.rs"
+          "path": "toolchain/src/studio/studio/app/writers.rs"
         }
       ],
       "pos": [
@@ -222,7 +222,7 @@
       "sublabel": "MIR 与 trace 的证据合并",
       "sources": [
         {
-          "path": "toolchain/src/call_evidence/src/lib.rs"
+          "path": "toolchain/src/call_evidence/lib.rs"
         }
       ],
       "pos": [

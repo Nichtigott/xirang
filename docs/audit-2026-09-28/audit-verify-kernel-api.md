@@ -107,9 +107,9 @@ VERDICT second-renderer-outside-kernel = NONE      (exit 0)
 
 ```
 production hits outside the kernel: 3
-   FINDING studio/src/studio/app/source_index.rs::admission_text  "allow:
-   FINDING studio/src/studio/app/source_index.rs::admission_text  "deny:
-   FINDING studio/src/studio/app/source_index.rs::admission_text  renderer shape
+   FINDING studio/studio/app/source_index.rs::admission_text  "allow:
+   FINDING studio/studio/app/source_index.rs::admission_text  "deny:
+   FINDING studio/studio/app/source_index.rs::admission_text  renderer shape
 VERDICT second-renderer-outside-kernel = FOUND      (exit 1)
 ```
 
@@ -153,7 +153,7 @@ studio::app::tests::project::new_project_and_explicit_root_face_compile
 
 **判定：通过。** 另外：全树只有**一个** `fn compact_admission`（`grep -rn "fn compact_admission"` →
 仅 `core/src/registry_core/authoring/parse/admission.rs:73`），Studio 侧只有一个 `fn admission_text`
-（`studio/src/studio/app/source_index.rs:69`）。
+（`studio/studio/app/source_index.rs:69`）。
 
 ## 4. X-1 / LGC-LG-40 的语义
 
@@ -248,7 +248,7 @@ studio::app::tests::project::new_project_and_explicit_root_face_compile
    失败；宿主的失败模式是整体性的（`plugin-host` 的准入读两份锁，失败即
    `HostError::Policy("invalid plugin lock under …")`，插件面**完全不可用**），运维只能手改锁文件才能
    恢复。为一个"记录比它写的更宽"的洞引入"升级后插件全停"，代价明显更大。
-3. **本仓自己已经把这种拼法当合法输入**：`studio/src/studio/app/tests/lock_writes.rs` 用它做种子并断言
+3. **本仓自己已经把这种拼法当合法输入**：`studio/studio/app/tests/lock_writes.rs` 用它做种子并断言
    `PluginCatalog::parse(&text).expect("the seeded lock still parses")`；把它改成拒绝，等于同一次改动里
    先宣布那份种子非法。
 4. **残留风险（应写进文档而不是忽略）**：`Some("")` 与 `None` 的区别**在写入方 API 上看不出来**——今天
@@ -256,7 +256,7 @@ studio::app::tests::project::new_project_and_explicit_root_face_compile
    现实场景；这层语义只由 `PluginRecord` 三个字段的文档承载（t7 已补）。未来若出现写空列的写入方，
    它必须知道**空列＝声明缺失**，而不是"未知"。
 
-**顺带发现（不在我 t11 的 inScope，故只报告不修改）**：`studio/src/studio/app/tests/lock_writes.rs` 那条
+**顺带发现（不在我 t11 的 inScope，故只报告不修改）**：`studio/studio/app/tests/lock_writes.rs` 那条
 测试的文档注释仍写着 "A ten-field official record with empty provenance **parses as the seven-field
 form**, so the trust rule admits a duplicate identity…"。t7 之后这句不再成立——空列现在解析成 `Some("")`，
 与七字段（`None`）是**两种**形态（这正是 `core/tests/plugin_lock_provenance.rs::an_empty_provenance_column_is_not_the_seven_field_form`

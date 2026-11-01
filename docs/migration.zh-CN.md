@@ -68,7 +68,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rust_analyzer)'] }
 
 ## Studio 与插件宿主
 
-使用 `cargo run --manifest-path studio/Cargo.toml` 启动 Studio；`1`～`3` 切换 Search、Inspect、Data。`watch` 由 `xirang-dev` 提供，它是非默认 `dev-supervisor` 特性下的工作区专用二进制：会在源码、Cargo 或插件目录变化时重建子 Studio 进程，因此需要本检出（`cargo run -p xirang-toolchain --features dev-supervisor --bin xirang-dev -- watch`），`cargo install xirang-toolchain` 也不会安装它。
+使用 `cargo run --manifest-path studio/Cargo.toml` 启动 Studio；`1`～`3` 切换 Search、Inspect、Data。`watch` 由 `xirang-dev` 提供，它是非默认 `dev-supervisor` 特性下的工作区专用二进制：会在源码、Cargo 或插件目录变化时重建子 Studio 进程，因此需要本检出（`cargo run -p xirang-toolchain --features dev-supervisor --bin xirang-dev -- watch`），`cargo install xirang-toolchain --features cli` 也不会安装它。
 
 插件宿主只接受 `VerifiedPluginArtifact`。Wasm slot 在编译期声明；进程适配器需显式启用 `process-tools`。现有 `PluginManifest` 流程合同和 lock 记录保持兼容。
 # Graft overlay 迁移

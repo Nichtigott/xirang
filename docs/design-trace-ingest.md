@@ -7,13 +7,13 @@ Design only; no `.rs` file is edited and no git command is run. Citations are
 deliberate (same choice as that file), not an oversight.
 
 **Status (2026-09-26) / 状态.** Slice 1 is **built**: the pure document
-(`run_method/src/runtime/trace/artifact/artifact.rs`), its parser and interner
+(`run_method/runtime/trace/artifact/artifact.rs`), its parser and interner
 (`artifact/parse.rs`), and the file half (`artifact/io.rs`) — `TraceArtifact`
 with `from_trace`/`render`/`parse`/`into_trace`, `trace_artifact_path`,
 `write_trace_artifact`, `read_trace_artifact` — plus `TRACE_DIR`/`TRACE_FILE`/
 `TRACE_FILE_ENV` in the kernel lexicon, re-exported at the `run_method` crate
 root.
-Slice 2, the Studio loader, is **built too**: `studio/src/studio/app/trace.rs`
+Slice 2, the Studio loader, is **built too**: `studio/studio/app/trace.rs`
 holds `TraceStatus { Absent, Loaded, Mismatch { reason } }` and
 `App::install_trace`, called once from `App::load`; discovery is
 `trace_artifact_path(package_root())` (the precedence is not re-implemented), the
@@ -33,7 +33,7 @@ label/source 19,20→25,28, `render_tree` 284→296, `matching_locals` 164–200
 held.
 **状态（2026-09-26）。** 第一片**已建成**：纯文档、解析器与驻留表、文件一半，外加内核词典里的
 三个常量，并在 `run_method` 根部重导出。第二片（Studio 的加载方）**也已建成**：
-`studio/src/studio/app/trace.rs` 里的 `TraceStatus`、在 `App::load` 里调用一次的
+`studio/studio/app/trace.rs` 里的 `TraceStatus`、在 `App::load` 里调用一次的
 `install_trace`、按序执行的四条身份检查；被拒绝的 artifact 不装入任何东西并说明原因，示例
 `sample_live_trace()` 已删除——图例读 `TRACE: none`/`LIVE`/`TRACE mismatch`，DATA 面板不再有
 `· built-in sample ·`。下面引用的行号是设计当时实测的；对着 `0.1.1` 重测已经漂移，因此读者应把
@@ -50,7 +50,7 @@ before the label may ever say plain `LIVE`.
 ## 1. 从已记录的 `CallTrace` 到 DATA 面板，缺的是什么
 
 ### 1.1 The trace is an in-process, owner-held value
-`CallTrace` (`run_method/src/runtime/trace/call_trace.rs:37-53`) is a plain
+`CallTrace` (`run_method/runtime/trace/call_trace.rs:37-53`) is a plain
 struct whose every field is private (`pub(super)`), holding `Vec<FrameRecord>`,
 three `BTreeMap` indexes, `Vec<LocalValue>`, `Vec<DataEdge>`, and two id
 counters. It is created by value (`:86-112`) and moved; there is no global,
@@ -65,7 +65,7 @@ in-process**, never per-process and never shared.
 ### 1.2 No writer, no format, no reader, no serde
 Nothing serializes a trace. `render_tree` (`frames.rs:284`),
 `render_provenance` (`edges.rs:242`), `render_data_flow` (`edges.rs:336`) and
-`render_call_report_for_trace` (`run_method/src/call_report/call_report.rs:29`)
+`render_call_report_for_trace` (`run_method/call_report/call_report.rs:29`)
 turn a trace into human text, but **have no callers anywhere** — not in `studio`,
 `cli`, `mcp`, or any test (grep over the workspace). `render_call_report`
 (`:19-25`) builds its own `CallTrace::new()` and is itself uncalled. There is no
@@ -84,30 +84,30 @@ This is the strongest single argument against "just add serde".
 
 ### 1.4 Studio's sample is inert, not merely fake
 `sample_live_trace()` records frames only — two `with_at` calls — plus, since a
-later round, **one** observed local (`studio/src/studio/app/sample.rs:27`,
+later round, **one** observed local (`studio/studio/app/sample.rs:27`,
 pinned by that file's own test). The identity half below still stands; the
 "emptiness" half no longer does, and is corrected under the bullets.
 `sample_live_trace()` 只记录帧——两次 `with_at`——以及后来某一轮补上的**一个**被观测局部值
-（`studio/src/studio/app/sample.rs:27`，由该文件自己的测试钉住）。下面的身份那一半仍然成立；
+（`studio/studio/app/sample.rs:27`，由该文件自己的测试钉住）。下面的身份那一半仍然成立；
 "空"那一半不再成立，已在条目下更正。
 Consequences, all verifiable:
-- `graph_locals` (`studio/src/studio/app/support.rs:199-211`) filters locals by the
+- `graph_locals` (`studio/studio/app/support.rs:199-211`) filters locals by the
   *centre function's* node, so the sample's single local is invisible for every
   registry function and the DATA panel draws `"· no live locals captured"`
-  (`studio/src/studio/ui/graph/data.rs:38-42`) there. The panel can render the
+  (`studio/studio/ui/graph/data.rs:38-42`) there. The panel can render the
   sample's value only for the sample's own node, which the registry never holds.
   （原文此处说样本不记录 locals，因此面板永远只画空状态；那一半已被后一轮修正，
   其余仍然成立：局部值按中心函数的节点过滤，样本的节点不在注册树里。）
 - `call_evidence` returns `Live` only on an exact `(node, function)` match
-  (`studio/src/studio/app/graph_queries.rs:196-204`). The sample's nodes come
+  (`studio/studio/app/graph_queries.rs:196-204`). The sample's nodes come
   from `NodeId::from_path("<studio-sample>", …)` (`sample.rs:16,23`), while
   registry nodes come from `NodeId::from_namespaced_path(...)`
-  (`run_method/src/macros/face_registration.rs:45-49`); the two hash domains
+  (`run_method/macros/face_registration.rs:45-49`); the two hash domains
   differ, so the match never happens.
 - `call_relations`' sample-edge loop also requires the center node to equal the
   sample's node (`graph_queries.rs:152-168`), so its two fake frames never enter
   the graph either.
-So the `LIVE SAMPLE` legend (`studio/src/studio/ui/panels.rs:17-33`) and the
+So the `LIVE SAMPLE` legend (`studio/studio/ui/panels.rs:17-33`) and the
 `· built-in sample ·` panel title (`ui/graph/data.rs:114`) label a trace that no
 registry node can ever select. The honest 1.0 statement is "no trace attached",
 not "sample values shown" — a local that exists but cannot be reached is not a
@@ -117,7 +117,7 @@ visible effect.（因此那两处标注标的是一条任何注册节点都选�
 ### 1.5 Plain answer: can a host hand its trace to a separate Studio process today?
 **No.** A `cargo install`ed `xirang-toolchain` is a different process; the trace
 is an owned, unserialized, private-field value with no writer and no reader.
-Even **in-process** it cannot: `App::new` is private (`studio/src/studio/app/lifecycle.rs:39`),
+Even **in-process** it cannot: `App::new` is private (`studio/studio/app/lifecycle.rs:39`),
 `App::load` unconditionally installs the sample (`:57,80-98`), and no API
 accepts a caller's `CallTrace`. The only trace I/O Studio has is the reverse
 direction: it runs `cargo rustc` to obtain MIR (`lifecycle.rs:185-211`).
@@ -138,8 +138,8 @@ direction: it runs `cargo rustc` to obtain MIR (`lifecycle.rs:185-211`).
 The file option is the only one that is both honest about the failure mode
 (a missing file is visibly missing) and consistent with the repo's existing
 artifact precedent: a versioned, line-oriented document written by an execution
-surface (`run_method/src/authoring/external_graft/plan.rs:96-127`, using
-`atomic_write` at `run_method/src/authoring/filesystem/filesystem.rs:18-27`) and
+surface (`run_method/authoring/external_graft/plan.rs:96-127`, using
+`atomic_write` at `run_method/authoring/filesystem/filesystem.rs:18-27`) and
 read by Studio — which also keeps host and Studio decoupled, since the host may
 be a long-running binary and Studio an `cargo install`ed tool.
 
@@ -196,11 +196,11 @@ construction from private `FrameRecord`s), so it **cannot** live in `core`.
 (`lexicon.rs:199-210`). `run_method` is an execution surface and already does
 `std::env` and file I/O (`call_trace.rs:31`, `external_graft/plan.rs:96-127`),
 so the writer belongs there, **not** in `cli`, because a host depends only on
-`run_method`. New file, mounted from `run_method/src/runtime/trace/trace.rs:4-11`:
-`run_method/src/runtime/trace/artifact/artifact.rs` (`#[path = …] pub mod artifact;`).
+`run_method`. New file, mounted from `run_method/runtime/trace/trace.rs:4-11`:
+`run_method/runtime/trace/artifact/artifact.rs` (`#[path = …] pub mod artifact;`).
 
 ```rust
-// run_method/src/runtime/trace/artifact/artifact.rs  (pure half: no I/O)
+// run_method/runtime/trace/artifact/artifact.rs  (pure half: no I/O)
 pub const TRACE_ARTIFACT_VERSION: u32 = 1;
 
 /// One recorded frame, flattened; `function`/`source` are interned on parse.
@@ -299,7 +299,7 @@ into `TraceStatus { Absent, Loaded, Mismatch }`; refuse, do not guess:
    while Studio's scanned snapshot used `authoring_namespace()` = active context,
    else `XIRANG_NAMESPACE`, else `"xirang.default"`
    (`authoring/validation/validation.rs:56-66`,
-   `studio/src/studio/app/support.rs:30-44`), so the defaults differed and an
+   `studio/studio/app/support.rs:30-44`), so the defaults differed and an
    unconfigured Studio would draw nothing and blame itself. **Decided and built
    (2026-09-26):** a launched session now adopts its project and takes the
    namespace from `[package] name` in the target manifest, so the two ends agree
@@ -328,7 +328,7 @@ sample is inert anyway (§1.4).
 
 ### 3.6 The 1.0 deliverable (label only)
 1.0 ships **no** ingest. It keeps `LIVE SAMPLE`
-(`studio/src/studio/ui/panels.rs:25`) and `· built-in sample ·`
+(`studio/studio/ui/panels.rs:25`) and `· built-in sample ·`
 (`ui/graph/data.rs:114`), because §3.5's checks have nothing to check without an
 artifact. The only 1.0 change is a regression test that the legend can never
 render a bare `LIVE` while the sample is installed. No empty enum variants and
@@ -360,7 +360,7 @@ real node — not a call graph, not every local in the process.
 ### 5.1 1.0 (the only tests that ship now)
 `LIVE_SAMPLE` regression: render the brand (`ui/ui.rs:126-137` already has the
 `TestBackend` helper) and assert the legend is `LIVE SAMPLE`, never a bare `LIVE`
-(`panels.rs:25`) — one test in `studio/src/studio/ui/ui.rs` tests.
+(`panels.rs:25`) — one test in `studio/studio/ui/ui.rs` tests.
 
 ### 5.2 1.x
 Unit, in `artifact.rs`:
@@ -375,7 +375,7 @@ Unit, in `artifact.rs`:
   resolves; `from_trace` on a recorded trace reproduces the same `render()` on a
   second pass (idempotence).
 
-End-to-end, in the app's own test layout — `studio/src/studio/app/tests/trace_ingest.rs`
+End-to-end, in the app's own test layout — `studio/studio/app/tests/trace_ingest.rs`
 and **not** `studio/tests/`, which is impossible: `App` is private, so the
 integration crate can only reach `launch`/`launch_with`. The test builds its own
 temp project, so it needs no fixture and is not feature-gated:
@@ -406,7 +406,7 @@ the correction:
   record kinds, and the measurement is why the check is not written as "walk the
   locals' ids".
 - §1.4's claim that `graph_locals` filters locals by the centre function's *node*
-  is false: it filters by function **name** (`studio/src/studio/app/support.rs`).
+  is false: it filters by function **name** (`studio/studio/app/support.rs`).
   A local recorded under a foreign node but the same function name would be
   drawn, which is exactly why identity check 4 has to gate installation rather
   than defer to the panel.
@@ -423,7 +423,7 @@ the correction:
 2. **Identity — decided (2026-09-26): yes.** A launched session reads `[package]
    name` from the target `Cargo.toml` and authors under it, so ingest does not
    require exporting `XIRANG_NAMESPACE` and the mismatch path no longer fires
-   by default. Built in `studio/src/studio/app/support.rs` (`namespace_for`,
+   by default. Built in `studio/studio/app/support.rs` (`namespace_for`,
    `package_name`, `manifest_for`), pinned by
    `studio::app::tests::project::{a_launched_session_authors_under_the_host_crates_package_name,
    the_package_name_comes_from_a_literal_package_key,
@@ -433,7 +433,7 @@ the correction:
    `XIRANG_HOST_MANIFEST` / `XIRANG_NAMESPACE` family. No CLI verb: it would
    move only the reader, and the env var already names a file that is not the
    convention one. Built and pinned
-   (`run_method/src/runtime/trace/artifact/io.rs`,
+   (`run_method/runtime/trace/artifact/io.rs`,
    `the_artifact_path_prefers_the_override_and_falls_back_to_the_lexicon`).
 4. **Escaping vs length-prefix — decided (2026-09-26): escaping.** The interface
    promises exact round-trip and refusal of malformed input, and both encodings can

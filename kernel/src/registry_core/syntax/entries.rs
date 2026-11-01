@@ -15,4 +15,12 @@ mod application;
 mod graft;
 
 pub use application::application_entries;
-pub use graft::{GraftExpressions, GraftSyntax, graft_entries, render_graft_expression};
+pub use graft::{
+    GraftEndpointSpan, GraftExpressions, GraftSpans, GraftSyntax, graft_entries,
+    render_graft_expression,
+};
+
+#[path = "entries/native_graft.rs"]
+mod native_graft;
+
+pub use native_graft::{append_native_graft, render_native_graft_expression, repoint_native_graft};

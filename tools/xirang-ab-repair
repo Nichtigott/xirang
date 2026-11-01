@@ -1,0 +1,433 @@
+#!/usr/bin/env python3
+"""A bounded A/B runner for the basic-repair comparison, and the metering it refuses to guess.
+
+这是一台**有界**的基础修复对照运行器，以及它拒绝靠猜的计量。
+
+Three things this file will not do, each because the alternative was measured to be wrong:
+
+* **It will not run without a registered cost cap.** The gate is an exit code, not a sentence in a
+  document (`plan` exits 2). A run whose ceiling lives only in prose gets started.
+* **It will not add the event stream to the persisted log.** Those two are the same provider
+  messages seen twice; the previous round repaired the gap with a per-field maximum, which the
+  specification itself calls a remedy with limits rather than a protocol. Here each record is paired
+  by its **(turn, step) identity**, and what cannot be paired is kept as a **bracket** — or as
+  `unknown` when a source cannot be read at all.
+* **It will not report a number it could not bound.** Output tokens are bounded by the protocol's
+  per-session ceiling; input tokens are not bounded by it at all, so the input component is an
+  estimate and says which round it came from.
+
+它**不**做三件事，每一件都是因为另一种做法被实测证伪过：
+
+* **没有登记费用帽就不开跑。** 门槛是退出码而不是文档里的一句话（`plan` 退出 2）。天花板只写在散文里的
+  运行，是会被人开起来的。
+* **不把事件流与持久日志相加。** 那两样是同一批供应商消息被看了两遍；上一轮用"逐字段取最大"补了这个缺口，
+  而规格自己说那**只是有局限的补救，不是通用计量协议**。这里每条记录按 **(turn, step) 身份**配对，配不上
+  的保留成一个**区间**——某个源根本读不了时则是 `unknown`。
+* **不报自己界不住的数。** 输出 token 由协议的单场上限界住；输入 token 协议**根本没有界**，因此输入那一栏是
+  一个估计，并写明它出自哪一轮。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# The uniform reference price of the comparison, in USD per million tokens. It is a *reference*,
+# not an account statement, and the same numbers the historical tables were built with.
+# 对照所用的统一参考价，美元/百万 token。它是**参考价**而不是账单，与历史各表用的是同一组数。
+PRICE = {"inputTokens": 0.15, "cacheReadTokens": 0.003, "cacheWriteTokens": 0.15, "outputTokens": 0.60}
+
+# The four disjoint provider buckets. They are never merged into one "tokens" figure: the prices
+# differ by two orders of magnitude and a merged number cannot be checked against a bill.
+# 供应商那四个互不相交的桶。它们从不被并成一个"token 总数"：单价差两个数量级，而并起来的数没法与账单对。
+KEYS = ("inputTokens", "cacheReadTokens", "cacheWriteTokens", "outputTokens")
+
+# The historical protocol, quoted so the estimate below can be recomputed rather than believed.
+# 历史协议，写在这里，使下面的估算可以被重算而不是被相信。
+PROTOCOL = {
+    "seconds_per_session": 900,
+    "steps_per_session": 60,
+    "output_tokens_per_session": 40_000,
+    "output_tokens_per_request": 16_384,
+    "reasoning_effort": "high",
+    "max_parallel": 2,
+}
+
+CAP_NAME = "ab-cost-cap.txt"
+
+
+def cap_of(run: Path) -> tuple[float, list[str]]:
+    """The registered ceiling and the lines that justify it, or an empty pair."""
+    path = run / CAP_NAME
+    if not path.is_file():
+        return 0.0, []
+    lines = [line.strip() for line in path.read_text().splitlines() if line.strip()]
+    if not lines:
+        return 0.0, []
+    try:
+        return float(lines[0].lstrip("$")), lines[1:]
+    except ValueError:
+        return 0.0, lines[1:]
+
+
+def refuse_without_cap(run: Path) -> None:
+    """**The gate.** No cap, no run — and the refusal says what to do next."""
+    ceiling, _ = cap_of(run)
+    if ceiling > 0:
+        return
+    print(
+        f"refused: no cost cap registered at {run / CAP_NAME}\n"
+        "  a run whose ceiling lives only in prose gets started; register one first:\n"
+        f"    1. calibrate:  xirang-ab-repair plan --cases 1 --arms 1 --input-per-session <measured>\n"
+        f"    2. write the ceiling and the reason into {run / CAP_NAME}\n"
+        "    3. re-run this command",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
+def estimate(sessions: int, per_session: dict, ceiling: float) -> dict:
+    """What a run of this size is expected to cost, and what this runner cannot bound.
+
+    The cap is a ceiling on **expected spend**, so the number compared against it has to be an
+    expectation too — built from measured per-session figures. A worst case is reported separately
+    and is **not** compared with the cap, because the protocol does not bound it: it caps output per
+    session and never total input, so "every session runs all sixty steps" has no finite estimate.
+    Comparing a worst case against an expectation is how a gate ends up always firing, which is the
+    same as having no gate.
+    帽是**期望支出**的上限，因此拿来与它比较的数也必须是期望——由实测的单场数字搭出来。最坏情况单独报，
+    且**不**与帽比较，因为协议界不住它：它界的是单场输出、从不界总输入，因此"每场都跑满六十步"没有有限估计。
+    把最坏情况拿去与期望比较，正是让门槛永远触发的方式——那与没有门槛是同一件事。
+    """
+    totals = {kind: sessions * per_session[kind] for kind in KEYS}
+    expected = usd(totals)
+    bounded_output = sessions * PROTOCOL["output_tokens_per_session"]
+    return {
+        "sessions": sessions,
+        "expected_tokens": totals,
+        "usd_expected": expected,
+        "output_bounded_tokens": bounded_output,
+        "usd_output_bounded": round(bounded_output * PRICE["outputTokens"] / 1e6, 6),
+        "usd_expected_over_cap": round(expected - ceiling, 6),
+        "cannot_bound": "total input: the protocol caps output per session and never total input; "
+                        "the 900s / 60-step limits and the live monitor are what stop a runaway",
+    }
+
+
+def plan(arguments: argparse.Namespace) -> int:
+    run = Path(arguments.run)
+    refuse_without_cap(run)
+    ceiling, reason = cap_of(run)
+    sessions = arguments.cases * arguments.arms
+    per_session = {
+        "inputTokens": arguments.input_per_session,
+        "cacheReadTokens": arguments.cache_read_per_session,
+        "cacheWriteTokens": arguments.cache_write_per_session,
+        "outputTokens": arguments.output_per_session,
+    }
+    worst = estimate(sessions, per_session, ceiling)
+    print(f"run       {run}")
+    print(f"cap       ${ceiling:.6f}  {' | '.join(reason) if reason else '(no reason recorded)'}")
+    print(f"cases     {arguments.cases} x {arguments.arms} arm(s) = {sessions} session(s)")
+    print(f"protocol  {PROTOCOL['seconds_per_session']}s / {PROTOCOL['steps_per_session']} steps / "
+          f"{PROTOCOL['output_tokens_per_session']} output tokens per session, "
+          f"{PROTOCOL['output_tokens_per_request']} per request, {PROTOCOL['reasoning_effort']}, "
+          f"at most {PROTOCOL['max_parallel']} in parallel")
+    print("per session (measured, the same quantity the cap is):")
+    for kind in KEYS:
+        print(f"  {kind:<18} {per_session[kind]:>9}  = ${per_session[kind] * PRICE[kind] / 1e6:.6f}")
+    print(f"expected  ${worst['usd_expected']:.6f}   "
+          f"(uncached {worst['expected_tokens']['inputTokens']}, "
+          f"cache read {worst['expected_tokens']['cacheReadTokens']}, "
+          f"output {worst['expected_tokens']['outputTokens']})")
+    print(f"not bound {worst['cannot_bound']}")
+    print(f"          output alone is bounded at {worst['output_bounded_tokens']} tokens "
+          f"= ${worst['usd_output_bounded']:.6f}")
+    if worst["usd_expected"] > ceiling:
+        shortfall = (worst["usd_expected"] - ceiling) / worst["usd_expected"] * 100
+        print(
+            f"refused (exit 3): the expected ${worst['usd_expected']:.6f} exceeds the registered cap "
+            f"${ceiling:.6f} by ${worst['usd_expected_over_cap']:.6f}; the per-session figures above "
+            f"would have to drop about {shortfall:.1f}% for this run to fit. Lower the cost, or "
+            "register a larger cap with a reason — do not silently raise the ceiling",
+            file=sys.stderr,
+        )
+        return 3
+    print(f"ok: the expected ${worst['usd_expected']:.6f} fits the registered cap ${ceiling:.6f} "
+          f"with ${-worst['usd_expected_over_cap']:.6f} of headroom")
+    return 0
+
+
+def read_events(path: Path) -> tuple[dict, int]:
+    """Every step the event stream recorded, by `(turn, step)`, and how many steps it named."""
+    steps: dict[tuple[int, int], dict] = {}
+    named = 0
+    if not path.is_file():
+        return steps, named
+    for line in path.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue  # A live writer may not have finished its last line.
+        if event.get("type") != "status" or event.get("phase") != "step_end":
+            continue
+        named += 1
+        identity = (event.get("turn"), event.get("step"))
+        usage = event.get("usage") or {}
+        if any(kind not in usage for kind in KEYS):
+            continue
+        steps[identity] = usage
+    return steps, named
+
+
+def read_persisted(run: Path) -> tuple[dict, dict]:
+    """The supplier's own records, by `(turn, step)` identity, plus what could not be read."""
+    if shutil.which("zstd") is None:
+        return {}, {"unreadable": "zstd is not on PATH, so the persisted log was not read"}
+    steps: dict[tuple[int, int], dict] = {}
+    notes = {"messages": 0, "without_usage": 0, "logs": 0}
+    for log in sorted((run / "sessions").rglob("session.v4.jsonl.zstd")):
+        notes["logs"] += 1
+        decoded = subprocess.run(["zstd", "-dc", str(log)], capture_output=True, text=True)
+        for line in decoded.stdout.splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("type") != "assistant/message":
+                continue
+            data = entry.get("data") or {}
+            if (data.get("message") or {}).get("source", {}).get("kind") != "model":
+                continue
+            notes["messages"] += 1
+            usage = data.get("usage")
+            if not usage or any(type(usage.get(kind)) is not int or usage[kind] < 0 for kind in KEYS):
+                notes["without_usage"] += 1
+                continue
+            # `message.id` is the supplier's own identity for the response; `(turn, step)` is the
+            # one both sources carry, so the pairing uses it and the id travels with the record.
+            # `message.id` 是供应商对这次回复的身份；`(turn, step)` 是两个源都带的那个，因此配对用它，
+            # 而 id 随记录一起走。
+            steps[(data.get("turn"), data.get("step"))] = dict(
+                usage, message_id=(data.get("message") or {}).get("id")
+            )
+    return steps, notes
+
+
+def reconcile_run(run: Path) -> dict:
+    """Pair one run's two usage sources by identity, and keep what cannot be paired as a bracket."""
+    events, named = read_events(run / "events.jsonl")
+    persisted, notes = read_persisted(run)
+    matched = sorted(set(events) & set(persisted))
+    event_only = sorted(set(events) - set(persisted))
+    persisted_only = sorted(set(persisted) - set(events))
+    conflicts = []
+    low = {kind: 0 for kind in KEYS}
+    high = {kind: 0 for kind in KEYS}
+    for identity in matched:
+        event, saved = events[identity], persisted[identity]
+        for kind in KEYS:
+            first, second = event[kind], saved[kind]
+            low[kind] += min(first, second)
+            high[kind] += max(first, second)
+            if first != second:
+                conflicts.append(
+                    {"turn": identity[0], "step": identity[1], "kind": kind,
+                     "event": first, "persisted": second, "message_id": saved.get("message_id")}
+                )
+    for identity in event_only:
+        for kind in KEYS:
+            low[kind] += events[identity][kind]
+            high[kind] += events[identity][kind]
+    for identity in persisted_only:
+        for kind in KEYS:
+            low[kind] += persisted[identity][kind]
+            high[kind] += persisted[identity][kind]
+    return {
+        "run": run.name,
+        "event_steps_named": named,
+        "event_identities": len(events),
+        "persisted_identities": len(persisted),
+        "matched": len(matched),
+        "event_only": [list(identity) for identity in event_only],
+        "persisted_only": [list(identity) for identity in persisted_only],
+        "conflicts": conflicts,
+        "persisted": notes,
+        "bracket_low": low,
+        "bracket_high": high,
+        "usage_sources_match": not event_only and not persisted_only and not conflicts,
+    }
+
+
+def usd(totals: dict) -> float:
+    return round(sum(totals.get(kind, 0) * PRICE[kind] for kind in KEYS) / 1e6, 6)
+
+
+def reconcile(arguments: argparse.Namespace) -> int:
+    root = Path(arguments.run)
+    # A run directory holds sessions either directly or one level down under `runs/`; both layouts
+    # are in the tree, so the reader accepts both rather than making the caller know which.
+    # 一个运行目录，会话要么直接住在里面，要么住在下一层的 `runs/`；树里两种布局都有，因此读法两种都收，
+    # 而不是让调用方去知道是哪一种。
+    search = root / "runs" if (root / "runs").is_dir() else root
+    runs = sorted(path for path in search.iterdir() if (path / "events.jsonl").is_file())
+    if not runs:
+        print(f"nothing to reconcile under {root}: no run has an events.jsonl", file=sys.stderr)
+        return 4
+    total_low = {kind: 0 for kind in KEYS}
+    total_high = {kind: 0 for kind in KEYS}
+    disagreeing = 0
+    for run in runs:
+        answer = reconcile_run(run)
+        for kind in KEYS:
+            total_low[kind] += answer["bracket_low"][kind]
+            total_high[kind] += answer["bracket_high"][kind]
+        if not answer["usage_sources_match"]:
+            disagreeing += 1
+        print(f"{answer['run']}")
+        print(f"  identities: event {answer['event_identities']} (of {answer['event_steps_named']} step_end) "
+              f"/ persisted {answer['persisted_identities']} / matched {answer['matched']}")
+        if answer["event_only"]:
+            print(f"  the persisted log is missing {len(answer['event_only'])} step(s): {answer['event_only']}")
+        if answer["persisted_only"]:
+            print(f"  the event stream is missing {len(answer['persisted_only'])} step(s), recovered "
+                  f"from the supplier's own record: {answer['persisted_only']}")
+        if answer["conflicts"]:
+            print(f"  {len(answer['conflicts'])} identity conflict(s), first: {answer['conflicts'][0]}")
+        if answer["persisted"].get("without_usage"):
+            print(f"  {answer['persisted']['without_usage']} persisted message(s) carry no usage: "
+                  "unknown, and never counted as zero")
+        if answer["persisted"].get("unreadable"):
+            print(f"  {answer['persisted']['unreadable']}")
+        print(f"  bracket ${usd(answer['bracket_low']):.6f} .. ${usd(answer['bracket_high']):.6f}")
+    print(f"\n{len(runs)} run(s), {disagreeing} whose two sources do not agree")
+    print(f"total ${usd(total_low):.6f} .. ${usd(total_high):.6f}")
+    print("accounting: records are paired by (turn, step). A step both sources carry with the same "
+          "numbers counts once; one they disagree about keeps **both** values and the bracket widens; "
+          "a step only one source carries counts once, from that source, and the source that missed "
+          "it is named — that is a finding about the metering device, not a range in the cost. "
+          "The two sources are never summed, and usage a record does not carry stays unknown rather "
+          "than becoming zero.")
+    if arguments.json:
+        Path(arguments.json).write_text(json.dumps(
+            {"runs": [reconcile_run(run) for run in runs],
+             "total_bracket_low": total_low, "total_bracket_high": total_high}, indent=2))
+    return 0
+
+
+def run(arguments: argparse.Namespace) -> int:
+    root = Path(arguments.run)
+    refuse_without_cap(root)
+    if not (root / "manifest.json").is_file():
+        print(f"NOT_RUN: {root} has no manifest.json, so there is no pre-registered schedule to run",
+              file=sys.stderr)
+        return 4
+    # **The schedule is the manifest's, not the caller's.** Sizing the estimate from a default
+    # `--cases` is how a gate lets a nine-session run start under a cap computed for three; the
+    # register is what was pre-registered, so a disagreement is refused instead of resolved.
+    # **场次以 manifest 为准，不以调用方为准。** 拿默认 `--cases` 去算估算，正是让"九场"在"按三场算出来的帽"
+    # 底下开跑的方式；预先登记的是那份清单，因此不一致要被拒绝，而不是被悄悄调和。
+    manifest = json.loads((root / "manifest.json").read_text())
+    registered = len(manifest.get("schedule") or [])
+    if registered == 0:
+        print(f"NOT_RUN: {root}/manifest.json registers no schedule", file=sys.stderr)
+        return 4
+    if arguments.cases * arguments.arms != registered:
+        print(
+            f"refused: --cases {arguments.cases} x --arms {arguments.arms} is "
+            f"{arguments.cases * arguments.arms} session(s), but the pre-registered schedule has "
+            f"{registered}; the register decides, not this flag",
+            file=sys.stderr,
+        )
+        return 2
+    if not arguments.confirm:
+        print("refused: running spends money; pass --confirm to say so", file=sys.stderr)
+        return 2
+    # A finished run is evidence; a second pass over it would overwrite the thing it is evidence of.
+    # 跑完的一轮是证据；在它上面再跑一遍，会覆盖它作为证据所是的那个东西。
+    if (root / "runs").is_dir() and any((root / "runs").iterdir()):
+        print(
+            f"refused: {root}/runs already holds results; a finished run is evidence, and this "
+            "runner does not overwrite it — point --run at a fresh pre-registered directory",
+            file=sys.stderr,
+        )
+        return 2
+    ceiling, _ = cap_of(root)
+    worst = estimate(
+        registered,
+        {
+            "inputTokens": arguments.input_per_session,
+            "cacheReadTokens": arguments.cache_read_per_session,
+            "cacheWriteTokens": arguments.cache_write_per_session,
+            "outputTokens": arguments.output_per_session,
+        },
+        ceiling,
+    )
+    if worst["usd_expected"] > ceiling:
+        print(f"refused: the expected ${worst['usd_expected']:.6f} exceeds the cap ${ceiling:.6f}",
+              file=sys.stderr)
+        return 3
+    if not shutil.which("dsh"):
+        print("NOT_RUN: no `dsh` on PATH, so no provider session can be started; "
+              "the runner, its cap gate and its metering are delivered and exercised by "
+              "`plan` and `reconcile`", file=sys.stderr)
+        return 4
+    driver = root / "run.py"
+    if not driver.is_file():
+        print(f"NOT_RUN: {driver} is missing; the frozen driver is part of the pre-registered run",
+              file=sys.stderr)
+        return 4
+    print(f"starting {driver} under a registered cap of ${ceiling:.6f}", flush=True)
+    return subprocess.call([sys.executable, str(driver)])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def common(node: argparse.ArgumentParser) -> None:
+        node.add_argument("--run", required=True, help=f"the run directory holding {CAP_NAME}")
+
+    def measured(node: argparse.ArgumentParser) -> None:
+        """The per-session figures the cap is compared against, all of them measured, never assumed.
+
+        The defaults are the current round's own numbers divided by its nine sessions, so the first
+        invocation of `plan` reproduces the table the specification prints — and refuses, because
+        those numbers do not yet fit the stage target.
+        与帽比较的单场数字，全部实测、从不假定。默认值取自本轮自己的九场合计除以九，因此第一次跑 `plan`
+        就会复现规格里那张表——并且**被拒**，因为那些数还没落进阶段目标。
+        """
+        node.add_argument("--cases", type=int, default=3)
+        node.add_argument("--arms", type=int, default=1)
+        node.add_argument("--input-per-session", type=int, default=13_427,
+                          help="measured UNCACHED input tokens per session")
+        node.add_argument("--cache-read-per-session", type=int, default=134_400)
+        node.add_argument("--cache-write-per-session", type=int, default=0)
+        node.add_argument("--output-per-session", type=int, default=5_476)
+
+    planner = sub.add_parser("plan", help="print the bounded schedule and the worst-case cost")
+    common(planner)
+    measured(planner)
+    planner.set_defaults(handler=plan)
+
+    pairer = sub.add_parser("reconcile", help="pair the two usage sources by (turn, step) identity")
+    common(pairer)
+    pairer.add_argument("--json")
+    pairer.set_defaults(handler=reconcile)
+
+    runner = sub.add_parser("run", help="execute a pre-registered schedule under the cap")
+    common(runner)
+    measured(runner)
+    runner.add_argument("--confirm", action="store_true")
+    runner.set_defaults(handler=run)
+
+    arguments = parser.parse_args()
+    return arguments.handler(arguments)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

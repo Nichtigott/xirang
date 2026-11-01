@@ -1,0 +1,5 @@
+# 本包的原生语言是 Zig。构建按这个声明选读取器与编译器；没有它，构建会按源码标记推断。
+# This package's native language is Zig. The build picks its reader and compiler from this line;
+# without it, the build infers the language from the sources' markers.
+[native]
+language = "zig"

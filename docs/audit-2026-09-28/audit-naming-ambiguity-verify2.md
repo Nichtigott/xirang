@@ -28,16 +28,16 @@
   包名: ['xirang-run-method', 'xirang-build-method', 'xirang-debug-method']
   lib名: ['xirang_run_method', 'xirang_build_method', 'xirang_debug_method']
   模块名: ['data', 'face_helpers', 'misc', 'support', 'test_support']
-      data: [('studio/src/studio/ui/graph.rs', 20, 'graph')]
-      face_helpers: [('run_method/src/macros/face.rs', 7, 'face')]
-      misc: [('studio/src/studio/app/state/state.rs', 14, 'state')]
-      support: [('studio/src/studio/app/app.rs', 34, 'app')]
-      test_support: [('build_method/src/renderer.rs', 32, 'renderer')]
+      data: [('studio/studio/ui/graph.rs', 20, 'graph')]
+      face_helpers: [('run_method/macros/face.rs', 7, 'face')]
+      misc: [('studio/studio/app/state/state.rs', 14, 'state')]
+      support: [('studio/studio/app/app.rs', 34, 'app')]
+      test_support: [('build_method/renderer.rs', 32, 'renderer')]
   合计 名字 14 / 声明处 14
 ```
 
 - 我 t35 点名的 4 个（`support`/`misc`/`data`/`face_helpers`）**逐条命中，路径与行号与我一致** ✓。
-- **它多找到 1 个我漏的**：`test_support`（`build_method/src/renderer.rs:32`）。我实测该行确为 `#[cfg(test)] pub(crate) mod test_support {` ✓——**撤回我 t35 "漏 4 名"的表述，正确数是 5 名**（我当时的扫描把 inline 形式与 `pub(crate)` 前缀都漏了）。
+- **它多找到 1 个我漏的**：`test_support`（`build_method/renderer.rs:32`）。我实测该行确为 `#[cfg(test)] pub(crate) mod test_support {` ✓——**撤回我 t35 "漏 4 名"的表述，正确数是 5 名**（我当时的扫描把 inline 形式与 `pub(crate)` 前缀都漏了）。
 - `mir`↔`mirror` 已列入：R-4c 的 7 对里第 6 对是 `mir↔mirror`（`core/src/registry_core/mir/mir.rs:1` vs `macro/src/mirror.rs:1`）✓，且 7 对的**两侧都真实存在**（两侧定义处见 §5.1 的表，逐条由我扫描得到）✓。
 - "净违规 17" 已删除，改为三指标分别给数 ✓（见 §3）。
 - **根因披露诚实**：修订记录（`:14-43`）写明上一版贴出的"本次输出"取自更早一次**只判首 token** 的运行、规则从未真正执行——这是与 t30（我自己的 D-3 谓词配错）**同型**的失误，它主动写出来了，认可。
@@ -141,13 +141,13 @@ print("声明处", len(bn))              # 与 R-4b 的"声明处数 = 0"直接�
 
 | 对 | 短侧定义处 | 长侧定义处 | 我的判定 |
 | --- | --- | --- | --- |
-| `app` ↔ `application` | `studio/src/studio/studio.rs:5`（Studio TUI 的 app） | `core/src/registry_core/syntax/entries.rs:13`（`application!` 宏的条目） | **过火**：跨 crate、跨领域，两侧都不是坏名字；`app` 是 TUI 的规范叫法，`application` 是宏的领域词。建议**登记豁免**，不要为消对而改名 |
-| `app` ↔ `apply` | 同上 | `mcp/src/lib.rs:67` + `core/src/registry_core/tree/graft_ops/record.rs:40` | 真近名（一字母之差，同一工作区词汇）✓ 保留 |
-| `ide` ↔ `identity` | `build_method/src/renderer.rs:21` | `core/src/registry_core.rs:18` | 真近名（`ide` 单独作模块名过泛）✓ 保留 |
-| `json` ↔ `jsonl` | `core/src/registry_core.rs:20` + `cli/src/explain.rs:34` | `core/src/registry_core/mir/mir.rs:23` | 真近名（AMB-12 已单独立项）✓ 保留 |
+| `app` ↔ `application` | `studio/studio/studio.rs:5`（Studio TUI 的 app） | `core/src/registry_core/syntax/entries.rs:13`（`application!` 宏的条目） | **过火**：跨 crate、跨领域，两侧都不是坏名字；`app` 是 TUI 的规范叫法，`application` 是宏的领域词。建议**登记豁免**，不要为消对而改名 |
+| `app` ↔ `apply` | 同上 | `mcp/lib.rs:67` + `core/src/registry_core/tree/graft_ops/record.rs:40` | 真近名（一字母之差，同一工作区词汇）✓ 保留 |
+| `ide` ↔ `identity` | `build_method/renderer.rs:21` | `core/src/registry_core.rs:18` | 真近名（`ide` 单独作模块名过泛）✓ 保留 |
+| `json` ↔ `jsonl` | `core/src/registry_core.rs:20` + `cli/explain.rs:34` | `core/src/registry_core/mir/mir.rs:23` | 真近名（AMB-12 已单独立项）✓ 保留 |
 | `lex` ↔ `lexicon` | `core/src/registry_core/source/source.rs:11`（词法扫描） | `core/src/registry_core.rs:22`（共享文本契约） | 真近名（`lex`→`lexer` 的改法正确）✓ 保留 |
-| `mir` ↔ `mirror` | `mcp/src/lib.rs:103` + `core/src/registry_core.rs:24` + `debug_method/src/lib.rs:23` | `macro/src/lib.rs:59` | 真近名（我 t35 的 V35-07）✓ 保留 |
-| `render` ↔ `renderer` | `core/src/registry_core/mir/mir.rs:29` + `run_method/src/authoring/manifest/face/face.rs:18` | `build_method/src/lib.rs:65` | 真近名 ✓ 保留 |
+| `mir` ↔ `mirror` | `mcp/lib.rs:103` + `core/src/registry_core.rs:24` + `debug_method/src/lib.rs:23` | `macro/src/lib.rs:59` | 真近名（我 t35 的 V35-07）✓ 保留 |
+| `render` ↔ `renderer` | `core/src/registry_core/mir/mir.rs:29` + `run_method/authoring/manifest/face/face.rs:18` | `build_method/lib.rs:65` | 真近名 ✓ 保留 |
 
 **结论**：R-4c 的谓词（前缀 + 剩余无下划线 + 非复数）命中 7 对，其中 **6 对是真近名、1 对（`app↔application`）建议走登记豁免**。谓词本身不必改，但验收口径要补一句："违规对数 = 0"的实现方式是「**在更短/更泛的一侧改名**」**或**「**在 `ALLOWED_PAIRS` 里登记 + 一行理由**」——否则未来有人为了过门禁把 `app` 或 `application` 改名。这与我 §D 的 D-8（别名同名同义、需一行说明）是同一纪律。
 - 另 `:634` 有个错字 `strudio` → `studio`（纯文字，顺手改）。

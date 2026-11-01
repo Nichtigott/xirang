@@ -35,15 +35,9 @@ pub fn accept_canvas(canvas_name: &str, requested: u32) -> u32 {
     clamp_canvas_width(requested)
 }
 
-crate::node_editor_object! {
-    kind: Canvas,
-    exports: ["node_editor.render"],
-    parent: crate::control::object::node_editor::NODE_ID,
-    handle_contracts: [crate::control::object::node_editor::NodeEditorHandle],
-    flow: FlowContract::new(
-        ContractId::new("node_editor.render.v1"),
-        1,
-        "NodeEditorInput",
-        "NodeEditorFrame",
-    ),
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Canvas>()
+    .exports(&["node_editor.render"])
+    .under(crate::control::object::node_editor::NODE_ID)
+    .handle_contracts(xirang_toolchain::contracts!(Canvas: crate::control::object::node_editor::NodeEditorHandle))
+    .flow(FlowContract::new(ContractId::new("node_editor.render.v1"), 1 , "NodeEditorInput" , "NodeEditorFrame" ,));

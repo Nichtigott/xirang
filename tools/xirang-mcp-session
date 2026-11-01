@@ -62,13 +62,48 @@ for index, name in enumerate(names, start=10):
     assert "result" in answer, f"{name} answered with a protocol error: {answer}"
     text = json.dumps(answer["result"])
     assert text.strip(), f"{name} answered with nothing"
-    if "needs" in text or "requires" in text or "must" in text:
+    if answer["result"].get("isError") is True:
         refusals += 1
         first = answer["result"].get("content", [{}])[0].get("text", "").splitlines()[:1]
         printf(f"  {name:<24} refused with a way forward: {first[0][:90] if first else ''}")
     else:
         printf(f"  {name:<24} answered")
 assert refusals or len(names) <= 3, "no tool refused, so the refusal path is untested"
+
+# Read-first discovery is independently callable with read-only annotations.
+explore_entry = next(t for t in listed if t["name"] == "xirang.explore")
+assert explore_entry["annotations"]["readOnlyHint"] is True
+send({"jsonrpc": "2.0", "id": 99, "method": "tools/call", "params": {
+    "name": "xirang.explore", "arguments": {"query": "src/lib.rs src/main.rs"}}})
+explored = recv()["result"]
+assert explored.get("isError") is False, explored
+explored_text = explored["content"][0]["text"]
+assert "file src/" in explored_text and "evidence xirang.explore" in explored_text, explored_text
+
+# A real client can only invoke the advertised names. Discovering a hidden tool's name in
+# prose must lead to an executable call, not another manual page.
+# 真客户端只能调用已注册的名字；发现隐藏工具后必须能执行，不能再次得到手册。
+assert "xirang_tools" in names
+send({"jsonrpc": "2.0", "id": 100, "method": "tools/call", "params": {
+    "name": "xirang_tools", "arguments": {"tool": "read"}}})
+manual = recv()["result"]
+assert manual.get("isError") is False, manual
+assert "inputSchema" in manual["content"][0]["text"], manual
+send({"jsonrpc": "2.0", "id": 101, "method": "tools/call", "params": {
+    "name": "xirang_tools", "arguments": {
+        "tool": "read", "arguments": {"path": "Cargo.toml", "whole": True}}}})
+read = recv()["result"]
+assert read.get("isError") is False, read
+body = read["content"][0]["text"]
+assert "Cargo.toml:1-" in body and "evidence xirang.read" in body, body
+assert "inputSchema" not in body, body
+send({"jsonrpc": "2.0", "id": 102, "method": "tools/call", "params": {
+    "name": "xirang_tools", "arguments": {"tool": "xirang_tools", "arguments": {}}}})
+assert recv()["result"]["isError"] is True
+print("discovery       manual -> read through advertised gateway; recursion refused")
 proc.stdin.close()
+proc.stdin = None
+_, stderr = proc.communicate(timeout=30)
+assert proc.returncode == 0, stderr
 print(f"OK — {len(names)} tools mounted over stdio, {refusals} answered with a named refusal")
 PY

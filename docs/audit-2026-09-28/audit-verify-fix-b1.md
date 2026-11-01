@@ -75,7 +75,7 @@ refusal_left_entry_untouched=true
 PROBE_LOCK=PASS
 ```
 覆盖验收的三件事：① 同身份（五元组）不同 checksum 的追加被 `with_appended_line` **拒绝**，返回 `Err` 而不是写出一份宿主读不了的锁；② 末行无换行的锁追加新身份后**补上换行**，结果 `PluginCatalog::parse` = Ok 且 2 条记录（旧行为会粘成 `extensionuser|…`）；③ 我按调用方契约复刻「被拒就不写」——入口文件写入前后 `before == after`**逐字节未变**。
-调用点是真实的：`toolchain/src/studio/src/studio/app/mutations.rs:320` 用 `PluginCatalog::with_appended_line(&existing, &line)`、`:299` 用 `contains_record(&candidate)`。
+调用点是真实的：`toolchain/src/studio/studio/app/mutations.rs:320` 用 `PluginCatalog::with_appended_line(&existing, &line)`、`:299` 用 `contains_record(&candidate)`。
 
 **变异测试（旧行为）**：备份 `catalog.rs`（sha256 `3e932bfb…`）后把 `with_appended_line` 改成旧写入方那套——不校验、不补换行：`Ok(format!("{lock}{line}\n"))`。
 ```text
@@ -156,9 +156,9 @@ test result: FAILED. 2 passed; 2 failed
 | `toolchain/src/build_time/src/node_identity.rs:37` | `static CACHED_NODE_IDS: OnceLock<NodeIdCache>` | **需要（已修）** | 唯一存 `NodeId` 的进程级表；`get` 现在 (namespace, relative) + 复核 |
 | `toolchain/src/build_time/src/identity.rs:22` | `static PACKAGE_NAMESPACE_OVERRIDE: OnceLock<String>` | 不需要（它就是命名空间来源） | 先到先得是设计；每次管线运行由 `run_as_package` 的线程局部位（`toolchain/src/build_time/src/identity.rs:45`）压过它，且每一条生产路径都从 `toolchain/src/build_time/src/lib.rs:234` 进作用域 |
 | `toolchain/src/runtime/src/authoring/context.rs:33` | `thread_local! ACTIVE_CONTEXT: RefCell<Option<AuthoringContext>>` | 不需要 | 线程局部 + 作用域安装，且 `AuthoringContext{package_root, namespace}` **自带命名空间** |
-| `toolchain/src/studio/src/studio/app/project_context.rs:24` | `thread_local! PROJECT_CONTEXT` | 不需要 | 同上：`select_project` 把 `{root, manifest, namespace}` 一起装进本线程 |
+| `toolchain/src/studio/studio/app/project_context.rs:24` | `thread_local! PROJECT_CONTEXT` | 不需要 | 同上：`select_project` 把 `{root, manifest, namespace}` 一起装进本线程 |
 | `toolchain/src/runtime/src/runtime/trace/snapshot/parse.rs:295` | `Mutex<BTreeSet<&'static str>>`（字符串 interner） | 不需要 | 去重的是 artifact 文本里的字符串，不是身份 |
-| `toolchain/src/build_time/src/scope_view.rs:203`、`toolchain/src/build_time/src/graft_plan_check.rs:450`、`toolchain/src/build_time/src/face_view.rs:309`、`toolchain/src/build_time/src/package.rs:116`、`toolchain/src/runtime/src/authoring/filesystem.rs:29`、`:57`、`toolchain/src/runtime/src/runtime/trace/snapshot/io.rs:119`、`toolchain/src/mcp/src/preview.rs:33`、`toolchain/src/mcp/src/source_index.rs:229`、`toolchain/src/bin/xirang-dev.rs:289` | `AtomicU64` 序号 | 不需要 | 只发临时文件名，不带身份 |
+| `toolchain/src/build_time/src/scope_view.rs:203`、`toolchain/src/build_time/src/graft_plan_check.rs:450`、`toolchain/src/build_time/src/face_view.rs:309`、`toolchain/src/build_time/src/package.rs:116`、`toolchain/src/runtime/src/authoring/filesystem.rs:29`、`:57`、`toolchain/src/runtime/src/runtime/trace/snapshot/io.rs:119`、`toolchain/src/mcp/preview.rs:33`、`toolchain/src/mcp/source_index.rs:229`、`toolchain/src/bin/xirang-dev.rs:289` | `AtomicU64` 序号 | 不需要 | 只发临时文件名，不带身份 |
 
 - 没有发现 `LazyLock` / `OnceCell` / `lazy_static!` / `Mutex<HashMap<…>>` 形态的缓存；`core/` 里**没有**任何进程级 `static` 缓存。
 - 一处**值得记的邻近风险**（不是缺陷）：`package_namespace()` 在**没有**运行作用域时会读那个进程级 pin，因此任何"直接调 `package_namespace()` 的旁路代码"都会粘在第一个包上；当前的每一条生产路径都经过 `run_as_package`（`toolchain/src/build_time/src/lib.rs:234`）或线程局部上下文，所以现在成立——这条不变量没有门禁钉住，建议后续加一条断言或注释。
@@ -191,10 +191,10 @@ test result: FAILED. 2 passed; 2 failed
 | --- | --- | --- |
 | `core/src/registry_core/authoring/parse/admission.rs` | t43（B1 修复①） | ✓ |
 | `core/src/registry_core/plugin/catalog/catalog.rs` | t44（B1 修复②） | ✓ |
-| `toolchain/src/studio/src/studio/app/mutations.rs` | t44 + t54（拆分） | ✓ |
-| `?? toolchain/src/studio/src/studio/app/tests/lock_writes.rs` | t54（t44 的四条钉子搬到这里） | ✓ |
+| `toolchain/src/studio/studio/app/mutations.rs` | t44 + t54（拆分） | ✓ |
+| `?? toolchain/src/studio/studio/app/tests/lock_writes.rs` | t54（t44 的四条钉子搬到这里） | ✓ |
 | `toolchain/src/build_time/src/node_id.rs`、`toolchain/src/build_time/src/identity_cache.rs` | t45（B1 修复③） | ✓ |
-| `toolchain/src/studio/src/studio/app/keyboard.rs`、`toolchain/src/studio/src/studio/app/source_index.rs` | **t52（B1-4）**，其交接里已声明 | ✓（不属于 t43/t44/t45，但已声明） |
+| `toolchain/src/studio/studio/app/keyboard.rs`、`toolchain/src/studio/studio/app/source_index.rs` | **t52（B1-4）**，其交接里已声明 | ✓（不属于 t43/t44/t45，但已声明） |
 
 文档侧的 `docs/audit-2026-09-28/` 变动（`audit-report.md` / `audit-findings.json` / `audit-structure-map.html` 以及 `audit-verify-fix-b1-1.md`、`-b1-4.md`、`audit-report-recheck-full.md`）都是**别人的产物**，不在本任务 inScope 内、我一行未碰。我自己的三次变异全部有 `/tmp/b1mut-backup/` 备份并已逐字节还原（三处 `cmp` 全 IDENTICAL、`git diff --stat` 与开工前一致）。**结论：无未声明改动，我的改动为零残留。**
 

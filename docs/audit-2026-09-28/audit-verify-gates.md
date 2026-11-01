@@ -163,7 +163,7 @@
 **备注**：作者在正文里引 `AGENTS.md:88-90`，实际那句 "the count is not restated here" 在 `AGENTS.md:85`（差 3 行，属散文引用精度，非门禁锚点）。维持 MINOR。
 
 ### G-22 · 证实 · 维持 MINOR
-`./probe lint_required .` 在真实工作区返回 **11** 条：十个 `src/lib.rs`（含未发布的 `conventions/src/lib.rs`）加 `mcp/src/main.rs`；而 `conventions/src/lint.rs:15` 的模块级文档写 "the requirement covers the nine published crates' library roots"，同文件 `:27-38` 的函数文档才说清"除示例宿主之外的每个 crate 目录 + 那一个二进制根"。维持 MINOR。
+`./probe lint_required .` 在真实工作区返回 **11** 条：十个 `src/lib.rs`（含未发布的 `conventions/src/lib.rs`）加 `mcp/main.rs`；而 `conventions/src/lint.rs:15` 的模块级文档写 "the requirement covers the nine published crates' library roots"，同文件 `:27-38` 的函数文档才说清"除示例宿主之外的每个 crate 目录 + 那一个二进制根"。维持 MINOR。
 
 ### G-23 · 证实 · 维持 MINOR
 `conventions/src/doc_anchors.rs:18-20` 写 "Anchors in audit and design documents are exempt"，实现是 `conventions/src/doc_blocks.rs:133` 的**文件名前缀**判定（探针：`lane-a.md` → false，`audit-a.md` → true）。措辞把"文件名约定"说成"文档类别"。维持 MINOR（与 G-06 同源，修 G-06 时一起改）。

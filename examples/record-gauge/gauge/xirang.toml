@@ -1,0 +1,5 @@
+# 构建期记录文件：一个面声明在无法放置段的目标格式里（JVM/CLR/Go 的载体），生产者把记录写进这个文件。
+# The build-time record file: one face declared in a target format that cannot place a section (the
+# JVM/CLR/Go carrier), and the producer writes its record into this file.
+[record]
+file = "native/gauge.faces"

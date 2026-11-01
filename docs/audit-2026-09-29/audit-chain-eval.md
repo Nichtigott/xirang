@@ -626,12 +626,12 @@ EXIT 0
 $ python3 /home/nich/Moirai_N3/nichlink/tools/xirang-chain-eval-graph.py --root /tmp/xirang-eval/demo/base --out /tmp/xirang-eval/demo/plan.json --seed 20260929 --plan 1:impl,2:chain,4:impl
 plan: 3 rounds, members ['kernel', 'macro', 'toolchain'], boundary toolchain/src/mcp/src, nodes 1627
   round  1 d=1 impl  seed=20260929 site=kernel/src/registry_core/source/calls.rs::direct_calls
-  round  2 d=2 chain seed=20268848 site=toolchain/src/studio/src/studio/ui/search.rs::draw_search
-  round  3 d=4 impl  seed=20276767 site=toolchain/src/studio/src/studio/app/pointer.rs::handle_mouse
+  round  2 d=2 chain seed=20268848 site=toolchain/src/studio/studio/ui/search.rs::draw_search
+  round  3 d=4 impl  seed=20276767 site=toolchain/src/studio/studio/app/pointer.rs::handle_mouse
 EXIT 0
 round  1 d=1 impl  seed=20260929 observable=kernel/src/registry_core/source/source.rs::mask_non_code site=kernel/src/registry_core/source/calls.rs::direct_calls
-round  2 d=2 chain seed=20268848 observable=toolchain/src/studio/src/studio/ui/graph.rs::search_center_ref site=toolchain/src/studio/src/studio/ui/search.rs::draw_search
-round  3 d=4 impl  seed=20276767 observable=toolchain/src/studio/src/studio/app/lifecycle.rs::note site=toolchain/src/studio/src/studio/app/pointer.rs::handle_mouse
+round  2 d=2 chain seed=20268848 observable=toolchain/src/studio/studio/ui/graph.rs::search_center_ref site=toolchain/src/studio/studio/ui/search.rs::draw_search
+round  3 d=4 impl  seed=20276767 observable=toolchain/src/studio/studio/app/lifecycle.rs::note site=toolchain/src/studio/studio/app/pointer.rs::handle_mouse
 $ python3 /home/nich/Moirai_N3/nichlink/tools/xirang-chain-eval-mutate.py --plan /tmp/xirang-eval/demo/plan.json --round 1 --copy /tmp/xirang-eval/demo/round-01 --truth /tmp/xirang-eval/demo/out/round-01/truth.json
 round 1: d=1 impl site=kernel/src/registry_core/source/calls.rs::direct_calls | kernel/src/registry_core/source/calls.rs:171 '||'->'&&'
 EXIT 0
@@ -781,8 +781,8 @@ fn render lines 112-118 calls=[iter, join, map]
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/app/keyboard.rs::declaration_contract_fields` |
-| 注入站点 | `toolchain/src/studio/src/studio/app/keyboard.rs::open_edit_form`（第 118 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/app/keyboard.rs::declaration_contract_fields` |
+| 注入站点 | `toolchain/src/studio/studio/app/keyboard.rs::open_edit_form`（第 118 行） |
 | 链（自观察点向上） | `declaration_contract_fields` → `open_edit_form` |
 | 变异 | 函数体重写：第 124 行 `||`→`&&`；调用点删除：第 118 行 `declaration_contract_fields(&source_path_for(&info.source.file));` |
 | 命中判据 | `broken-link` |
@@ -820,7 +820,7 @@ fn add_form_starts_with_editable_bilingual_summary lines 70-77 calls=[is_empty, 
     {
       "name": "an_unreadable_source_is_loud_where_an_empty_one_is_quiet",
       "kind": "function",
-      "filePath": "toolchain/src/studio/src/studio/app/tests/forms.rs",
+      "filePath": "toolchain/src/studio/studio/app/tests/forms.rs",
       "startLine": 132
     }
   ]
@@ -885,8 +885,8 @@ src/registry_core/source/items.rs:106 fn declaration_on_line
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/ui/ui.rs::detail_field` |
-| 注入站点 | `toolchain/src/studio/src/studio/ui/panels.rs::draw_workspace`（第 68 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/ui/ui.rs::detail_field` |
+| 注入站点 | `toolchain/src/studio/studio/ui/panels.rs::draw_workspace`（第 68 行） |
 | 链（自观察点向上） | `detail_field` → `draw_details` → `draw_workspace` |
 | 变异 | 调用点删除：第 68 行 `draw_details(frame, columns[1], app);` |
 | 命中判据 | `broken-link` |
@@ -924,7 +924,7 @@ src/studio/src/studio/ui/panels.rs:122 fn draw_details
     {
       "name": "draw_details",
       "kind": "function",
-      "filePath": "toolchain/src/studio/src/studio/ui/panels.rs",
+      "filePath": "toolchain/src/studio/studio/ui/panels.rs",
       "startLine": 122
     }
   ]
@@ -937,8 +937,8 @@ src/studio/src/studio/ui/panels.rs:122 fn draw_details
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/ui/graph/nodes.rs::incoming_off_axis` |
-| 注入站点 | `toolchain/src/studio/src/studio/ui/graph/nodes.rs::draw_call_tree`（第 175 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/ui/graph/nodes.rs::incoming_off_axis` |
+| 注入站点 | `toolchain/src/studio/studio/ui/graph/nodes.rs::draw_call_tree`（第 175 行） |
 | 链（自观察点向上） | `incoming_off_axis` → `draw_status` → `draw_call_tree` |
 | 变异 | 函数体重写：第 143 行 `!=`→`==`；调用点删除：第 175 行 `draw_status(frame, inner, app, &view, cursor);` |
 | 命中判据 | `broken-link` |
@@ -976,7 +976,7 @@ src/studio/src/studio/ui/graph/nodes.rs:205 fn draw_status
     {
       "name": "draw_status",
       "kind": "function",
-      "filePath": "toolchain/src/studio/src/studio/ui/graph/nodes.rs",
+      "filePath": "toolchain/src/studio/studio/ui/graph/nodes.rs",
       "startLine": 205
     }
   ]
@@ -1041,8 +1041,8 @@ src/registry_core/declaration/declaration.rs:156 fn validate_object_contract
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/app/pointer.rs::forward_mouse_to_flow` |
-| 注入站点 | `toolchain/src/studio/src/studio/studio.rs::run_loop`（第 107 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/app/pointer.rs::forward_mouse_to_flow` |
+| 注入站点 | `toolchain/src/studio/studio/studio.rs::run_loop`（第 107 行） |
 | 链（自观察点向上） | `forward_mouse_to_flow` → `handle_mouse` → `handle_app` → `run_loop` |
 | 变异 | 调用点删除：第 107 行 `app.handle_app(event::read()?);` |
 | 命中判据 | `broken-link` |
@@ -1080,7 +1080,7 @@ src/studio/src/studio/app/pointer.rs:7 fn handle_mouse
     {
       "name": "handle_mouse",
       "kind": "method",
-      "filePath": "toolchain/src/studio/src/studio/app/pointer.rs",
+      "filePath": "toolchain/src/studio/studio/app/pointer.rs",
       "startLine": 7
     },
     {
@@ -1093,8 +1093,8 @@ src/studio/src/studio/app/pointer.rs:7 fn handle_mouse
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/app/editor_launch.rs::open_editor_at` |
-| 注入站点 | `toolchain/src/studio/src/studio/app/pointer.rs::handle_overlay_click`（第 183 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/app/editor_launch.rs::open_editor_at` |
+| 注入站点 | `toolchain/src/studio/studio/app/pointer.rs::handle_overlay_click`（第 183 行） |
 | 链（自观察点向上） | `open_editor_at` → `handle_search_overlay_key` → `handle_overlay_key` → `handle_overlay_click` |
 | 变异 | 函数体重写：第 302 行 `true`→`false`；调用点删除：第 183 行 `self.handle_overlay_key(KeyEvent::from(KeyCode::Enter));` |
 | 命中判据 | `broken-link` |
@@ -1132,7 +1132,7 @@ src/studio/src/studio/app/overlay/search.rs:7 fn handle_search_overlay_key
     {
       "name": "handle_search_overlay_key",
       "kind": "method",
-      "filePath": "toolchain/src/studio/src/studio/app/overlay/search.rs",
+      "filePath": "toolchain/src/studio/studio/app/overlay/search.rs",
       "startLine": 7
     }
   ]
@@ -1197,8 +1197,8 @@ src/registry_core/tree/connector.rs:217 fn connector_errors_from
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/ui/forms.rs::button` |
-| 注入站点 | `toolchain/src/studio/src/studio/ui/ui.rs::draw`（第 91 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/ui/forms.rs::button` |
+| 注入站点 | `toolchain/src/studio/studio/ui/ui.rs::draw`（第 91 行） |
 | 链（自观察点向上） | `button` → `draw_form_frame` → `draw_new_project` → `draw_overlay` → `draw` |
 | 变异 | 调用点删除：第 91 行 `draw_overlay(frame, app, cache);` |
 | 命中判据 | `broken-link` |
@@ -1224,7 +1224,7 @@ no static function match for `button`
     {
       "name": "draw_form_frame",
       "kind": "function",
-      "filePath": "toolchain/src/studio/src/studio/ui/forms.rs",
+      "filePath": "toolchain/src/studio/studio/ui/forms.rs",
       "startLine": 60
     }
   ]
@@ -1237,8 +1237,8 @@ no static function match for `button`
 
 | 项 | 值 |
 |---|---|
-| 观察点（问题里唯一的输入） | `toolchain/src/studio/src/studio/app/call_tree_queries.rs::hop_call_tree` |
-| 注入站点 | `toolchain/src/studio/src/studio/app/keyboard.rs::handle_key`（第 21 行） |
+| 观察点（问题里唯一的输入） | `toolchain/src/studio/studio/app/call_tree_queries.rs::hop_call_tree` |
+| 注入站点 | `toolchain/src/studio/studio/app/keyboard.rs::handle_key`（第 21 行） |
 | 链（自观察点向上） | `hop_call_tree` → `step_graph_cursor` → `handle_search_overlay_key` → `handle_overlay_key` → `handle_key` |
 | 变异 | 函数体重写：第 53 行 `!=`→`==`；调用点删除：第 21 行 `self.handle_overlay_key(key);` |
 | 命中判据 | `broken-link` |
@@ -1276,7 +1276,7 @@ src/studio/src/studio/app/navigation.rs:35 fn step_graph_cursor
     {
       "name": "step_graph_cursor",
       "kind": "method",
-      "filePath": "toolchain/src/studio/src/studio/app/navigation.rs",
+      "filePath": "toolchain/src/studio/studio/app/navigation.rs",
       "startLine": 35
     }
   ]
@@ -1342,7 +1342,7 @@ src/registry_core/tree/connector.rs:27 fn visit_registration_chain
 | 项 | 值 |
 |---|---|
 | 观察点（问题里唯一的输入） | `toolchain/src/runtime/src/runtime/trace/snapshot/parse.rs::unescape` |
-| 注入站点 | `toolchain/src/studio/src/studio/app/lifecycle.rs::after_project_write`（第 352 行） |
+| 注入站点 | `toolchain/src/studio/studio/app/lifecycle.rs::after_project_write`（第 352 行） |
 | 链（自观察点向上） | `unescape` → `parse_trace_artifact` → `read_trace_artifact` → `read_trace` → `rejudge_evidence` → `after_project_write` |
 | 变异 | 调用点删除：第 352 行 `self.rejudge_evidence();` |
 | 命中判据 | `broken-link` |
@@ -1402,18 +1402,18 @@ src/runtime/src/runtime/trace/snapshot/parse.rs:250 fn parse_optional_source
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | 1 | impl | site | kernel/src/registry_core/source/calls.rs::direct_calls | ✓ | ✓ | ✓ | ✓ | — | — | present | present |
 | 2 | 1 | chain | broken-link | macro/src/mirror.rs::loop_value | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
-| 3 | 1 | both | broken-link | toolchain/src/studio/src/studio/app/keyboard.rs::open_edit_form | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 3 | 1 | both | broken-link | toolchain/src/studio/studio/app/keyboard.rs::open_edit_form | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | absent | absent |
 | 4 | 2 | impl | site | kernel/src/registry_core/source/items.rs::item_symbols | ✓ | ✓ | ✓ | ✓ | — | — | present | present |
-| 5 | 2 | chain | broken-link | toolchain/src/studio/src/studio/ui/panels.rs::draw_workspace | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
-| 6 | 2 | both | broken-link | toolchain/src/studio/src/studio/ui/graph/nodes.rs::draw_call_tree | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 5 | 2 | chain | broken-link | toolchain/src/studio/studio/ui/panels.rs::draw_workspace | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 6 | 2 | both | broken-link | toolchain/src/studio/studio/ui/graph/nodes.rs::draw_call_tree | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
 | 7 | 3 | impl | site | kernel/src/registry_core/tree/graft_ops/overlay.rs::apply_overlay_face | ✓ | ✓ | ✓ | ✓ | — | — | present | present |
-| 8 | 3 | chain | broken-link | toolchain/src/studio/src/studio/studio.rs::run_loop | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
-| 9 | 3 | both | broken-link | toolchain/src/studio/src/studio/app/pointer.rs::handle_overlay_click | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 8 | 3 | chain | broken-link | toolchain/src/studio/studio/studio.rs::run_loop | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 9 | 3 | both | broken-link | toolchain/src/studio/studio/app/pointer.rs::handle_overlay_click | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
 | 10 | 4 | impl | site | kernel/src/registry_core/tree/transaction.rs::register_snapshot_batch | ✓ | ✓ | ✓ | ✓ | — | — | present | present |
-| 11 | 4 | chain | broken-link | toolchain/src/studio/src/studio/ui/ui.rs::draw | ✗ | ✓ | ✗ | ✗ | — | ✓ | unreached | absent |
-| 12 | 4 | both | broken-link | toolchain/src/studio/src/studio/app/keyboard.rs::handle_key | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
+| 11 | 4 | chain | broken-link | toolchain/src/studio/studio/ui/ui.rs::draw | ✗ | ✓ | ✗ | ✗ | — | ✓ | unreached | absent |
+| 12 | 4 | both | broken-link | toolchain/src/studio/studio/app/keyboard.rs::handle_key | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | absent | absent |
 | 13 | 5 | impl | site | kernel/src/registry_core/tree/graft_ops/overlay.rs::overlay_cuts | ✓ | ✓ | ✓ | ✓ | — | — | present | unreached |
-| 14 | 5 | chain | broken-link | toolchain/src/studio/src/studio/app/lifecycle.rs::after_project_write | ✗ | ✗ | ✗ | ✗ | — | — | unreached | unreached |
+| 14 | 5 | chain | broken-link | toolchain/src/studio/studio/app/lifecycle.rs::after_project_write | ✗ | ✗ | ✗ | ✗ | — | — | unreached | unreached |
 
 ### 5.2 成本与精确率（按轮）
 
@@ -1679,7 +1679,7 @@ by top directory: {'kernel': 10, 'toolchain': 26}
 
 ### 7.2 我们的源码扫描器对一种 `fn` 声明是盲的
 
-第 11 轮的观察点是 `toolchain/src/studio/src/studio/ui/forms.rs` 里的一个函数，我们的
+第 11 轮的观察点是 `toolchain/src/studio/studio/ui/forms.rs` 里的一个函数，我们的
 `callgraph` 对它回 `no static function match`，整轮答案 37 字节。它的声明长这样（原文）：
 
 ```rust
@@ -1750,14 +1750,14 @@ for relative, name in examples[:6]:
 ```text
 $ python3 /tmp/xirang-eval/probe-generics.py
 generic declarations probed: 35; xirang.callgraph sees 34, blind to 1
-  blind: toolchain/src/studio/src/studio/ui/forms.rs :: button
+  blind: toolchain/src/studio/studio/ui/forms.rs :: button
 ```
 
 同一份副本上，CG 的索引对同一个文件给出的符号表里有这个函数（`codegraph node` 的文件模式）：
 
 ```text
-$ codegraph node -f toolchain/src/studio/src/studio/ui/forms.rs -p . --symbols-only
-**toolchain/src/studio/src/studio/ui/forms.rs** — 3 symbols, used by 4 files: toolchain/src/studio/src/studio/ui/forms/face.rs, toolchain/src/studio/src/studio/ui/forms/graft.rs, toolchain/src/studio/src/studio/ui/forms/plugin.rs, toolchain/src/studio/src/studio/ui/forms/project.rs
+$ codegraph node -f toolchain/src/studio/studio/ui/forms.rs -p . --symbols-only
+**toolchain/src/studio/studio/ui/forms.rs** — 3 symbols, used by 4 files: toolchain/src/studio/studio/ui/forms/face.rs, toolchain/src/studio/studio/ui/forms/graft.rs, toolchain/src/studio/studio/ui/forms/plugin.rs, toolchain/src/studio/studio/ui/forms/project.rs
 
 **Symbols**
 - `FormAreas` (struct) — :36

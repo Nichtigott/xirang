@@ -33,6 +33,7 @@ pub struct TopologyRecord {
 pub fn validate_face_topology(
     records: &mut [TopologyRecord],
     package_root: NodeId,
+    declared_elsewhere: &[(NodeId, bool)],
 ) -> BuildDiagnostics {
     let mut errors = BuildDiagnostics::default();
     records.sort_by_key(|record| record.id);
@@ -59,14 +60,25 @@ pub fn validate_face_topology(
         }
     }
 
-    let ids = records
+    // A parent may be declared in another language: it has no Rust record in this pass, but it is
+    // still a node of this tree, and a Rust child that names it is not dangling. The caller hands
+    // those identities over so the two checks below stay about "is the parent part of this tree",
+    // not "was it written in Rust".
+    // 父可能声明在别的语言里：这一趟它没有 Rust 记录，但它仍是这棵树的一个节点，点名它的 Rust 子面
+    // 不是悬挂的。调用方把这些身份交进来，下面两条检查才是在问"父是不是这棵树的一部分"，而不是
+    // "它是用 Rust 写的吗"。
+    let mut ids = records
         .iter()
         .map(|record| record.id)
         .collect::<std::collections::BTreeSet<_>>();
-    let owners = records
+    let mut owners = records
         .iter()
         .map(|record| (record.id, record.owns_registry))
         .collect::<std::collections::BTreeMap<_, _>>();
+    for (id, owns_registry) in declared_elsewhere {
+        ids.insert(*id);
+        owners.insert(*id, *owns_registry);
+    }
     for record in records.iter() {
         if record.parent != package_root && !ids.contains(&record.parent) {
             errors.push(
@@ -130,7 +142,7 @@ mod topology_tests {
     #[test]
     fn missing_parent_is_reported() {
         let mut records = vec![record(2, 9, true)];
-        let errors = validate_face_topology(&mut records, ROOT_NODE_ID);
+        let errors = validate_face_topology(&mut records, ROOT_NODE_ID, &[]);
         assert_eq!(
             errors
                 .render_build_diagnostics()
@@ -143,7 +155,7 @@ mod topology_tests {
     #[test]
     fn parent_without_registry_is_reported() {
         let mut records = vec![record(1, 0, false), record(2, 1, true)];
-        let errors = validate_face_topology(&mut records, ROOT_NODE_ID);
+        let errors = validate_face_topology(&mut records, ROOT_NODE_ID, &[]);
         assert_eq!(
             errors
                 .render_build_diagnostics()
@@ -156,7 +168,7 @@ mod topology_tests {
     #[test]
     fn parent_cycle_is_reported() {
         let mut records = vec![record(1, 2, true), record(2, 1, true)];
-        let errors = validate_face_topology(&mut records, ROOT_NODE_ID);
+        let errors = validate_face_topology(&mut records, ROOT_NODE_ID, &[]);
         assert_eq!(
             errors
                 .render_build_diagnostics()
@@ -179,7 +191,7 @@ mod topology_tests {
                 ..record(2, 0, true)
             },
         ];
-        let errors = validate_face_topology(&mut records, root);
+        let errors = validate_face_topology(&mut records, root, &[]);
         assert!(errors.is_empty());
     }
 
@@ -198,7 +210,7 @@ mod topology_tests {
     #[test]
     fn duplicate_identity_is_reported() {
         let mut records = vec![record(1, 0, true), record(1, 0, false)];
-        let errors = validate_face_topology(&mut records, ROOT_NODE_ID);
+        let errors = validate_face_topology(&mut records, ROOT_NODE_ID, &[]);
         let rendered = errors.render_build_diagnostics();
         assert_eq!(
             rendered

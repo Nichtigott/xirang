@@ -315,6 +315,23 @@ pub(super) fn literal_string(expression: &syn::Expr) -> Option<String> {
 
 /// The sole group of `tokens`, when it has exactly this delimiter.
 /// `tokens` 中唯一的分组（当它正好使用该定界符时）。
+/// The one bracketed group a list field writes, optionally behind a leading borrow.
+/// 某个列表字段写下的那一个方括号组，前面可以带一个引用符号。
+///
+/// The new spelling (H/A2e) writes the field's real Rust type — `&'static [&'static str]` — so `&[` is how
+/// an author writes `exports`. The macro spellings write `[`. Both are the same list, and the difference is
+/// the borrow, not the shape, so it is absorbed here rather than in every reader.
+/// 新拼法（H/A2e）写的是字段真实的 Rust 类型——`&'static [&'static str]`——因此作者写 `exports` 时是 `&[`。
+/// 宏那两种拼法写 `[`。两者是同一份列表，差别只在那个引用符号、不在形状，所以在这里吸收，而不是让每个读取器
+/// 各自处理。
+pub(super) fn list_group(tokens: &TokenStream, delimiter: Delimiter) -> Option<Group> {
+    let mut stream = tokens.clone().into_iter();
+    if matches!(stream.clone().next(), Some(TokenTree::Punct(punct)) if punct.as_char() == '&') {
+        stream.next();
+    }
+    only_group(&stream.collect::<TokenStream>(), delimiter)
+}
+
 pub(super) fn only_group(tokens: &TokenStream, delimiter: Delimiter) -> Option<Group> {
     let mut tokens = tokens.clone().into_iter();
     let TokenTree::Group(group) = tokens.next()? else {

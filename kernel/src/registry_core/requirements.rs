@@ -6,7 +6,7 @@
 //! 声明与需求（build 扫文件、工具读快照），kernel 判定哪些需求
 //! 在祖先链上找不到提供者。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::registry_core::diagnostic::BuildDiagnostic;
 use crate::registry_core::identity::NodeId;
@@ -69,30 +69,26 @@ pub fn missing_capabilities(
     requirements: Vec<CapabilityRequirement>,
     declarations: &[CapabilityDeclaration],
 ) -> Vec<BuildDiagnostic> {
+    let index = CapabilityIndex::new(declarations);
     requirements
         .into_iter()
-        .filter_map(|requirement| missing(requirement, declarations))
+        .filter_map(|requirement| missing(requirement, &index))
         .collect()
 }
 
 fn missing(
     requirement: CapabilityRequirement,
-    declarations: &[CapabilityDeclaration],
+    index: &CapabilityIndex<'_>,
 ) -> Option<BuildDiagnostic> {
-    let provided = requirement.parent.is_some_and(|parent| {
-        has_ancestor_provider(
-            parent,
-            &requirement.capability,
-            &requirement.provider,
-            declarations,
-        )
-    });
-    if provided {
+    let provided = requirement
+        .parent
+        .and_then(|parent| index.provider(parent, &requirement.capability, &requirement.provider));
+    if provided.is_some() {
         return None;
     }
     let detail = requirement
         .parent
-        .and_then(|parent| find_ancestor_capability(parent, &requirement.capability, declarations))
+        .and_then(|parent| index.ancestor(parent, &requirement.capability, None))
         .map(|declaration| declaration.kind.clone());
     let mut diagnostic = BuildDiagnostic::new(
         "requirements",
@@ -110,61 +106,54 @@ fn missing(
     Some(diagnostic)
 }
 
-fn has_ancestor_provider(
-    mut target: NodeId,
-    capability: &str,
-    expected_kind: &str,
-    declarations: &[CapabilityDeclaration],
-) -> bool {
-    let mut visited = BTreeSet::new();
-    loop {
-        if !visited.insert(target) {
-            return false;
-        }
-        if declarations.iter().any(|declaration| {
-            declaration.id == target
-                && declaration.kind == expected_kind
-                && declaration.provides.iter().any(|item| item == capability)
-        }) {
-            return true;
-        }
-        let Some(parent) = declarations
-            .iter()
-            .find(|declaration| declaration.id == target)
-            .and_then(|declaration| declaration.parent)
-        else {
-            return false;
-        };
-        if parent == target {
-            return false;
-        }
-        target = parent;
-    }
+/// Request-local identity index shared by validation and responsibility reports.
+/// 校验与责任报告共用的请求内身份索引。
+pub struct CapabilityIndex<'a> {
+    declarations: BTreeMap<NodeId, Vec<&'a CapabilityDeclaration>>,
 }
 
-fn find_ancestor_capability<'a>(
-    mut target: NodeId,
-    capability: &str,
-    declarations: &'a [CapabilityDeclaration],
-) -> Option<&'a CapabilityDeclaration> {
-    let mut visited = BTreeSet::new();
-    loop {
-        if !visited.insert(target) {
-            return None;
+impl<'a> CapabilityIndex<'a> {
+    /// Index declarations once, preserving multiple declarations at one identity.
+    /// 对声明一次建表，保留同一身份的多个声明。
+    pub fn new(declarations: &'a [CapabilityDeclaration]) -> Self {
+        let mut indexed: BTreeMap<NodeId, Vec<&CapabilityDeclaration>> = BTreeMap::new();
+        for declaration in declarations {
+            indexed.entry(declaration.id).or_default().push(declaration);
         }
-        if let Some(declaration) = declarations.iter().find(|declaration| {
-            declaration.id == target && declaration.provides.iter().any(|item| item == capability)
-        }) {
-            return Some(declaration);
+        Self {
+            declarations: indexed,
         }
-        let parent = declarations
-            .iter()
-            .find(|declaration| declaration.id == target)
-            .and_then(|declaration| declaration.parent)?;
-        if parent == target {
-            return None;
+    }
+
+    /// Resolve the nearest matching ancestor, starting at the consumer's parent.
+    /// 从消费者的父级起，解析最近的匹配祖先。
+    pub fn provider(
+        &self,
+        parent: NodeId,
+        capability: &str,
+        expected_kind: &str,
+    ) -> Option<&'a CapabilityDeclaration> {
+        self.ancestor(parent, capability, Some(expected_kind))
+    }
+
+    fn ancestor(
+        &self,
+        mut target: NodeId,
+        capability: &str,
+        expected_kind: Option<&str>,
+    ) -> Option<&'a CapabilityDeclaration> {
+        let mut visited = BTreeSet::new();
+        while visited.insert(target) {
+            let declarations = self.declarations.get(&target)?;
+            if let Some(declaration) = declarations.iter().find(|declaration| {
+                expected_kind.is_none_or(|kind| declaration.kind == kind)
+                    && declaration.provides.iter().any(|item| item == capability)
+            }) {
+                return Some(declaration);
+            }
+            target = declarations.first()?.parent?;
         }
-        target = parent;
+        None
     }
 }
 
@@ -251,5 +240,28 @@ mod tests {
         let missing = missing_capabilities(requirements, &declarations);
         assert_eq!(missing.len(), 1);
         let _ = ROOT_NODE_ID;
+    }
+
+    #[test]
+    fn resolution_ignores_other_branches_and_uses_the_nearest_matching_kind() {
+        let declarations = vec![
+            declaration(9, None, "Provider", &["x"]),
+            declaration(1, None, "Provider", &["x"]),
+            declaration(2, Some(1), "Provider", &["x"]),
+            declaration(3, Some(2), "Other", &["x"]),
+            declaration(4, Some(3), "Leaf", &[]),
+        ];
+        let index = super::CapabilityIndex::new(&declarations);
+        assert_eq!(index.provider(id(3), "x", "Provider").unwrap().id, id(2));
+        assert_eq!(index.provider(id(1), "x", "Provider").unwrap().id, id(1));
+        assert!(index.provider(id(3), "absent", "Provider").is_none());
+        assert!(index.provider(id(99), "x", "Provider").is_none());
+        assert!(
+            missing_capabilities(
+                vec![requirement(4, Some(3), "x", "Provider")],
+                &declarations
+            )
+            .is_empty()
+        );
     }
 }

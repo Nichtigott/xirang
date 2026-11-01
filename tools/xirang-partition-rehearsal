@@ -19,7 +19,7 @@
 # 的实现文件版式、以及写在 cargo 永远不会读的地方的 remap（审计 `M7`，§M7.37–§M7.40）。手工跑什么都不留下；
 # 这个脚本留下的是一道门禁。
 #
-# Six legs, because the shapes are different code paths:
+# Eight legs, because the shapes are different code paths:
 #   1. **workspace** — the host is a member of a workspace, the generated packages have to be
 #      materialized into its `members`, and the unpartitioned tree, the host's partitioned tree, the
 #      ghost's tree and the facade's tree have to carry the same graft plan and the same identities;
@@ -35,7 +35,11 @@
 #   6. **re-partitioning** — the author's graft plan is written once and the crate boundary under it
 #      moves twice; every shape must still build with the same cut. That is the property cross-crate
 #      grafts were asked for: 「跨crate graft是为了防止后续crate调整导致的graft失效」.
-# 六条腿，因为各种形状是彼此不同的代码路径：
+#   7. **one third-party graft spans two crates** — two cuts, two owners, swapped boundaries and
+#      a merge; the unchanged external implementation and effective tree must survive every shape.
+#   8. **moves in a materialized partition** — same-owner and cross-owner moves, and a
+#      partial graft repair followed by another split; execute the compiled plan after every step.
+# 八条腿，因为各种形状是彼此不同的代码路径：
 #   1. **工作区**——宿主是某个工作区的成员，生成的包必须被物化进它的 `members`，而不分区的树、宿主分区后的树、
 #      幽灵的树与 facade 的树必须带同样的 graft 计划与同样的身份；
 #   2. **独立**——宿主之上没有任何工作区，因此 remap 属于宿主与它生成的同级包共同拥有的那个目录（实测：写在
@@ -48,6 +52,8 @@
 #      一棵**真的**被划分过的宿主留在仓库里的那条腿；
 #   6. **重新划分**——作者的 graft 计划只写一次，它下面的 crate 边界搬两次；每一种形状都必须带着同一条切口
 #      构建得过。这正是跨 crate graft 被要去的那个性质：「跨crate graft是为了防止后续crate调整导致的graft失效」。
+#   7. **一份第三方 graft 横跨两个 crate**——两条切口分别归属两个包，再交换边界、合并；
+#      外部实现不修改，每一种形状仍产生相同有效树。
 #
 # The three trees are taken through `check` with the same environment the generated build scripts set
 # (`XIRANG_SHAPE_ONLY`, `XIRANG_SHAPE_FACADE`), because that is the same pipeline the build runs —
@@ -66,7 +72,11 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CARGO_FLAGS="${XIRANG_REHEARSAL_CARGO_FLAGS---offline}"
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT INT TERM
+if [ "${XIRANG_REHEARSAL_KEEP_WORK:-0}" = "1" ]; then
+  echo "partition rehearsal fixture: $WORK" >&2
+else
+  trap 'rm -rf "$WORK"' EXIT INT TERM
+fi
 
 step() { echo "== $1" >&2; }
 fail() { echo "partition rehearsal FAILED: $1" >&2; exit 1; }
@@ -404,17 +414,17 @@ write_declaration "$SOL/app"
 "$XIRANG" check "$SOL/app" >/dev/null || fail "the standalone host does not check"
 "$XIRANG" crates --write "$SOL/app" >/dev/null
 
-[ -f "$SOL/.cargo/config.toml" ] ||
-  fail "the remap is not in the directory the host and its siblings share"
-[ ! -f "$SOL/app/.cargo/config.toml" ] ||
-  fail "the remap was written where cargo never reads it while building a sibling"
+[ -f "$SOL/app/.cargo/config.toml" ] ||
+  fail "the remap is not in the partition root (the host is its own workspace)"
+[ ! -f "$SOL/.cargo/config.toml" ] ||
+  fail "the remap was written above the partition root"
 
 step "leg 2: building the partitioned tree from the facade's own directory"
-(cd "$SOL/crates/app-facade" && build) ||
+(cd "$SOL/app/crates/app-facade" && build) ||
   fail "the standalone partitioned tree does not build (the remap never reached the ghost)"
 
 "$XIRANG" crates --revert "$SOL/app" >/dev/null
-[ ! -f "$SOL/.cargo/config.toml" ] || fail "the revert left the remap behind in the standalone shape"
+[ ! -f "$SOL/app/.cargo/config.toml" ] || fail "the revert left the remap behind in the standalone shape"
 
 # ============================================================ leg 3: promote on a partitioned tree
 step "leg 3/4: promote landing into a partitioned tree"
@@ -456,7 +466,7 @@ EOF
 
 "$XIRANG" check "$PR/app" >/dev/null || fail "the scaffolded host does not check"
 "$XIRANG" crates --write "$PR/app" >/dev/null
-(cd "$PR/crates/app-facade" && build) || fail "the scaffolded partition does not build before the promote"
+(cd "$PR/app/crates/app-facade" && build) || fail "the scaffolded partition does not build before the promote"
 
 # The record the landing consumes: its target is the identity the tool reports for the cut face, so the
 # script never hard-codes a hash.
@@ -484,7 +494,34 @@ grep -q 'graft(crate::panel::object::frame::object::widget::NODE_ID)' "$PR/app/s
   fail "the record was not retired"
 [ -n "$(find "$PR/app/.xirang/trash/external-grafts" -mindepth 1 -maxdepth 1 2>/dev/null)" ] ||
   fail "the record did not move to the trash"
-(cd "$PR/crates/app-facade" && build) || fail "the tree does not build after the promote"
+(cd "$PR/app/crates/app-facade" && build) || fail "the tree does not build after the promote"
+
+# A fragment watches the host's tree through `rerun-if-changed`, and cargo reads a **directory** there
+# as that directory's own mtime rather than as a recursive watch — so a fragment whose watch list is
+# only `<host>/src` never notices an edit made to a face file below it, and keeps asserting the
+# identities that file had before the edit. Measured on this leg: appending to the host's `lib.rs`
+# left the fragment's tree untouched, and the promote above (which deepens `widget` into
+# `…/object/widget/widget.rs`) did not make it rebuild either.
+# 碎片通过 `rerun-if-changed` 盯住宿主的树，而 cargo 在那里把**目录**读作该目录自身的 mtime，而不是
+# 递归监视——因此监视清单只有 `<宿主>/src` 的碎片永远注意不到它下面某个面文件的改动，会一直断言那个
+# 文件改动前的身份。这条腿上实测：往宿主的 `lib.rs` 追加内容，碎片的树一动不动；而上面那次 promote
+# （把 `widget` 加深成 `…/object/widget/widget.rs`）也没让它重建。
+face_under_test=$(find "$PR/app/src" -name '*.rs' -path '*/panel/*' | sort | head -1)
+[ -n "$face_under_test" ] || fail "could not find a face below the host's src to edit"
+# The observable is the fragment's **discovery fingerprint**, not the tree file's mtime: the tree is
+# written through `write_if_changed`, so an edit that leaves the rendered text identical (appending a
+# byte changes no identity) must NOT touch it — and a pin that demanded otherwise would be pinning a
+# text shape rather than the contract. The fingerprint is what says "this build read those bytes".
+# 可观察量是碎片的**发现指纹**，而不是树文件的 mtime：树经 `write_if_changed` 落盘，因此一次"渲染文本逐字不变"
+# 的编辑（追加一个字节不改任何身份）**不该**动它——而钉住相反的东西，钉的就是文本形状而不是合同。指纹才是
+# "这一趟读到了那些字节"的凭据。
+before=$(cat "$(dirname "$(ls -t "$PR/app"/target/debug/build/app-widgets-*/out/discovery.fingerprint 2>/dev/null | head -1)")/discovery.fingerprint" 2>/dev/null)
+[ -n "$before" ] || fail "could not read the fragment's discovery fingerprint"
+printf '\n' >>"$face_under_test"
+(cd "$PR/app/crates/app-facade" && build) >/dev/null 2>&1 || fail "the tree does not build after a face file changed"
+after=$(cat "$(dirname "$(ls -t "$PR/app"/target/debug/build/app-widgets-*/out/discovery.fingerprint 2>/dev/null | head -1)")/discovery.fingerprint" 2>/dev/null)
+[ "$after" != "$before" ] ||
+  fail "the fragment did not re-read a face file below the host's src after it changed"
 
 # ============================================================ leg 4: the publishable shape
 step "leg 4/4: the release shape carries its own sources"
@@ -501,32 +538,32 @@ write_declaration "$REL/app"
 # The fragment brings its own files, the ancestor faces its derivation reads, and its declaration.
 # 碎片带来自己的文件、推导要读的祖先面，以及它的声明。
 for file in \
-  "$REL/crates/app-widgets/src/panel/frame/frame.rs" \
-  "$REL/crates/app-widgets/src/panel/frame/widget/widget.rs" \
-  "$REL/crates/app-widgets/src/panel/frame/registry_rule/registry_rule.rs" \
-  "$REL/crates/app-widgets/src/panel/panel.rs" \
-  "$REL/crates/app-widgets/add_crates.rs"; do
+  "$REL/app/crates/app-widgets/src/panel/frame/frame.rs" \
+  "$REL/app/crates/app-widgets/src/panel/frame/widget/widget.rs" \
+  "$REL/app/crates/app-widgets/src/panel/frame/registry_rule/registry_rule.rs" \
+  "$REL/app/crates/app-widgets/src/panel/panel.rs" \
+  "$REL/app/crates/app-widgets/add_crates.rs"; do
   [ -f "$file" ] || fail "the release ghost does not carry $file"
 done
-grep -q 'shape = "release"' "$REL/crates/app-widgets/Cargo.toml" || fail "no shape fingerprint"
+grep -q 'shape = "release"' "$REL/app/crates/app-widgets/Cargo.toml" || fail "no shape fingerprint"
 # Nothing is mounted out of the host, and nothing needs a remap.
-if grep -q "$REL/app/src" "$REL/crates/app-widgets/build.rs"; then
+if grep -q "$REL/app/src" "$REL/app/crates/app-widgets/build.rs"; then
   fail "the release build script names the host's source directory"
 fi
 [ ! -f "$REL/.cargo/config.toml" ] ||
   fail "the release shape wrote a remap config it does not need"
 
 step "leg 4: building the release shape, and packaging it"
-(cd "$REL/crates/app-facade" && build) || fail "the release shape does not build"
+(cd "$REL/app/crates/app-facade" && build) || fail "the release shape does not build"
 # `cargo package --list` is the check that the package is self-contained: a file it needs but does not
 # carry is exactly the state crates.io rejects later.
-(cd "$REL/crates/app-widgets" && command cargo package --list $CARGO_FLAGS --allow-dirty >/dev/null 2>&1) ||
+(cd "$REL/app/crates/app-widgets" && command cargo package --list $CARGO_FLAGS --allow-dirty >/dev/null 2>&1) ||
   fail "the release ghost cannot be packaged"
 [ -z "$(find "$REL" -name config.toml -path '*/.cargo/*' 2>/dev/null)" ] ||
   fail "the release shape left a remap config behind"
 
 "$XIRANG" crates --revert "$REL/app" >/dev/null || fail "the release shape does not revert"
-[ ! -d "$REL/crates/app-widgets" ] || fail "the revert left the release ghost behind"
+[ ! -d "$REL/app/crates/app-widgets" ] || fail "the revert left the release ghost behind"
 
 step "leg 5: the committed example (examples/partitioned-button) still builds and still carries its graft"
 
@@ -573,7 +610,7 @@ grep -q 'partitioned_button_objects::control::object::button::NODE_ID' "$facade_
   fail "the facade does not name the crate that compiles the cut face"
 
 # ============================================================ leg 6: re-partitioning
-step "leg 6/6: the same graft plan under two different crate boundaries"
+step "leg 6/7: the same graft plan under two different crate boundaries"
 
 # The property this leg gates is the reason cross-crate grafts exist: 「跨crate graft是为了防止后续crate调整
 # 导致的graft失效」. So the author's plan is written **once**, the boundary under it moves, and after every
@@ -672,6 +709,7 @@ EOF
 crate::widget_object! {
     kind: Cap,
     parent: crate::panel::frame::widget::NODE_ID,
+    flow: crate::FlowContract::new(crate::ContractId::new("panel.render.v1"), 1, "PanelInput", "PanelFrame"),
 }
 EOF
   # A **second** branch, so one crate can be asked to claim two subtrees (the B-axis gap: nothing
@@ -753,6 +791,75 @@ cp "$RP/app/src/lib.rs" "$WORK/rp-lib-before"
 BASELINE_CUT=$(cut_entry "$WORK/rp-base")
 [ -n "$BASELINE_CUT" ] || fail "the baseline host emits no typed graft cut at all"
 
+# Run the actual compiled plan, not just its generated spelling. One unchanged consumer
+# observes the same slot replacement and unchanged base/external trees in every shape.
+# 执行真正编译的计划；同一个消费者在各种划分下观察相同替换，原树与外部树都不变。
+mkdir -p "$RP/probe/src"
+cat >"$RP/probe/src/main.rs" <<'EOF'
+use xirang_toolchain::run_method::{FrameworkId, Registry};
+
+fn rows(registry: &Registry) -> Vec<String> {
+    let mut rows: Vec<_> = registry.depth_first().iter().map(|face| {
+        format!("{} {} {}", face.id, registry.path_for(face.id).unwrap_or_default(), face.kind)
+    }).collect();
+    rows.sort();
+    rows
+}
+
+fn main() {
+    let framework = FrameworkId::new("xirang.rehearsal.repartition");
+    let mut base = Registry::root_for_namespace(framework, subject::XIRANG_NAMESPACE);
+    base.register_all(&subject::registrations()).expect("host registers");
+    let mut external = Registry::root_for_namespace(framework, fast_widget::XIRANG_NAMESPACE);
+    external.register_all(&fast_widget::registrations()).expect("external registers");
+    let before = rows(&base);
+    let external_before = rows(&external);
+    let effective = base.overlay_static(subject::builtin_static_plan().grafts(), &external)
+        .expect("compiled plan applies");
+    let mut targets = vec![("root/panel/frame/widget/cap", "Cap")];
+    if std::env::var_os("XIRANG_PROBE_TWO_CUTS").is_some() {
+        targets.push(("root/panel/gauge/needle", "Needle"));
+    }
+    let mut slots = Vec::new();
+    for (path, original) in targets {
+        let slot = base.depth_first().iter().find(|face|
+            base.path_for(face.id).as_deref() == Some(path)
+        ).expect("the logical graft slot survives the package boundary").id;
+        assert_eq!(base.depth_first().iter().find(|face| face.id == slot).unwrap().kind, original);
+        assert_eq!(effective.depth_first().iter().find(|face| face.id == slot).unwrap().kind, "WidgetFast");
+        slots.push(slot);
+    }
+    assert_eq!(before, rows(&base), "overlay mutated the base");
+    assert_eq!(external_before, rows(&external), "overlay mutated the provider");
+    for face in base.depth_first().iter().filter(|face| !slots.contains(&face.id)) {
+        let kept = effective.depth_first().into_iter().find(|other| other.id == face.id).unwrap();
+        assert_eq!(kept.kind, face.kind, "an unrelated face changed");
+    }
+    for row in rows(&effective) { println!("{row}"); }
+}
+EOF
+
+runtime_probe() (
+  package=$1
+  dependency=$2
+  label=$3
+  cat >"$RP/probe/Cargo.toml" <<EOF
+[package]
+name = "partition-behavior-probe"
+version = "0.1.0"
+edition = "2024"
+[workspace]
+[dependencies]
+subject = { package = "$package", path = "$dependency" }
+fast-widget = { path = "../fast-widget" }
+xirang-toolchain = { path = "$ROOT/toolchain", features = ["run"] }
+EOF
+  (cd "$RP" && CARGO_TARGET_DIR="$RP/target" cargo run $CARGO_FLAGS --quiet \
+    --manifest-path probe/Cargo.toml) >"$WORK/rp-$label-behavior" ||
+    fail "leg 6/$label: the compiled graft behavior failed"
+)
+runtime_probe app ../app baseline
+
 # One boundary: check every shape, write it, build it, and compare the cut against the baseline.
 # 一条边界：把每个形状都 check 一遍、写出来、构建，并把切口与基准逐字比较。
 repartition() {
@@ -788,12 +895,44 @@ repartition() {
   # 第二条认领只有在真正拥有它的幽灵确实挂载了它下面的文件时才算数——声明收下了那条认领，并不证明有任何
   # 东西被物化出来。
   if [ -n "$second_claim_file" ]; then
-    grep -q "$second_claim_file" "$WORK/rp-$label-ghost/generated_lib.rs" ||
+    # Follow only reachable generated module mounts, never an unreferenced leftover file.
+    # 只沿实际可达的生成模块挂载检查，不把未引用的残留文件当成证据。
+    if ! python3 - "$WORK/rp-$label-ghost" "$second_claim_file" <<'PYMOUNTS'
+import json, pathlib, re, sys
+root = pathlib.Path(sys.argv[1]).resolve()
+expected = sys.argv[2]
+pending = [root / "generated_lib.rs"]
+seen = set()
+while pending:
+    source = pending.pop()
+    if source in seen:
+        continue
+    seen.add(source)
+    for literal in re.findall(r'#\[path = ("(?:\\.|[^"\\])*")\]', source.read_text()):
+        mounted = pathlib.Path(json.loads(literal))
+        if not mounted.is_absolute():
+            mounted = source.parent / mounted
+        mounted = mounted.resolve()
+        if str(mounted).endswith("/" + expected) and mounted.is_file():
+            raise SystemExit(0)
+        if "xirang_modules" in mounted.parts:
+            # The rehearsal copies OUT_DIR snapshots; their absolute paths still name the
+            # original output, which a later shape overwrites. Follow the captured copy.
+            # 演练复制 OUT_DIR 快照；绝对路径仍指向会被下一形状覆盖的原目录，应沿快照读取。
+            index = len(mounted.parts) - 1 - mounted.parts[::-1].index("xirang_modules")
+            pending.append(root.joinpath(*mounted.parts[index:]))
+raise SystemExit(1)
+PYMOUNTS
+    then
       fail "leg 6/$label: the ghost does not mount $second_claim_file — the second claim was not materialized"
+    fi
   fi
 
   "$XIRANG" crates --write "$RP/app" >/dev/null || fail "leg 6/$label: the boundary does not write"
   (cd "$RP" && build -p app-facade) || fail "leg 6/$label: the re-partitioned workspace does not build"
+  runtime_probe app-facade ../crates/app-facade "$label"
+  cmp "$WORK/rp-baseline-behavior" "$WORK/rp-$label-behavior" ||
+    fail "leg 6/$label: moving the crate boundary changed the effective runtime tree"
 }
 
 # The boundary starts one level **below** the root face and then moves up, so the same plan is compiled
@@ -814,4 +953,76 @@ repartition c-two-claims "panel::frame::widget,panel::gauge" \
   "crate::panel::frame::widget::SUBTREE, crate::panel::gauge::SUBTREE" \
   "panel/gauge/needle/needle.rs"
 
-step "OK — both shapes build, the four facts hold, the promote lands, the release shape packages, the committed example still carries its graft, and the same plan survives two crate boundaries"
+# ============================================================ leg 7: one graft across two owners
+step "leg 7/7: third-party graft spans two crates, then boundaries swap and merge"
+# Register the two-cut plan once, before any of these boundary edits. The provider stays untouched.
+# 在这些边界编辑之前只写一次双切口计划；第三方提供者始终不改。
+python3 - "$RP/app" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+root.joinpath("add_crates.rs").unlink()
+entry = root / "src/lib.rs"
+source = entry.read_text()
+needle = '    cut(crate::panel::frame::widget::cap::NODE_ID) graft(fast_widget::fast::NODE_ID),'
+assert source.count(needle) == 1
+entry.write_text(source.replace(needle, needle + '\n    cut(crate::panel::gauge::needle::NODE_ID) graft(fast_widget::fast::NODE_ID),'))
+face = root / "src/panel/gauge/needle/needle.rs"
+face.write_text(face.read_text().replace('    kind: Needle,', '    kind: Needle,\n    flow: crate::FlowContract::new(crate::ContractId::new("panel.render.v1"), 1, "PanelInput", "PanelFrame"),'))
+PY
+cp "$RP/app/src/lib.rs" "$WORK/dual-plan-before"
+cp "$RP/fast-widget/src/fast/fast.rs" "$WORK/dual-provider-before"
+"$XIRANG" check "$RP/app" >/dev/null || fail "dual-cut baseline check"
+cp -R "$RP/app/target/xirang/out" "$WORK/dual-base"
+[ "$(cut_count "$WORK/dual-base")" = "2" ] || fail "dual-cut baseline needs both cuts"
+export XIRANG_PROBE_TWO_CUTS=1
+runtime_probe app ../app dual-base
+
+dual_boundary() {
+  label=$1
+  widgets=$2
+  gauges=$3
+  cat >"$RP/app/add_crates.rs" <<EOF
+use xirang_toolchain::run_method::{Crate, Shape};
+pub fn add_crates() -> Shape {
+    Shape::of("app", &[
+        Crate::named("widgets").at(&[$widgets]),
+        Crate::named("gauges").at(&[$gauges]),
+    ])
+}
+EOF
+  "$XIRANG" check "$RP/app" >/dev/null || fail "dual/$label host check"
+  [ "$(cut_count "$RP/app/target/xirang/out")" = "0" ] || fail "dual/$label host duplicated cuts"
+  : >"$WORK/dual-$label-union.tsv"
+  for claim in "$widgets" "$gauges"; do
+    only=$(printf '%s' "$claim" | sed 's/^crate:://; s/::SUBTREE$//')
+    XIRANG_SHAPE_ONLY="$only" "$XIRANG" check "$RP/app" >/dev/null || fail "dual/$label owner check"
+    [ "$(cut_count "$RP/app/target/xirang/out")" = "1" ] || fail "dual/$label each crate must own one cut"
+    tail -n +2 "$RP/app/target/xirang/out/graft_plan.tsv" >>"$WORK/dual-$label-union.tsv"
+  done
+  sort "$WORK/dual-$label-union.tsv" >"$WORK/dual-$label-sorted.tsv"
+  tail -n +2 "$WORK/dual-base/graft_plan.tsv" | sort >"$WORK/dual-base-sorted.tsv"
+  cmp "$WORK/dual-base-sorted.tsv" "$WORK/dual-$label-sorted.tsv" || fail "dual/$label owners lost or duplicated cuts"
+  XIRANG_SHAPE_FACADE=1 "$XIRANG" check "$RP/app" >/dev/null || fail "dual/$label facade check"
+  [ "$(cut_count "$RP/app/target/xirang/out")" = "2" ] || fail "dual/$label facade must carry both cuts"
+  "$XIRANG" crates --write "$RP/app" >/dev/null || fail "dual/$label materialization"
+  (cd "$RP" && build -p app-facade) || fail "dual/$label build"
+  runtime_probe app-facade ../crates/app-facade "dual-$label"
+  cmp "$WORK/rp-dual-base-behavior" "$WORK/rp-dual-$label-behavior" || fail "dual/$label effective graft changed"
+  cmp "$WORK/dual-plan-before" "$RP/app/src/lib.rs" || fail "dual/$label rewrote graft plan"
+  cmp "$WORK/dual-provider-before" "$RP/fast-widget/src/fast/fast.rs" || fail "dual/$label rewrote third-party implementation"
+}
+dual_boundary separate "crate::panel::frame::widget::SUBTREE" "crate::panel::gauge::SUBTREE"
+dual_boundary swapped "crate::panel::gauge::SUBTREE" "crate::panel::frame::SUBTREE"
+write_boundary "$RP/app" "crate::panel::frame::SUBTREE, crate::panel::gauge::SUBTREE"
+"$XIRANG" check "$RP/app" >/dev/null || fail "dual/merged check"
+"$XIRANG" crates --write "$RP/app" >/dev/null || fail "dual/merged materialization"
+(cd "$RP" && build -p app-facade) || fail "dual/merged build"
+runtime_probe app-facade ../crates/app-facade dual-merged
+cmp "$WORK/rp-dual-base-behavior" "$WORK/rp-dual-merged-behavior" || fail "dual/merged effective graft changed"
+cmp "$WORK/dual-plan-before" "$RP/app/src/lib.rs" || fail "dual/merged rewrote graft plan"
+cmp "$WORK/dual-provider-before" "$RP/fast-widget/src/fast/fast.rs" || fail "dual/merged rewrote third-party implementation"
+python3 "$ROOT/tools/xirang-move-partition-probe" "$ROOT" "$RP"
+unset XIRANG_PROBE_TWO_CUTS
+
+step "OK — partition shapes build, graft identity and runtime overlay survive re-partitioning, including two independently owned cuts, swapped owners and a merge"

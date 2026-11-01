@@ -1,0 +1,110 @@
+{
+  "xirang-parent": {
+    "prefix": ["xirang-parent"],
+    "body": [".under($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-parent` 的定式并把光标停在值位 / insert the `xirang-parent` shape and stop at its value"
+  },
+  "xirang-stable_name": {
+    "prefix": ["xirang-stable_name"],
+    "body": [".stable_name(\"$1\")"],
+    "scope": "rust",
+    "description": "插入 `xirang-stable_name` 的定式并把光标停在值位 / insert the `xirang-stable_name` shape and stop at its value"
+  },
+  "xirang-name": {
+    "prefix": ["xirang-name"],
+    "body": [".name(\"$2\", \"$1\")"],
+    "scope": "rust",
+    "description": "插入 `xirang-name` 的定式并把光标停在值位 / insert the `xirang-name` shape and stop at its value"
+  },
+  "xirang-summary": {
+    "prefix": ["xirang-summary"],
+    "body": [".summary(\"$2\", \"$1\")"],
+    "scope": "rust",
+    "description": "插入 `xirang-summary` 的定式并把光标停在值位 / insert the `xirang-summary` shape and stop at its value"
+  },
+  "xirang-exports": {
+    "prefix": ["xirang-exports"],
+    "body": [".exports(&[\"$1\"])"],
+    "scope": "rust",
+    "description": "插入 `xirang-exports` 的定式并把光标停在值位 / insert the `xirang-exports` shape and stop at its value"
+  },
+  "xirang-needs_registry": {
+    "prefix": ["xirang-needs_registry"],
+    "body": [".needs_registry($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-needs_registry` 的定式并把光标停在值位 / insert the `xirang-needs_registry` shape and stop at its value"
+  },
+  "xirang-getting_from_other_registry": {
+    "prefix": ["xirang-getting_from_other_registry"],
+    "body": [".getting_from_other_registry(Some(\"$1\"))"],
+    "scope": "rust",
+    "description": "插入 `xirang-getting_from_other_registry` 的定式并把光标停在值位 / insert the `xirang-getting_from_other_registry` shape and stop at its value"
+  },
+  "xirang-registry_rule_path": {
+    "prefix": ["xirang-registry_rule_path"],
+    "body": [".registry_rule_path(\"$1\")"],
+    "scope": "rust",
+    "description": "插入 `xirang-registry_rule_path` 的定式并把光标停在值位 / insert the `xirang-registry_rule_path` shape and stop at its value"
+  },
+  "xirang-registry_rule": {
+    "prefix": ["xirang-registry_rule"],
+    "body": [".registry_rule($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-registry_rule` 的定式并把光标停在值位 / insert the `xirang-registry_rule` shape and stop at its value"
+  },
+  "xirang-admission": {
+    "prefix": ["xirang-admission"],
+    "body": [".admission($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-admission` 的定式并把光标停在值位 / insert the `xirang-admission` shape and stop at its value"
+  },
+  "xirang-requires": {
+    "prefix": ["xirang-requires"],
+    "body": [".requires(\"$1\", \"$2\")"],
+    "scope": "rust",
+    "description": "插入 `xirang-requires` 的定式并把光标停在值位 / insert the `xirang-requires` shape and stop at its value"
+  },
+  "xirang-provides": {
+    "prefix": ["xirang-provides"],
+    "body": [".provides(&[\"$1\"])"],
+    "scope": "rust",
+    "description": "插入 `xirang-provides` 的定式并把光标停在值位 / insert the `xirang-provides` shape and stop at its value"
+  },
+  "xirang-flow": {
+    "prefix": ["xirang-flow"],
+    "body": [".flow($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-flow` 的定式并把光标停在值位 / insert the `xirang-flow` shape and stop at its value"
+  },
+  "xirang-flow_provider": {
+    "prefix": ["xirang-flow_provider"],
+    "body": [".flow_provider::<$1>()"],
+    "scope": "rust",
+    "description": "插入 `xirang-flow_provider` 的定式并把光标停在值位 / insert the `xirang-flow_provider` shape and stop at its value"
+  },
+  "xirang-runtime_checks": {
+    "prefix": ["xirang-runtime_checks"],
+    "body": [".runtime_checks(&[$1])"],
+    "scope": "rust",
+    "description": "插入 `xirang-runtime_checks` 的定式并把光标停在值位 / insert the `xirang-runtime_checks` shape and stop at its value"
+  },
+  "xirang-plugin": {
+    "prefix": ["xirang-plugin"],
+    "body": [".plugin($1)"],
+    "scope": "rust",
+    "description": "插入 `xirang-plugin` 的定式并把光标停在值位 / insert the `xirang-plugin` shape and stop at its value"
+  },
+  "xirang-Preset": {
+    "prefix": ["xirang-Preset"],
+    "body": [".preset::<$1>()"],
+    "scope": "rust",
+    "description": "插入 `xirang-Preset` 的定式并把光标停在值位 / insert the `xirang-Preset` shape and stop at its value"
+  },
+  "xirang-Parts": {
+    "prefix": ["xirang-Parts"],
+    "body": [".parts::<$1>()"],
+    "scope": "rust",
+    "description": "插入 `xirang-Parts` 的定式并把光标停在值位 / insert the `xirang-Parts` shape and stop at its value"
+  }
+}

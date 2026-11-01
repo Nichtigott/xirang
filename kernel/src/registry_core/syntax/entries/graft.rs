@@ -14,6 +14,19 @@ use syn::visit::Visit;
 use super::super::face::{compact, split_typed_range};
 use super::super::{FaceSyntaxError, SyntaxLocation, compact_tokens, location, syntax_error};
 
+/// The source span of a span-carrying token.
+/// 一个携带 span 的 token 的源码跨度。
+fn endpoint_span(span: proc_macro2::Span) -> GraftEndpointSpan {
+    let end = span.end();
+    GraftEndpointSpan {
+        start: location(span),
+        end: SyntaxLocation {
+            line: end.line,
+            column: end.column + 1,
+        },
+    }
+}
+
 /// A host-declared external graft cut discovered before code generation.
 /// 在代码生成前从宿主入口发现的一条外部 graft 切口。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +80,39 @@ pub struct GraftSyntax {
     /// 表达式，因此编译器和任何能解析 Rust 路径的编辑器看到的都是真实目标，
     /// 而不是需要工具自己解释的字符串。
     pub expressions: Option<GraftExpressions>,
+    /// The source span of each endpoint, when the parser could record one. A move rewrites the
+    /// endpoint the author actually wrote — which form and which of several same-line references —
+    /// so the span is a fact about the source, not a re-derivation from the normalized path.
+    /// 每个端点在源码里的跨度（解析器能记录时）。一次搬动要改的是作者**实际写下的**那个端点——
+    /// 哪种形式、同一行里的哪一处——因此跨度是关于源码的事实，不能从归一化后的路径重新推导。
+    pub spans: Option<GraftSpans>,
+}
+
+/// One endpoint's source span.
+/// 一个端点的源码跨度。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraftEndpointSpan {
+    /// One-based start (line, column).
+    /// 1 起始的起点（行、列）。
+    pub start: SyntaxLocation,
+    /// One-based exclusive end (line, column).
+    /// 1 起始的排他终点（行、列）。
+    pub end: SyntaxLocation,
+}
+
+/// Every endpoint a typed graft declaration wrote, with its source span.
+/// 一条类型化 graft 声明写下的每个端点，及其源码跨度。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraftSpans {
+    /// The cut target.
+    /// 切口目标。
+    pub cut: GraftEndpointSpan,
+    /// The far endpoint of a range, when one was written.
+    /// 区间远端端点（若写了区间）。
+    pub cut_end: Option<GraftEndpointSpan>,
+    /// The replacement expression.
+    /// 替换表达式。
+    pub graft: GraftEndpointSpan,
 }
 
 /// Rust expressions used by a typed graft cut, in source order.
@@ -99,8 +145,42 @@ struct GraftVisitor<'a> {
     /// 访问器当前所在各模块的 `cfg` 门控，最外层在前。被门控模块里的声明会继承它们：构建能求值
     /// 的门控属于它守护的那条声明，而不属于解析器——解析器一个门控也求值不了（审计 `LGC-LG-29`）。
     module_cfgs: Vec<String>,
+    imports: super::super::imports::Imports,
 }
 impl<'ast> Visit<'ast> for GraftVisitor<'_> {
+    fn visit_file(&mut self, file: &'ast syn::File) {
+        super::super::imports::collect(&file.items, &mut self.imports);
+        syn::visit::visit_file(self, file);
+    }
+
+    fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
+        if self.error.is_some() {
+            return;
+        }
+        let gates = item
+            .attrs
+            .iter()
+            .filter(|a| a.path().is_ident("cfg"))
+            .filter_map(|a| a.parse_args::<TokenStream>().ok())
+            .map(|t| compact(&t))
+            .collect::<Vec<_>>();
+        if gates.iter().any(|gate| cfg_is_test_only(gate)) {
+            return;
+        }
+        match super::native_graft::entries(item, &self.imports) {
+            Ok(Some(entries)) => {
+                let own = combined_cfg(&gates, None);
+                for mut entry in entries {
+                    entry.cfg = combined_cfg(&self.module_cfgs, own.as_deref());
+                    self.entries.push(entry);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => self.error = Some(error),
+        }
+    }
+    fn visit_item_fn(&mut self, _: &'ast syn::ItemFn) {}
+
     /// Only a declaration written as an item belongs in the build's plan: a
     /// `runtime_graft_plan!` inside a function is a runtime expression, and a plan
     /// inside `#[cfg(test)] mod tests` describes tests. Both used to be
@@ -137,10 +217,15 @@ impl<'ast> Visit<'ast> for GraftVisitor<'_> {
         if gates.iter().any(|gate| cfg_is_test_only(gate)) {
             return;
         }
+        let saved_imports = self.imports.clone();
+        if let Some((_, items)) = &item.content {
+            super::super::imports::collect(items, &mut self.imports);
+        }
         let depth = self.module_cfgs.len();
         self.module_cfgs.extend(gates);
         syn::visit::visit_item_mod(self, item);
         self.module_cfgs.truncate(depth);
+        self.imports = saved_imports;
     }
 }
 
@@ -399,8 +484,10 @@ impl<'a> GraftVisitor<'a> {
             }
             index += 1;
             let graft_token = tokens.get(index).cloned();
+            let mut graft_span = None;
             let (graft, graft_expr) = match graft_token {
                 Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
+                    graft_span = Some(group.span());
                     let text = compact_tokens(group.stream());
                     (text.clone(), Some(text))
                 }
@@ -425,11 +512,16 @@ impl<'a> GraftVisitor<'a> {
             // A cut names both sides the same way, so the generated table
             // never has to mix a resolved identity with an unresolved name.
             // 一条切口的命名方式必须一致，生成表因此不会混合已解析身份与未解析名称。
+            // Both spellings normalize to the declaration form here too: the array grammar used
+            // to keep `crate::catalog::<parent>::<KIND>` verbatim while the const grammar normalized
+            // it, so a catalog cut was resolvable in one host shape and "unresolved" in the other.
+            // 两种拼法在这里也归一成声明形式：数组语法过去把 `crate::catalog::<父>::<KIND>` 原样保留，
+            // 而 const 语法会归一，于是同一条目录切口在一种宿主形状里可解析、在另一种里"unresolved"。
             let expressions = match (typed, graft_expr) {
                 (true, Some(graft)) => Some(GraftExpressions {
-                    cut: cut.clone(),
-                    cut_end: end.clone(),
-                    graft,
+                    cut: crate::syntax::catalog_reference(&cut),
+                    cut_end: end.as_deref().map(crate::syntax::catalog_reference),
+                    graft: crate::syntax::catalog_reference(&graft),
                 }),
                 (false, None) => None,
                 _ => {
@@ -461,6 +553,7 @@ impl<'a> GraftVisitor<'a> {
             // able from a range at every later consumer.
             // 两个端点保持独立字段；把它们拼进 `cut` 会让字面含有 `" to "` 的路径
             // 在之后每个消费方那里都与区间无法区分。
+            let is_typed_range = typed && end.is_some();
             self.entries.push(GraftSyntax {
                 cut,
                 cut_end: end,
@@ -469,8 +562,20 @@ impl<'a> GraftVisitor<'a> {
                 location: location(cut_span),
                 cfg: combined_cfg(&self.module_cfgs, cfg.as_deref()),
                 expressions,
+                spans: (!is_typed_range && typed).then(|| {
+                    // The macro grammar hands each endpoint as a parenthesized group; the span
+                    // includes the delimiters, and the planner trims them when it addresses the
+                    // expression inside. A typed range keeps `None`: the planner refuses a range
+                    // that names a moving face before it asks for spans.
+                    // 宏语法把每个端点作为括号组交出；跨度包含分隔符，规划器在定位内部表达式时去掉它们。
+                    // 类型化区间保留 `None`：规划器在索取跨度之前就拒绝点名被搬面的区间。
+                    GraftSpans {
+                        cut: endpoint_span(cut_span),
+                        cut_end: None,
+                        graft: endpoint_span(graft_span.unwrap_or(cut_span)),
+                    }
+                }),
             });
-            index += 1;
             index += 1;
         }
     }
@@ -572,6 +677,7 @@ pub fn graft_entries(source: &str) -> Result<Vec<GraftSyntax>, FaceSyntaxError> 
         entries: &mut entries,
         error: None,
         module_cfgs: Vec::new(),
+        imports: Default::default(),
     };
     visitor.visit_file(&file);
     visitor.error.map_or(Ok(entries), Err)

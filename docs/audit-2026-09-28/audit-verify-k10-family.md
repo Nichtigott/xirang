@@ -1,7 +1,7 @@
 # 独立验证：`K-10` 家族（严格注册规则读取器 + 生产调用点）
 
 - 验证者：**bridge-auditor**（t75，**非作者**：`K-10` 的两笔交付 `t66`/`t72` 由 run-engineer 完成，我一条未参与）
-- 对象：`K-10` 家族——`t66` 在 `core/src/registry_core/authoring/parse/rules.rs` 新增的 `try_rule_syntax_from_text`（只读 `REGISTRATION_RULE` 初始器的严格读法），与 `t72` 把生产调用点 `run_method/src/authoring/parse/parse.rs` 的 `rule_syntax_for_source` 切到该入口
+- 对象：`K-10` 家族——`t66` 在 `core/src/registry_core/authoring/parse/rules.rs` 新增的 `try_rule_syntax_from_text`（只读 `REGISTRATION_RULE` 初始器的严格读法），与 `t72` 把生产调用点 `run_method/authoring/parse/parse.rs` 的 `rule_syntax_for_source` 切到该入口
 - 日期：2026-09-28（本检出，`--offline`）
 - 源码：**真实树零改动**（本轮我只写本文件；六份被验证源码/夹具文件前后 `sha256sum -c` 全部 `OK`，见 §7）
 - 手段：**自写探针**（`/tmp/t75-copy/run_method/tests/k10_probe.rs`，6 个用例）驱动**公开生产入口** `generated_snapshots_from` 与公开的 `try_rule_syntax_from_text` / `rule_syntax_from_text` 一对；夹具由探针自建（含一份出厂面文件 + 自写规则文件）；**3 组变异**回旧行为；出厂三份 `registry_rule.rs` 反过火核对；`examples/control-button --test registry` 独立复跑
@@ -27,8 +27,8 @@
 ```
 xirang_run_method::generated_snapshots_from(root)        # MCP `xirang.apply` 预览与 Studio 刷新所用
   → FaceManifest::parse_source(path)
-    → manifest::parse::source(path)                        # run_method/src/authoring/manifest/parse/parse.rs:261
-      → rule_syntax_for_source(path)                       # run_method/src/authoring/parse/parse.rs:88
+    → manifest::parse::source(path)                        # run_method/authoring/manifest/parse/parse.rs:261
+      → rule_syntax_for_source(path)                       # run_method/authoring/parse/parse.rs:88
         → xirang::authoring::parse::try_rule_syntax_from_text(text)
 ```
 
@@ -147,8 +147,8 @@ pub const REGISTRATION_RULE: RegistrationRule =
 
 ```
 core/src/registry_core/authoring/parse/rules.rs
-run_method/src/authoring/parse/parse.rs
-run_method/src/authoring/manifest/parse/parse.rs
+run_method/authoring/parse/parse.rs
+run_method/authoring/manifest/parse/parse.rs
 studio/tests/fixtures/node-editor/src/control/registry_rule/registry_rule.rs
 studio/tests/fixtures/node-editor/src/control/object/node_editor/registry_rule/registry_rule.rs
 examples/control-button/src/control/registry_rule/registry_rule.rs
@@ -162,6 +162,6 @@ examples/control-button/src/control/registry_rule/registry_rule.rs
 
 **边界（未验证/不可断言的部分）：**
 
-- 我只驱动了 `generated_snapshots_from` 这一条生产路径；`cli/`、`studio/` 是否还有别的读者直接调用宽容入口，本轮没有逐调用点普查。`grep -rn`（排除 `target/`）显示：**严格入口的生产调用点只有 `run_method/src/authoring/parse/parse.rs:98`**；其余命中全部是测试与文档——`core/tests/registration_rule_entry.rs`（集成测试，5 处严格 / 14 处宽容）、`core/…/parse/rules_tests.rs`、`run_method/…/parse/parse_tests.rs`，以及 `core/…/parse/parse.rs` 与 `run_method/…/parse/parse.rs` 的文档引用。
+- 我只驱动了 `generated_snapshots_from` 这一条生产路径；`cli/`、`studio/` 是否还有别的读者直接调用宽容入口，本轮没有逐调用点普查。`grep -rn`（排除 `target/`）显示：**严格入口的生产调用点只有 `run_method/authoring/parse/parse.rs:98`**；其余命中全部是测试与文档——`core/tests/registration_rule_entry.rs`（集成测试，5 处严格 / 14 处宽容）、`core/…/parse/rules_tests.rs`、`run_method/…/parse/parse_tests.rs`，以及 `core/…/parse/parse.rs` 与 `run_method/…/parse/parse.rs` 的文档引用。
 - “3 份出厂 `registry_rule.rs` 经生产入口成功”只对 2 份成立，第 3 份卡在与本研究无关的父级写法上（§5.2、§6.3）。
 - §6.1 的 `registry_rule_path` 取值与字段文档的口径差我没有判定“应以哪边为准”，只如实记录。

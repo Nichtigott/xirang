@@ -19,7 +19,7 @@
 - `cargo` 三条均带 `--offline`（AGENTS.md 要求）。除 `--check` 外没有跑过 `cargo fmt` 的写操作，也没有跑任何会改文件的命令。
 - `tools/xirang-publish --check-table` 只读本检出，不需要网络与 token。
 - **这份快照的范围是"报告文件出现之前的工作树"**：`conventions` 的 `doc_blocks`/`doc_anchors` 会把 `docs/` 下的 markdown 当活文档扫描，豁免只看**文件名前缀**（`audit*` / `design*`）。审计报告一旦以别的名字落进本目录，`cargo test --workspace` 就会变红——那是报告自己触发的门禁，不是源码回归。本目录下的报告一律用 `audit-*` 前缀（本条即为此类），所以 `cargo test` 仍应全绿；若变红，先检查是否有不符合豁免前缀的文件进了 `docs/`。
-- **数据新鲜度**：工作树里最后一份被改动的源码是 `mcp/src/apply.rs`（12:06:03）；门禁与清点在 12:31–12:38 之间跑完，因此本快照覆盖的是最新工作树，不存在"清点早于源码"的空窗。Cargo.lock 是审计前就已被改的 ` M` 项（mtime 11:18），本轮三条 cargo 命令没有重写它。
+- **数据新鲜度**：工作树里最后一份被改动的源码是 `mcp/apply.rs`（12:06:03）；门禁与清点在 12:31–12:38 之间跑完，因此本快照覆盖的是最新工作树，不存在"清点早于源码"的空窗。Cargo.lock 是审计前就已被改的 ` M` 项（mtime 11:18），本轮三条 cargo 命令没有重写它。
 - 三条 cargo 命令的 `target/` 是热的：`test` 增量编译 1.33s、`clippy` 0.66s。**这是指纹命中后的结果，不是跳过**——cargo 只有在指纹与当前源码一致时才复用；若工作树之后被改动，必须重跑本表。
 
 ## 1. 口径：这份清点到底数的是什么
@@ -27,7 +27,7 @@
 | 项 | 定义 |
 | --- | --- |
 | **文件行数** | 文件行数 = 全文行数（含文档注释 ///、空行、#[cfg(test)] 测试模块、#[cfg] 门控代码），与 wc -l 在同一口径（以换行符计数）。 |
-| **函数统计** | fn 定义 = 词法扫描到的每个 fn 项：自由函数、inherent impl 方法、trait 默认/必需方法、trait impl 方法、fn 内嵌套 fn。不含闭包、不含函数指针类型、不含宏展开后生成的东西。唯一的口径例外：macro_rules! 宏体里的 fn 也会被扫到，全仓库只有 1 处（run_method/src/macros/face_helpers.rs 的 __assert_impls）。 |
+| **函数统计** | fn 定义 = 词法扫描到的每个 fn 项：自由函数、inherent impl 方法、trait 默认/必需方法、trait impl 方法、fn 内嵌套 fn。不含闭包、不含函数指针类型、不含宏展开后生成的东西。唯一的口径例外：macro_rules! 宏体里的 fn 也会被扫到，全仓库只有 1 处（run_method/macros/face_helpers.rs 的 __assert_impls）。 |
 | **函数行数** | 函数行数 = fn 关键字所在行 → 匹配的闭合 } 所在行（含）；trait 里的无体声明算 1 行。lines_incl_attrs 额外含紧邻其上的 /// 文档与 #[...] 属性行。 |
 | **可见性** | visibility 取 pub / pub(crate) / pub(super) / pub(in ...) / private 原文。 |
 | **模块挂载边** | 模块挂载边来自父文件里的 mod 声明（hand-written）与构建期生成的 $OUT_DIR/generated_lib.rs（generated-out-dir）。 |
@@ -57,12 +57,12 @@
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `xirang-core` | `core/` | 93 | 21,787 | 21,579 | 208 | 792 | 358 | 276 | 90 | 0 | `core/src/registry_core/plugin/contracts/contracts.rs` (639) |
 | `xirang-macro` | `macro/` | 3 | 917 | 917 | 0 | 26 | 12 | 7 | 2 | 0 | `macro/src/lib.rs` (402) |
-| `xirang-run-method` | `run_method/` | 61 | 9,584 | 8,277 | 1,157 | 277 | 143 | 89 | 51 | 0 | `run_method/src/runtime/trace/frames/frames.rs` (452) |
-| `xirang-build-method` | `build_method/` | 48 | 10,110 | 9,928 | 182 | 292 | 114 | 114 | 45 | 0 | `build_method/src/graft_plan_check.rs` (465) |
-| `xirang-cli` | `cli/` | 14 | 2,802 | 2,802 | 0 | 68 | 27 | 33 | 11 | 0 | `cli/src/lib_tests.rs` (1,015) |
-| `xirang-mcp` | `mcp/` | 39 | 8,682 | 8,682 | 0 | 242 | 44 | 141 | 37 | 0 | `mcp/src/apply.rs` (563) |
+| `xirang-run-method` | `run_method/` | 61 | 9,584 | 8,277 | 1,157 | 277 | 143 | 89 | 51 | 0 | `run_method/runtime/trace/frames/frames.rs` (452) |
+| `xirang-build-method` | `build_method/` | 48 | 10,110 | 9,928 | 182 | 292 | 114 | 114 | 45 | 0 | `build_method/graft_plan_check.rs` (465) |
+| `xirang-cli` | `cli/` | 14 | 2,802 | 2,802 | 0 | 68 | 27 | 33 | 11 | 0 | `cli/lib_tests.rs` (1,015) |
+| `xirang-mcp` | `mcp/` | 39 | 8,682 | 8,682 | 0 | 242 | 44 | 141 | 37 | 0 | `mcp/apply.rs` (563) |
 | `xirang-debug-method` | `debug_method/` | 5 | 481 | 444 | 37 | 19 | 10 | 6 | 3 | 0 | `debug_method/src/adapters.rs` (214) |
-| `xirang-studio` | `studio/` | 72 | 12,308 | 12,209 | 99 | 333 | 138 | 138 | 68 | 0 | `studio/src/studio/app/tests/call_tree.rs` (702) |
+| `xirang-studio` | `studio/` | 72 | 12,308 | 12,209 | 99 | 333 | 138 | 138 | 68 | 0 | `studio/studio/app/tests/call_tree.rs` (702) |
 | `xirang-plugin-host` | `plugin-host/` | 15 | 3,888 | 1,987 | 1,901 | 136 | 38 | 72 | 10 | 0 | `plugin-host/tests/fault_matrix.rs` (968) |
 | `xirang-example-control-button` | `examples/control-button/` | 13 | 1,635 | 199 | 1,179 | 53 | 2 | 40 | 8 | 0 | `examples/control-button/tests/registry.rs` (743) |
 | `xirang-example-control-button-graft` | `examples/control-button-graft/` | 4 | 134 | 134 | 0 | 1 | 1 | 0 | 3 | 0 | `examples/control-button-graft/src/button_fast.rs` (36) |
@@ -78,42 +78,42 @@
 
 | # | 行数 | crate | role | 文件 | fn | pub fn | `#[cfg(test)]` 挂载 |
 | ---: | ---: | --- | --- | --- | ---: | ---: | --- |
-| 1 | **1,015** | `xirang-cli` | src | `cli/src/lib_tests.rs` | 32 | 0 | 是 |
+| 1 | **1,015** | `xirang-cli` | src | `cli/lib_tests.rs` | 32 | 0 | 是 |
 | 2 | **968** | `xirang-plugin-host` | tests | `plugin-host/tests/fault_matrix.rs` | 32 | 0 | 否 |
 | 3 | **743** | `xirang-example-control-button` | tests | `examples/control-button/tests/registry.rs` | 28 | 0 | 否 |
-| 4 | **702** | `xirang-studio` | src | `studio/src/studio/app/tests/call_tree.rs` | 18 | 0 | 是 |
+| 4 | **702** | `xirang-studio` | src | `studio/studio/app/tests/call_tree.rs` | 18 | 0 | 是 |
 | 5 | **639** | `xirang-core` | src | `core/src/registry_core/plugin/contracts/contracts.rs` | 31 | 16 | 否 |
-| 6 | **563** | `xirang-mcp` | src | `mcp/src/apply.rs` | 9 | 2 | 否 |
-| 7 | **562** | `xirang-studio` | src | `studio/src/studio/app/tests/project.rs` | 18 | 0 | 是 |
+| 6 | **563** | `xirang-mcp` | src | `mcp/apply.rs` | 9 | 2 | 否 |
+| 7 | **562** | `xirang-studio` | src | `studio/studio/app/tests/project.rs` | 18 | 0 | 是 |
 | 8 | **557** | `xirang-conventions` | src | `conventions/src/doc_anchors.rs` | 19 | 1 | 否 |
 | 9 | **551** | `xirang-core` | src | `core/src/registry_core/declaration/runtime_checks.rs` | 20 | 12 | 否 |
-| 10 | **517** | `xirang-mcp` | src | `mcp/src/apply_tests.rs` | 12 | 0 | 是 |
-| 11 | **509** | `xirang-studio` | src | `studio/src/studio/app/support.rs` | 23 | 21 | 否 |
+| 10 | **517** | `xirang-mcp` | src | `mcp/apply_tests.rs` | 12 | 0 | 是 |
+| 11 | **509** | `xirang-studio` | src | `studio/studio/app/support.rs` | 23 | 21 | 否 |
 | 12 | **508** | `xirang-conventions` | src | `conventions/src/lib.rs` | 19 | 10 | 否 |
 | 13 | **504** | `xirang-core` | src | `core/src/registry_core/tree/connector/connector.rs` | 12 | 3 | 否 |
 | 14 | **502** | `xirang-core` | src | `core/src/registry_core/syntax/entries/graft.rs` | 14 | 1 | 否 |
 | 15 | **500** | `xirang-conventions` | src | `conventions/src/size.rs` | 17 | 5 | 否 |
 | 16 | **469** | `xirang-core` | src | `core/src/registry_core/source/source.rs` | 9 | 5 | 否 |
-| 17 | **465** | `xirang-build-method` | src | `build_method/src/graft_plan_check.rs` | 18 | 3 | 否 |
+| 17 | **465** | `xirang-build-method` | src | `build_method/graft_plan_check.rs` | 18 | 3 | 否 |
 | 18 | **463** | `xirang-core` | src | `core/src/registry_core/tree/graft_ops/overlay.rs` | 12 | 6 | 否 |
 | 19 | **461** | `xirang-core` | src | `core/src/registry_core/declaration/registration.rs` | 16 | 15 | 否 |
 | 20 | **455** | `xirang-core` | src | `core/src/registry_core/plugin/catalog/catalog.rs` | 17 | 6 | 否 |
-| 21 | **452** | `xirang-run-method` | src | `run_method/src/runtime/trace/frames/frames.rs` | 30 | 20 | 否 |
+| 21 | **452** | `xirang-run-method` | src | `run_method/runtime/trace/frames/frames.rs` | 30 | 20 | 否 |
 | 22 | **449** | `xirang-core` | src | `core/src/registry_core/plugin/graft/document.rs` | 18 | 5 | 否 |
-| 23 | **449** | `xirang-build-method` | src | `build_method/src/scaffold/project.rs` | 14 | 4 | 否 |
-| 24 | **448** | `xirang-mcp` | src | `mcp/src/tools.rs` | 8 | 2 | 否 |
-| 25 | **444** | `xirang-build-method` | src | `build_method/src/face_view.rs` | 10 | 1 | 否 |
+| 23 | **449** | `xirang-build-method` | src | `build_method/scaffold/project.rs` | 14 | 4 | 否 |
+| 24 | **448** | `xirang-mcp` | src | `mcp/tools.rs` | 8 | 2 | 否 |
+| 25 | **444** | `xirang-build-method` | src | `build_method/face_view.rs` | 10 | 1 | 否 |
 | 26 | **444** | `xirang-conventions` | src | `conventions/src/lint.rs` | 14 | 3 | 否 |
 | 27 | **443** | `xirang-plugin-host` | src | `plugin-host/src/process.rs` | 14 | 7 | 否 |
-| 28 | **439** | `xirang-build-method` | src | `build_method/src/entry.rs` | 10 | 7 | 否 |
-| 29 | **438** | `xirang-studio` | src | `studio/src/studio/app/tests/trace_ingest.rs` | 18 | 0 | 是 |
-| 30 | **437** | `xirang-studio` | src | `studio/src/studio/app/tests/edit.rs` | 6 | 0 | 是 |
+| 28 | **439** | `xirang-build-method` | src | `build_method/entry.rs` | 10 | 7 | 否 |
+| 29 | **438** | `xirang-studio` | src | `studio/studio/app/tests/trace_ingest.rs` | 18 | 0 | 是 |
+| 30 | **437** | `xirang-studio` | src | `studio/studio/app/tests/edit.rs` | 6 | 0 | 是 |
 
 超过 600 行（`conventions/src/size.rs` 的 `CEILING`，非测试源码文件的棘轮上限）的文件：**5** 个。
 
 - `core/src/registry_core/plugin/contracts/contracts.rs` — 639 行，role=src，`#[cfg(test)]` 挂载=否（在棘轮 BASELINE 里，被显式钉住）
-- `cli/src/lib_tests.rs` — 1,015 行，role=src，`#[cfg(test)]` 挂载=是（文件名像测试且确实挂在 `#[cfg(test)]` 后，按 size.rs 的边界豁免）
-- `studio/src/studio/app/tests/call_tree.rs` — 702 行，role=src，`#[cfg(test)]` 挂载=是（文件名像测试且确实挂在 `#[cfg(test)]` 后，按 size.rs 的边界豁免）
+- `cli/lib_tests.rs` — 1,015 行，role=src，`#[cfg(test)]` 挂载=是（文件名像测试且确实挂在 `#[cfg(test)]` 后，按 size.rs 的边界豁免）
+- `studio/studio/app/tests/call_tree.rs` — 702 行，role=src，`#[cfg(test)]` 挂载=是（文件名像测试且确实挂在 `#[cfg(test)]` 后，按 size.rs 的边界豁免）
 - `plugin-host/tests/fault_matrix.rs` — 968 行，role=tests，`#[cfg(test)]` 挂载=否（tests/ 目录，按位置豁免）
 - `examples/control-button/tests/registry.rs` — 743 行，role=tests，`#[cfg(test)]` 挂载=否（tests/ 目录，按位置豁免）
 
@@ -145,24 +145,24 @@
 
 | 长度 | 名字 | 位置 | 类型 |
 | ---: | --- | --- | --- |
-| 79 | `an_answered_requirement_names_its_provider_and_the_plan_lists_the_neighbourhood` | `mcp/src/converge_tests.rs:212` | free_fn |
+| 79 | `an_answered_requirement_names_its_provider_and_the_plan_lists_the_neighbourhood` | `mcp/converge_tests.rs:212` | free_fn |
 | 79 | `a_declared_table_costs_the_host_by_the_element_and_the_ceiling_refuses_it_first` | `plugin-host/tests/wasm_table_cost.rs:240` | free_fn |
 | 78 | `coordinates_in_viewport_accepts_inside_and_rejects_overflow_and_space_mismatch` | `core/src/registry_core/declaration/runtime_checks_tests.rs:66` | free_fn |
-| 77 | `a_rejected_tree_is_reported_as_the_verdict_rather_than_hidden_behind_an_error` | `mcp/src/converge_tests.rs:242` | free_fn |
+| 77 | `a_rejected_tree_is_reported_as_the_verdict_rather_than_hidden_behind_an_error` | `mcp/converge_tests.rs:242` | free_fn |
 | 76 | `compatible_with_stays_literal_while_the_semantic_entry_point_folds_spellings` | `core/src/registry_core/plugin/contracts/contracts.rs:608` | free_fn |
 | 72 | `a_range_covers_the_siblings_between_its_endpoints_in_registry_name_order` | `core/src/registry_core/tree/graft_ops/resolution.rs:313` | free_fn |
 | 71 | `source_references_ignore_imports_strings_comments_and_registration_data` | `core/src/registry_core/syntax/face_tests.rs:130` | free_fn |
 | 71 | `a_configured_root_that_is_not_a_directory_fails_with_the_variable_named` | `studio/tests/launch.rs:45` | free_fn |
-| 70 | `enter_re_centres_on_a_tree_node_and_opens_the_editor_only_at_the_focus` | `studio/src/studio/app/tests/call_tree.rs:279` | free_fn |
+| 70 | `enter_re_centres_on_a_tree_node_and_opens_the_editor_only_at_the_focus` | `studio/studio/app/tests/call_tree.rs:279` | free_fn |
 | 69 | `application_entry_parser_keeps_duplicates_visible_to_the_build_policy` | `core/src/registry_core/syntax/entries/application.rs:118` | free_fn |
-| 69 | `a_build_script_without_a_source_tree_fails_with_the_layout_diagnostic` | `build_method/src/pipeline_tests.rs:30` | free_fn |
-| 69 | `a_declared_plan_names_its_declaration_and_an_undeclared_one_is_unkept` | `mcp/src/grafts_tests.rs:63` | free_fn |
-| 69 | `editing_module_name_moves_the_face_and_keeps_generated_source_compact` | `studio/src/studio/app/tests/edit.rs:80` | free_fn |
+| 69 | `a_build_script_without_a_source_tree_fails_with_the_layout_diagnostic` | `build_method/pipeline_tests.rs:30` | free_fn |
+| 69 | `a_declared_plan_names_its_declaration_and_an_undeclared_one_is_unkept` | `mcp/grafts_tests.rs:63` | free_fn |
+| 69 | `editing_module_name_moves_the_face_and_keeps_generated_source_compact` | `studio/studio/app/tests/edit.rs:80` | free_fn |
 | 68 | `the_package_root_rule_prefers_the_explicit_value_then_a_real_package` | `core/src/registry_core/lexicon/lexicon_tests.rs:37` | free_fn |
-| 68 | `a_blank_create_keeps_defaults_while_a_blank_edit_writes_them_through` | `run_method/src/authoring/operations/face_write.rs:307` | free_fn |
-| 68 | `the_artifact_path_prefers_the_override_and_falls_back_to_the_lexicon` | `run_method/src/runtime/trace/artifact/artifact_tests.rs:347` | free_fn |
-| 68 | `an_unidentified_artifact_makes_the_delta_say_what_it_cannot_rule_out` | `mcp/src/mir_tests.rs:163` | free_fn |
-| 68 | `a_session_without_an_artifact_installs_no_trace_and_confirms_nothing` | `studio/src/studio/app/tests/evidence.rs:84` | free_fn |
+| 68 | `a_blank_create_keeps_defaults_while_a_blank_edit_writes_them_through` | `run_method/authoring/operations/face_write.rs:307` | free_fn |
+| 68 | `the_artifact_path_prefers_the_override_and_falls_back_to_the_lexicon` | `run_method/runtime/trace/artifact/artifact_tests.rs:347` | free_fn |
+| 68 | `an_unidentified_artifact_makes_the_delta_say_what_it_cannot_rule_out` | `mcp/mir_tests.rs:163` | free_fn |
+| 68 | `a_session_without_an_artifact_installs_no_trace_and_confirms_nothing` | `studio/studio/app/tests/evidence.rs:84` | free_fn |
 | 67 | `a_backwards_range_is_refused_with_both_endpoints_and_the_order_rule` | `core/src/registry_core/tree/graft_ops/resolution.rs:352` | free_fn |
 | 67 | `a_kind_only_external_face_derives_its_registry_name_from_the_module` | `run_method/tests/external_compact_face.rs:31` | free_fn |
 
@@ -172,39 +172,39 @@
 | ---: | --- | --- | --- |
 | 35 | `flow_fields_semantically_compatible` | `core/src/registry_core/plugin/contracts/contracts.rs:326` | free_fn |
 | 34 | `validate_registration_requirements` | `core/src/registry_core/declaration/declaration.rs:97` | free_fn |
-| 30 | `application_default_trace_mode` | `run_method/src/runtime/trace/call_trace.rs:20` | free_fn |
-| 30 | `handle_new_project_overlay_key` | `studio/src/studio/app/overlay/new_project.rs:7` | inherent_method |
+| 30 | `application_default_trace_mode` | `run_method/runtime/trace/call_trace.rs:20` | free_fn |
+| 30 | `handle_new_project_overlay_key` | `studio/studio/app/overlay/new_project.rs:7` | inherent_method |
 | 29 | `parse_registration_rule_owned` | `core/src/registry_core/authoring/parse/rules.rs:140` | free_fn |
 | 29 | `connector_error_with_external` | `core/src/registry_core/tree/connector/connector.rs:193` | inherent_method |
 | 29 | `validate_snapshot_replacement` | `core/src/registry_core/tree/graft_ops/graft_ops.rs:100` | inherent_method |
-| 29 | `derives_rule_from_the_sibling` | `run_method/src/authoring/manifest/face/face.rs:195` | inherent_method |
-| 29 | `aggregate_parent_macro_errors` | `build_method/src/validation.rs:39` | free_fn |
+| 29 | `derives_rule_from_the_sibling` | `run_method/authoring/manifest/face/face.rs:195` | inherent_method |
+| 29 | `aggregate_parent_macro_errors` | `build_method/validation.rs:39` | free_fn |
 | 28 | `module_source_from_node_path` | `core/src/registry_core/authoring/parse/parse.rs:91` | free_fn |
 | 28 | `semantically_compatible_with` | `core/src/registry_core/plugin/contracts/contracts.rs:119` | inherent_method |
 | 28 | `semantically_compatible_with` | `core/src/registry_core/plugin/contracts/contracts.rs:232` | inherent_method |
-| 28 | `add_module_with_registration` | `run_method/src/authoring/operations/operations.rs:202` | free_fn |
-| 28 | `render_call_report_for_trace` | `run_method/src/call_report/call_report.rs:30` | free_fn |
-| 28 | `resolve_host_entry_reporting` | `build_method/src/entry.rs:276` | free_fn |
-| 28 | `aggregate_stable_name_errors` | `build_method/src/validation.rs:30` | free_fn |
+| 28 | `add_module_with_registration` | `run_method/authoring/operations/operations.rs:202` | free_fn |
+| 28 | `render_call_report_for_trace` | `run_method/call_report/call_report.rs:30` | free_fn |
+| 28 | `resolve_host_entry_reporting` | `build_method/entry.rs:276` | free_fn |
+| 28 | `aggregate_stable_name_errors` | `build_method/validation.rs:30` | free_fn |
 | 27 | `validate_snapshot_migration` | `core/src/registry_core/tree/graft_ops/graft_ops.rs:45` | inherent_method |
-| 27 | `legacy_rule_path_for_source` | `run_method/src/authoring/validation/validation.rs:91` | free_fn |
-| 27 | `host_entry_from_environment` | `build_method/src/entry.rs:205` | free_fn |
-| 27 | `declaring_application_entry` | `build_method/src/entry.rs:389` | free_fn |
-| 27 | `write_source_scope_manifest` | `build_method/src/manifests.rs:34` | free_fn |
-| 27 | `collect_parent_macro_errors` | `build_method/src/validation.rs:45` | free_fn |
+| 27 | `legacy_rule_path_for_source` | `run_method/authoring/validation/validation.rs:91` | free_fn |
+| 27 | `host_entry_from_environment` | `build_method/entry.rs:205` | free_fn |
+| 27 | `declaring_application_entry` | `build_method/entry.rs:389` | free_fn |
+| 27 | `write_source_scope_manifest` | `build_method/manifests.rs:34` | free_fn |
+| 27 | `collect_parent_macro_errors` | `build_method/validation.rs:45` | free_fn |
 | 27 | `preview_canvas_width_traced` | `studio/tests/fixtures/node-editor/src/control/object/node_editor/node_editor.rs:40` | free_fn |
 | 26 | `parse_admission_expression` | `core/src/registry_core/authoring/parse/admission.rs:18` | free_fn |
 | 26 | `assert_static_registration` | `core/src/registry_core/release/release.rs:291` | free_fn |
 | 26 | `collect_registration_chain` | `core/src/registry_core/tree/connector/connector.rs:27` | inherent_method |
 | 26 | `external_provider_rejected` | `core/src/registry_core/tree/connector/connector.rs:152` | inherent_method |
 | 26 | `apply_snapshot_replacement` | `core/src/registry_core/tree/graft_ops/graft_ops.rs:215` | inherent_method |
-| 26 | `collect_face_syntax_errors` | `build_method/src/validation.rs:197` | free_fn |
-| 26 | `declaration_contract_paths` | `studio/src/studio/app/keyboard.rs:171` | free_fn |
-| 25 | `aggregate_contract_errors` | `build_method/src/contracts.rs:15` | free_fn |
-| 25 | `auto_from_entry_reporting` | `build_method/src/scope.rs:201` | inherent_method |
-| 25 | `handle_delete_overlay_key` | `studio/src/studio/app/overlay/delete.rs:7` | inherent_method |
-| 25 | `handle_plugin_overlay_key` | `studio/src/studio/app/overlay/plugin.rs:7` | inherent_method |
-| 25 | `handle_search_overlay_key` | `studio/src/studio/app/overlay/search.rs:7` | inherent_method |
+| 26 | `collect_face_syntax_errors` | `build_method/validation.rs:197` | free_fn |
+| 26 | `declaration_contract_paths` | `studio/studio/app/keyboard.rs:171` | free_fn |
+| 25 | `aggregate_contract_errors` | `build_method/contracts.rs:15` | free_fn |
+| 25 | `auto_from_entry_reporting` | `build_method/scope.rs:201` | inherent_method |
+| 25 | `handle_delete_overlay_key` | `studio/studio/app/overlay/delete.rs:7` | inherent_method |
+| 25 | `handle_plugin_overlay_key` | `studio/studio/app/overlay/plugin.rs:7` | inherent_method |
+| 25 | `handle_search_overlay_key` | `studio/studio/app/overlay/search.rs:7` | inherent_method |
 | 25 | `is_mounted_as_test_within` | `conventions/src/size.rs:135` | free_fn |
 
 按“下划线段数”看：1 段 601 个、2 段 663 个、3 段 355 个、4 段 78 个、5 段 58 个、6 段 114 个、7 段 149 个、8 段 156 个、9 段 126 个、10 段 82 个、11 段 39 个、12 段 32 个、13 段 6 个、14 段 1 个、15 段 2 个
@@ -234,36 +234,36 @@
 
 | 目录 | 文件 | 行数 | fn | pub fn | test fn |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `mcp/src/` | 39 | 8,682 | 242 | 44 | 141 |
+| `mcp/` | 39 | 8,682 | 242 | 44 | 141 |
 | `conventions/src/` | 20 | 6,399 | 209 | 36 | 113 |
-| `build_method/src/` | 32 | 6,453 | 191 | 78 | 67 |
-| `studio/src/studio/app/` | 20 | 3,966 | 115 | 86 | 11 |
-| `studio/src/studio/app/tests/` | 11 | 3,373 | 95 | 1 | 95 |
+| `build_method/` | 32 | 6,453 | 191 | 78 | 67 |
+| `studio/studio/app/` | 20 | 3,966 | 115 | 86 | 11 |
+| `studio/studio/app/tests/` | 11 | 3,373 | 95 | 1 | 95 |
 | `core/src/registry_core/syntax/` | 9 | 1,948 | 78 | 34 | 26 |
 | `core/src/registry_core/declaration/` | 9 | 2,468 | 76 | 48 | 16 |
 | `core/src/registry_core/mir/` | 9 | 1,855 | 69 | 13 | 36 |
 | `plugin-host/tests/` | 4 | 1,901 | 68 | 0 | 68 |
 | `core/src/registry_core/tree/graft_ops/` | 9 | 2,490 | 65 | 24 | 34 |
 | `plugin-host/src/` | 9 | 1,703 | 60 | 31 | 4 |
-| `cli/src/` | 7 | 2,355 | 59 | 22 | 32 |
+| `cli/` | 7 | 2,355 | 59 | 22 | 32 |
 | `core/src/registry_core/identity/` | 4 | 974 | 50 | 20 | 21 |
 | `core/src/registry_core/diagnostic/` | 4 | 940 | 46 | 30 | 9 |
 | `core/src/registry_core/authoring/parse/` | 5 | 1,058 | 44 | 28 | 9 |
 | `core/src/registry_core/source/` | 5 | 1,275 | 43 | 10 | 24 |
-| `run_method/src/runtime/trace/artifact/` | 4 | 1,242 | 42 | 8 | 19 |
-| `run_method/src/authoring/operations/` | 9 | 1,701 | 40 | 26 | 5 |
+| `run_method/runtime/trace/artifact/` | 4 | 1,242 | 42 | 8 | 19 |
+| `run_method/authoring/operations/` | 9 | 1,701 | 40 | 26 | 5 |
 | `examples/control-button/tests/` | 4 | 1,179 | 40 | 0 | 40 |
 | `run_method/tests/` | 8 | 1,157 | 39 | 0 | 39 |
-| `build_method/src/scaffold/` | 3 | 1,148 | 39 | 16 | 13 |
-| `build_method/src/graft_view/` | 7 | 1,398 | 38 | 12 | 21 |
+| `build_method/scaffold/` | 3 | 1,148 | 39 | 16 | 13 |
+| `build_method/graft_view/` | 7 | 1,398 | 38 | 12 | 21 |
 | `core/src/registry_core/plugin/contracts/` | 1 | 639 | 31 | 16 | 4 |
-| `run_method/src/runtime/trace/frames/` | 1 | 452 | 30 | 20 | 7 |
+| `run_method/runtime/trace/frames/` | 1 | 452 | 30 | 20 | 7 |
 | `core/src/registry_core/plugin/graft/` | 2 | 781 | 28 | 13 | 9 |
 | `core/src/registry_core/release/` | 1 | 409 | 27 | 22 | 2 |
 | `macro/src/` | 3 | 917 | 26 | 12 | 7 |
-| `run_method/src/authoring/external_graft/` | 3 | 567 | 25 | 14 | 10 |
-| `studio/src/bin/` | 1 | 427 | 25 | 0 | 11 |
-| `studio/src/studio/ui/` | 8 | 886 | 21 | 10 | 6 |
+| `run_method/authoring/external_graft/` | 3 | 567 | 25 | 14 | 10 |
+| `studio/bin/` | 1 | 427 | 25 | 0 | 11 |
+| `studio/studio/ui/` | 8 | 886 | 21 | 10 | 6 |
 
 （完整表见 `audit-inventory.json`：把 `crates[].files[]` 按目录聚合即可。）
 
@@ -746,30 +746,30 @@
 
 | 行数 | 函数 | 位置 | 类型 |
 | ---: | --- | --- | --- |
-| 243 | `draw_graft` | `studio/src/studio/ui/forms/graft.rs:8` | free_fn |
-| 236 | `render_source` | `run_method/src/authoring/manifest/face/render.rs:12` | inherent_method |
-| 235 | `parse_face_macro_impl` | `run_method/src/authoring/manifest/parse/parse.rs:30` | free_fn |
-| 225 | `run` | `build_method/src/pipeline.rs:11` | free_fn |
-| 215 | `tools` | `mcp/src/tools.rs:58` | free_fn |
+| 243 | `draw_graft` | `studio/studio/ui/forms/graft.rs:8` | free_fn |
+| 236 | `render_source` | `run_method/authoring/manifest/face/render.rs:12` | inherent_method |
+| 235 | `parse_face_macro_impl` | `run_method/authoring/manifest/parse/parse.rs:30` | free_fn |
+| 225 | `run` | `build_method/pipeline.rs:11` | free_fn |
+| 215 | `tools` | `mcp/tools.rs:58` | free_fn |
 | 201 | `collect` | `core/src/registry_core/syntax/entries/graft.rs:120` | inherent_method |
 | 200 | `face_field_presentation` | `core/src/registry_core/authoring/field_presentation.rs:85` | free_fn |
 | 190 | `call` | `plugin-host/src/process.rs:246` | trait_impl_method |
-| 183 | `overlay_report` | `cli/src/explain_overlay.rs:54` | free_fn |
-| 183 | `handle_overlay_click` | `studio/src/studio/app/pointer.rs:172` | inherent_method |
-| 180 | `handle_search_overlay_key` | `studio/src/studio/app/overlay/search.rs:7` | inherent_method |
-| 174 | `converge_from_trace` | `mcp/src/converge_trace.rs:45` | free_fn |
+| 183 | `overlay_report` | `cli/explain_overlay.rs:54` | free_fn |
+| 183 | `handle_overlay_click` | `studio/studio/app/pointer.rs:172` | inherent_method |
+| 180 | `handle_search_overlay_key` | `studio/studio/app/overlay/search.rs:7` | inherent_method |
+| 174 | `converge_from_trace` | `mcp/converge_trace.rs:45` | free_fn |
 | 165 | `guard` | `core/src/registry_core/syntax/nesting.rs:162` | free_fn |
-| 164 | `impact` | `mcp/src/impact.rs:46` | free_fn |
-| 162 | `auto_from_entry_reporting` | `build_method/src/scope.rs:201` | inherent_method |
-| 162 | `handle_key` | `studio/src/studio/app/keyboard.rs:7` | inherent_method |
+| 164 | `impact` | `mcp/impact.rs:46` | free_fn |
+| 162 | `auto_from_entry_reporting` | `build_method/scope.rs:201` | inherent_method |
+| 162 | `handle_key` | `studio/studio/app/keyboard.rs:7` | inherent_method |
 | 160 | `connector_errors_from` | `core/src/registry_core/tree/connector/connector.rs:221` | inherent_method |
-| 158 | `render_node` | `build_method/src/renderer/tree.rs:40` | free_fn |
-| 156 | `usages` | `mcp/src/usages.rs:33` | free_fn |
-| 155 | `explain` | `cli/src/explain.rs:43` | free_fn |
+| 158 | `render_node` | `build_method/renderer/tree.rs:40` | free_fn |
+| 156 | `usages` | `mcp/usages.rs:33` | free_fn |
+| 155 | `explain` | `cli/explain.rs:43` | free_fn |
 
 4. **挂载与门控**：339 条手写 `mod` 挂载边，全部解析成功；其中 `#[cfg(test)]` 挂载 46 条、`#[cfg(feature = ...)]` 门控挂载 11 条。另有 8 条来自构建期生成的 `generated_lib.rs`。
 5. **工作树里没有绝对路径 `#[path]`**：`#[path = "/home/..."]` 只出现在 `target/**/out/generated_lib.rs` 这类构建产物里（30 处，同一个包的多份 hash 目录），源码树里 0 处。
-6. **`#[cfg(test)]` 挂载的源文件**：`src/` 下经 `#[cfg(test)]` 挂载、且 ≥200 行的文件有 34 个：`cli/src/lib_tests.rs`(1,015)、`studio/src/studio/app/tests/call_tree.rs`(702)、`studio/src/studio/app/tests/project.rs`(562)、`mcp/src/apply_tests.rs`(517)、`studio/src/studio/app/tests/trace_ingest.rs`(438)、`studio/src/studio/app/tests/edit.rs`(437)、`run_method/src/runtime/trace/artifact/artifact_tests.rs`(426)、`core/src/registry_core/tree/graft_ops/record_tests.rs`(365)、`mcp/src/mir_tests.rs`(343)、`conventions/src/mounting_tests.rs`(339)（最大的 `cli/src/lib_tests.rs` 1015 行，靠"挂在 `#[cfg(test)]` 后 + 名字像测试"同时躲过 600 行棘轮，这是 size.rs 明确写下的边界，不是漏网）。
+6. **`#[cfg(test)]` 挂载的源文件**：`src/` 下经 `#[cfg(test)]` 挂载、且 ≥200 行的文件有 34 个：`cli/lib_tests.rs`(1,015)、`studio/studio/app/tests/call_tree.rs`(702)、`studio/studio/app/tests/project.rs`(562)、`mcp/apply_tests.rs`(517)、`studio/studio/app/tests/trace_ingest.rs`(438)、`studio/studio/app/tests/edit.rs`(437)、`run_method/runtime/trace/artifact/artifact_tests.rs`(426)、`core/src/registry_core/tree/graft_ops/record_tests.rs`(365)、`mcp/mir_tests.rs`(343)、`conventions/src/mounting_tests.rs`(339)（最大的 `cli/lib_tests.rs` 1015 行，靠"挂在 `#[cfg(test)]` 后 + 名字像测试"同时躲过 600 行棘轮，这是 size.rs 明确写下的边界，不是漏网）。
 7. **每 crate 的公开面密度**（pub 非测试 fn / fn）：`xirang-core` 45%、`xirang-macro` 46%、`xirang-run-method` 52%、`xirang-build-method` 38%、`xirang-cli` 40%、`xirang-mcp` 18%、`xirang-debug-method` 53%、`xirang-studio` 40%、`xirang-plugin-host` 28%、`xirang-example-control-button` 4%、`xirang-example-control-button-graft` 100%、`xirang-conventions` 17%
 
 ---

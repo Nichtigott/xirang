@@ -1,0 +1,6 @@
+# 一个构建期记录文件声明面的最小宿主：记录由构建脚本之外的生产者写出，构建读它并登记那个面。
+# A minimal host for a face declared in a build-time record file: a producer outside the build step
+# writes the record, and the build reads it and registers the face.
+[workspace]
+resolver = "3"
+members = ["gauge"]

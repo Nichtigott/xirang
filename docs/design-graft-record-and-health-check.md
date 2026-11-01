@@ -11,11 +11,11 @@ Design only; no `.rs` edited. Argues settled decisions 2 and 3 of `docs/roadmap-
 
 | Layer | Owner | Read by |
 | --- | --- | --- |
-| Declaration | `static_graft_plan!` host entry (`run_method/src/macros/entry.rs:61`) | build → `GraftSyntax` → `BUILTIN_GRAFT_CUTS` (`build_method/src/renderer/pass.rs:63-99`) → `builtin_static_plan().grafts()` (`core/.../release/release.rs:188`) |
+| Declaration | `static_graft_plan!` host entry (`run_method/macros/entry.rs:61`) | build → `GraftSyntax` → `BUILTIN_GRAFT_CUTS` (`build_method/renderer/pass.rs:63-99`) → `builtin_static_plan().grafts()` (`core/.../release/release.rs:188`) |
 | Application | `Registry::overlay` / `overlay_static` (`core/.../tree/graft_ops/overlay.rs:95,111`) | hosts; production `plugin-host/src/deployment.rs:45-60`; example `examples/control-button/tests/registry.rs:356-366` |
-| Record | `.xirang/external-grafts/<selector>/graft.plan` (`run_method/src/authoring/external_graft/plan.rs:26,96,131,148`) | Studio only (`studio/src/studio/app/graft.rs:7-18`) |
+| Record | `.xirang/external-grafts/<selector>/graft.plan` (`run_method/authoring/external_graft/plan.rs:26,96,131,148`) | Studio only (`studio/studio/app/graft.rs:7-18`) |
 
-`GraftPlanDocument::cut()` (`core/.../plugin/graft/document.rs:153`) and `plan()` (`:163`) have **no production caller**: grep finds only `document.rs` tests, and Studio calls `declaration()` (`studio/.../graft.rs:117`), never `cut`/`plan`. The build only warns about a plan no declaration keeps alive (`build_method/src/graft_plan_check.rs:99`, emitted `build_method/src/pipeline.rs:37-44,68-72`) and never opens a plan (`graft_plan_check.rs:4-8`). Net: the record is inert — what Studio writes changes the screen and nothing else.
+`GraftPlanDocument::cut()` (`core/.../plugin/graft/document.rs:153`) and `plan()` (`:163`) have **no production caller**: grep finds only `document.rs` tests, and Studio calls `declaration()` (`studio/.../graft.rs:117`), never `cut`/`plan`. The build only warns about a plan no declaration keeps alive (`build_method/graft_plan_check.rs:99`, emitted `build_method/pipeline.rs:37-44,68-72`) and never opens a plan (`graft_plan_check.rs:4-8`). Net: the record is inert — what Studio writes changes the screen and nothing else.
 
 ### 1.2 Where the loading entry point belongs
 
@@ -23,7 +23,7 @@ Split by the kernel's no-I/O rule (AGENTS.md rule 3):
 - **Pure reconciliation → `core`.** Which base `NodeId` a record's `target`/`target_path` addresses, comparing that slot against the declaration's cuts, and composing the cut list are pure tree operations; they sit beside `resolve_cut_targets` (`resolution.rs:42`) and `overlay_cuts` (`overlay.rs:123`) and test without a filesystem.
 - **Reading `.xirang/...` → `run_method`.** The only reader today is feature-gated behind `authoring` (`run_method/Cargo.toml:11`, pulls `syn`). A runtime host must not need `authoring`, so the loader goes in the **non-gated runtime module**, not `authoring::external_graft`.
 
-New files, mounted the uniform way: `core/src/registry_core/tree/graft_ops/record.rs` (declared from `graft_ops.rs:31` beside `overlay`/`resolution`) and `run_method/src/runtime/graft_record.rs` (declared from `run_method/src/runtime/runtime.rs:4-7` beside `evidence`).
+New files, mounted the uniform way: `core/src/registry_core/tree/graft_ops/record.rs` (declared from `graft_ops.rs:31` beside `overlay`/`resolution`) and `run_method/runtime/graft_record.rs` (declared from `run_method/runtime/runtime.rs:4-7` beside `evidence`).
 
 ### 1.3 Kernel seam (pure): exact signatures
 
@@ -59,7 +59,7 @@ impl Registry {
 ### 1.4 Execution surface: exact signatures
 
 ```rust
-// run_method/src/runtime/graft_record.rs  (NOT feature-gated)
+// run_method/runtime/graft_record.rs  (NOT feature-gated)
 pub fn graft_record_root(package_root: &Path) -> PathBuf; // root/.xirang/external-grafts
 pub enum LoadedGraft { Record(RecordedGraft), Unreadable { selector: String, reason: String } }
 pub fn load_graft_records(package_root: &Path) -> Result<Vec<LoadedGraft>, String>;
@@ -127,7 +127,7 @@ Reasoning: (1) the record is the newest, most specific artifact and the build is
 | 13 | run_method | `run_method/tests/graft_record.rs` | unparseable plan → `Err` naming every unreadable plan; no record is applied (S1+ superseded "land in `unreadable`") |
 | 14 | run_method | `run_method/tests/graft_record.rs` | loader/overlay works with `default-features` (no `authoring`) |
 | 15 | example | `examples/control-button/tests/registry.rs` | a record overriding `root/control/button` changes the effective tree but not `builtin_static_plan()` |
-| 16 | `xirang-toolchain` | `build_method/src/graft_plan_check.rs` | `an_undeclared_plan_target_is_an_error_with_the_clause`: a plan no declaration can name is a build error carrying the paste-ready clause; `a_gated_declaration_still_counts` keeps a `#[cfg]`-off declaration sufficient |
+| 16 | `xirang-toolchain` | `build_method/graft_plan_check.rs` | `an_undeclared_plan_target_is_an_error_with_the_clause`: a plan no declaration can name is a build error carrying the paste-ready clause; `a_gated_declaration_still_counts` keeps a `#[cfg]`-off declaration sufficient |
 
 Tests 11–15 are new. Test 11 alone closes the gap.
 
@@ -147,7 +147,7 @@ Tests 11–15 are new. Test 11 alone closes the gap.
 
 ### 2.1 Today
 
-`RuntimeCheckSpec` and its five variants (`core/.../declaration/runtime_checks.rs:127-134`), `run` (`:240`), `RuntimeValue` (`:37`), `Coordinates` (`:80`), `Provenance` (`:14-35`), and `COORDINATES_IN_VIEWPORT`/`FINITE_NUMBER`/`NON_EMPTY_TEXT` (`:251-255`) are public and re-exported (`core/src/lib.rs:36-39`, `run_method/src/runtime/runtime.rs:9-12`). `Registry::health_check` (`core/.../tree/inspection/inspection.rs:27`) loops a face's `runtime_checks` (`registration.rs:227`) and aggregates failures — with **zero callers and zero tests**. `RuntimeValue` has **no producer anywhere** (grep: definition, re-export, and the `PhantomData` path check `run_method/tests/path_compat.rs:123`). `plugin-host/src/deployment.rs:28` calls `PluginInstance::health_check`, a different trait method, not this one. The field is parsed/stored by every declaration surface (`run_method/src/macros/face_registration.rs:39`, `snapshot/snapshot.rs:129`, `authoring/manifest/parse/parse.rs:186`, `macro/src/mirror.rs:82`) and read only as search text (`call_report.rs:53,170`) and counts (`metadata.rs:50`), so `runtime_checks:` is inert metadata.
+`RuntimeCheckSpec` and its five variants (`core/.../declaration/runtime_checks.rs:127-134`), `run` (`:240`), `RuntimeValue` (`:37`), `Coordinates` (`:80`), `Provenance` (`:14-35`), and `COORDINATES_IN_VIEWPORT`/`FINITE_NUMBER`/`NON_EMPTY_TEXT` (`:251-255`) are public and re-exported (`core/src/lib.rs:36-39`, `run_method/runtime/runtime.rs:9-12`). `Registry::health_check` (`core/.../tree/inspection/inspection.rs:27`) loops a face's `runtime_checks` (`registration.rs:227`) and aggregates failures — with **zero callers and zero tests**. `RuntimeValue` has **no producer anywhere** (grep: definition, re-export, and the `PhantomData` path check `run_method/tests/path_compat.rs:123`). `plugin-host/src/deployment.rs:28` calls `PluginInstance::health_check`, a different trait method, not this one. The field is parsed/stored by every declaration surface (`run_method/macros/face_registration.rs:39`, `snapshot/snapshot.rs:129`, `authoring/manifest/parse/parse.rs:186`, `macro/src/mirror.rs:82`) and read only as search text (`call_report.rs:53,170`) and counts (`metadata.rs:50`), so `runtime_checks:` is inert metadata.
 
 ### 2.2 Decision and boundary
 

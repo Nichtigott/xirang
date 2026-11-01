@@ -41,7 +41,7 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 
 - **证据**：`sed -n '40,50p' mcp/README.md` 第 47 行原文 `stale`, `unmatched` (a typed cut stores an expression, …；`sed -n '30,40p' mcp/README.zh-CN.md` 第 35 行同义。活体回复（`/tmp/nichverify/harness.py` 调 `xirang.diff {"records":true}`）的计数行是
   `ok 0  undeclared 0  stale 0  re-identified 1  unreadable 0`（本文件 BR-3 复现命令同一驱动），**没有 `unmatched`**。
-  `grep -rn unmatched mcp/src` → 仅 `mcp/src/diff_tests.rs:115/125/165`（负断言）与 `mcp/src/diff.rs:179/188`（删除说明）。
+  `grep -rn unmatched mcp/src` → 仅 `mcp/diff_tests.rs:115/125/165`（负断言）与 `mcp/diff.rs:179/188`（删除说明）。
 - **严重度**：不变（MAJOR，文档以现在时承诺一个不存在的桶）。
 - **备注**：作者引的 `docs/audit-3p-2026-09-27.md:74` 我也核对了：上一轮只同步了 `tools.rs`，两份 README 未同步。修法照作者即可。
 
@@ -128,7 +128,7 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 
 ### BR-C2 —— `preview.rs` 说「`target/` 是唯一可能很大的目录」→ **证实**
 
-- **证据**：`sed -n '14,20p' mcp/src/preview.rs` 原文 `target/` **is the one directory that can be large（`target/` 是唯一可能很大的目录）`；而 `sed -n '43,48p'` 的跳过条件只有 `name == "target" || name == lexicon::XIRANG_DIR`。
+- **证据**：`sed -n '14,20p' mcp/preview.rs` 原文 `target/` **is the one directory that can be large（`target/` 是唯一可能很大的目录）`；而 `sed -n '43,48p'` 的跳过条件只有 `name == "target" || name == lexicon::XIRANG_DIR`。
   量化（我自己的命令）：`du -sh .git` → **9.9M**；`du -sh --exclude=target --exclude=.xirang .` → **47M**。
   行为侧由 BR-4 的探针补上：`.git/index` 出现在「新增」清单、`.git/config` 被逐字节比较 —— 只有 `.git` 被**整份复制**才可能发生。
 - **严重度**：不变（MAJOR）。**备注**：作者把 BR-4 与 BR-C2 分成「行为」与「注释」两面是对的；落地时改跳过多一条 `.git` 并把这句注释改成清单式。
@@ -139,11 +139,11 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 
 | id | 结论 | 我跑出来的证据（关键行） |
 | --- | --- | --- |
-| BR-7 | **证实** | 活体 `tools/list` 的 `xirang.usages` 描述只列到 `runtime checks`；活体 `xirang.usages`（对**生成面** `root/probe_add`）打印 `module / stable_name / getting_from_other_registry / flow_provider / needs_registry` 五项之外还在描述之外的标签。五项都在 `mcp/src/apply.rs:172-196` 的 `EDITABLE_FIELDS` 里（作者判据成立） |
-| BR-8 | **证实** | `grep -c undeclared mcp/src/tools.rs` → **0**；`mcp/src/diff.rs` → **7**；活体 `diff records:true` 的计数行含 `undeclared 0` |
-| BR-9 | **证实**（并补一处） | `mcp/src/index.rs:159` 用 `MAIN_SEPARATOR`；`mcp/src/preview.rs:85` **与 `:152`**、`mcp/src/converge_trace.rs:246` 无条件折 `'\\'`。作者只列了 `mcp/src/preview.rs:85`，实际该文件有两处 |
-| BR-10 | **证实**（建议升 MAJOR） | 三个 `tokens()` 我逐个 `sed` 出来**逐字节相同**（impact/usages/converge）。语义分歧半：`mcp/src/impact.rs:248` 的 `if let Some((capability, provider)) = entry.split_once("=>")` 对裸能力名不匹配 → **不 push（静默丢）**；`mcp/src/converge.rs:197` 的 `let … else` 对同一输入走 `:201-205` 的 `push(RequirementVerdict { provider: "?".to_owned(), … })`（UNANSWERED 裁决）。同一份 `requires` 文本两个工具给出不同依赖结论 → 建议把「分歧」这半升 MAJOR（`impact` 少报一条依赖边＝爆炸半径假阴性）；作者判据写的是同一函数，我把两侧都读到了 |
-| BR-11 | **证实** | `grep -rn "^mod tests {" mcp/src` → 恰好 `mcp/src/tools.rs:409`、`mcp/src/index.rs:219`；`#[path = "…_tests.rs"]` 的文件数 → **16**。作者的「16 + 2，`tools.rs` 两者兼有」精确成立 |
+| BR-7 | **证实** | 活体 `tools/list` 的 `xirang.usages` 描述只列到 `runtime checks`；活体 `xirang.usages`（对**生成面** `root/probe_add`）打印 `module / stable_name / getting_from_other_registry / flow_provider / needs_registry` 五项之外还在描述之外的标签。五项都在 `mcp/apply.rs:172-196` 的 `EDITABLE_FIELDS` 里（作者判据成立） |
+| BR-8 | **证实** | `grep -c undeclared mcp/tools.rs` → **0**；`mcp/diff.rs` → **7**；活体 `diff records:true` 的计数行含 `undeclared 0` |
+| BR-9 | **证实**（并补一处） | `mcp/index.rs:159` 用 `MAIN_SEPARATOR`；`mcp/preview.rs:85` **与 `:152`**、`mcp/converge_trace.rs:246` 无条件折 `'\\'`。作者只列了 `mcp/preview.rs:85`，实际该文件有两处 |
+| BR-10 | **证实**（建议升 MAJOR） | 三个 `tokens()` 我逐个 `sed` 出来**逐字节相同**（impact/usages/converge）。语义分歧半：`mcp/impact.rs:248` 的 `if let Some((capability, provider)) = entry.split_once("=>")` 对裸能力名不匹配 → **不 push（静默丢）**；`mcp/converge.rs:197` 的 `let … else` 对同一输入走 `:201-205` 的 `push(RequirementVerdict { provider: "?".to_owned(), … })`（UNANSWERED 裁决）。同一份 `requires` 文本两个工具给出不同依赖结论 → 建议把「分歧」这半升 MAJOR（`impact` 少报一条依赖边＝爆炸半径假阴性）；作者判据写的是同一函数，我把两侧都读到了 |
+| BR-11 | **证实** | `grep -rn "^mod tests {" mcp/src` → 恰好 `mcp/tools.rs:409`、`mcp/index.rs:219`；`#[path = "…_tests.rs"]` 的文件数 → **16**。作者的「16 + 2，`tools.rs` 两者兼有」精确成立 |
 | BR-12 | **证实** | 我用脚本从 `tools()` 与 `match name` 各自抽名字：**集合相同、顺序不同**（`apply` 在目录第 6、分派最后；`grafts`/`impact` 次序互换）。另用**活体分派**逐个调 17 个工具：无一返回 `unknown tool`（即作者「两张名单齐全」的干净结论我独立复现） |
 | BR-13 | **证实并修正为五种下场** | CLI argv 矩阵（`target/debug/xirang`，fixture 内，记录退出码）：裸调/`--help`/`-h`/`help` → exit 0 + 43 行 usage；`check|explain|grafts|snippets --help` → **exit 1**、stderr 1 行、stdout 0；`studio --help` → exit 0 + usage；`new --help` → exit 1；`bogus` → exit 1；**`build --help` → exit 0**（先跑注册校验并打印 `xirang build: registration ok (probe-host)`，再把 `--help` 交给 cargo，后者打印 `Compile a local package and all of its dependencies`）；**`mcp --help` → exit 0 且两流 0 字节**（桥把 `--help` 当空气，EOF 即干净退出）。作者说「四种下场」，实际至少**五种**（`mcp` 这一类他们漏了） |
 | BR-14 | **证实** | `xirang new probe2 --path /home/nich/Moirai_N3/nichlink --git https://example.invalid/repo` → exit 0、`created binary project at /tmp/nichverify/probe2`，生成的 `Cargo.toml` 里只有 `path = "…/run_method"`，**没有任何 `git =` 键** → `--git` 被静默忽略。作者判据成立 |
@@ -153,15 +153,15 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 | BR-18 | **证实** | `wasmprobe`：装坏工件 → `activate_pending #1` → `Err("plugin ABI error: … 99 …")`、`is_loaded=Ok(false)`；`activate_pending #2` → **`Ok(false)`**（待定已被吃掉，无法重试）；对照：好工件 `activate_pending → Ok(true)`、`call echo → Ok("abc")`。持锁编译半：`plugin-host/src/lazy_wasm/slot_state.rs:75-105` 的 `pending.lock()` 作用域**包含** `backend.load(…).and_then(health_check)`（代码阅读佐证） |
 | BR-20 | **证实** | 同 BR-C1 的探针（`Err(Timeout) after 303ms`，帧已完整送达）。作者说它 MINOR、BR-C1 是同一机制的注释面 —— 分法合理 |
 | BR-19 | **部分证实（并改写机制）** | 见下 |
-| BR-C3 | **证实** | `sed -n '8,32p' mcp/src/callgraph.rs`：模块文档 `mcp/src/callgraph.rs:10` 说 **142**，函数内注释 `mcp/src/callgraph.rs:25` 说 **151**，指的是同一件实测（`new` 定义数、4.5 MB 回复） |
-| BR-C4 | **证实** | `cli/src/lib.rs:169` 与 `:175`（英/中两半）都写 `nihlink build`；`grep -rn nihlink cli/src mcp/src plugin-host/src` 只有这两行 |
-| BR-C5 | **证实** | `reidentified`（`mcp/src/diff.rs:100`、`:117`）对 `re-identified`（`mcp/src/diff.rs:207` 等、`mcp/src/search.rs:140`）；`slot` 三义：`mcp/src/evidence.rs:112` 打印的是面的 `registry_name`，`mcp/src/overlay.rs:117` 是 graft 切口槽位，`plugin-host/src/lazy_wasm.rs` 是插件槽 |
-| BR-C6/C7 | **无法判定（保留）** | 两条都是结构性建议（具名结构体、类型承载不变量），没有可独立执行的判据；我读了两处引用的确存在（`mcp/src/evidence.rs:40-55` 的三元组被 `mcp/src/overlay.rs:56` 丢弃第三项；`mcp/src/apply.rs:94-127` 的路径改写），但不构成「行为错误」，维持作者的 MINOR 与「建议」定性 |
+| BR-C3 | **证实** | `sed -n '8,32p' mcp/callgraph.rs`：模块文档 `mcp/callgraph.rs:10` 说 **142**，函数内注释 `mcp/callgraph.rs:25` 说 **151**，指的是同一件实测（`new` 定义数、4.5 MB 回复） |
+| BR-C4 | **证实** | `cli/lib.rs:169` 与 `:175`（英/中两半）都写 `nihlink build`；`grep -rn nihlink cli/src mcp/src plugin-host/src` 只有这两行 |
+| BR-C5 | **证实** | `reidentified`（`mcp/diff.rs:100`、`:117`）对 `re-identified`（`mcp/diff.rs:207` 等、`mcp/search.rs:140`）；`slot` 三义：`mcp/evidence.rs:112` 打印的是面的 `registry_name`，`mcp/overlay.rs:117` 是 graft 切口槽位，`plugin-host/src/lazy_wasm.rs` 是插件槽 |
+| BR-C6/C7 | **无法判定（保留）** | 两条都是结构性建议（具名结构体、类型承载不变量），没有可独立执行的判据；我读了两处引用的确存在（`mcp/evidence.rs:40-55` 的三元组被 `mcp/overlay.rs:56` 丢弃第三项；`mcp/apply.rs:94-127` 的路径改写），但不构成「行为错误」，维持作者的 MINOR 与「建议」定性 |
 
 ### BR-19 的更正（重要）：卫生面成立，但**符号链接机制证伪**，泄漏面换一条可复现路径
 
 - **装置**（全在 `/tmp`，用 `exec` 保住 pid，使预测路径可提前构造）：`/tmp/nichverify/victim` 作为受害目录；wrapper 先 `ln -sfn …/victim /tmp/xirang-mcp-preview-$$-0` 再 `exec xirang-mcp`，于是目标路径正是进程会用的那条。
-- **结果 1（符号链接）**：预览正常完成，`victim/` **未被写入**（只有我放的 `marker.txt`，没有 `src/`）。原因是 `mcp/src/preview.rs:27` 在 `create_dir_all` 之前先 `let _ = std::fs::remove_dir_all(&destination);` —— 它把**符号链接本身**删掉了，而不是顺着它写。作者设想的「顺着链接把副本写进目标目录、`remove_copy` 再删掉目标」没有发生 → **该机制证伪**。
+- **结果 1（符号链接）**：预览正常完成，`victim/` **未被写入**（只有我放的 `marker.txt`，没有 `src/`）。原因是 `mcp/preview.rs:27` 在 `create_dir_all` 之前先 `let _ = std::fs::remove_dir_all(&destination);` —— 它把**符号链接本身**删掉了，而不是顺着它写。作者设想的「顺着链接把副本写进目标目录、`remove_copy` 再删掉目标」没有发生 → **该机制证伪**。
 - **结果 2（同名真实目录）= 真正的后果**：预先把**同名真实目录**（内含 `important.txt`）放在预测路径上，再跑一次预览：
   ```text
   pre-created real dir with marker: /tmp/xirang-mcp-preview-415521-0
@@ -169,7 +169,7 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
   GONE after the run (pre-existing data destroyed)
   ```
   即：可预测路径 + 无排他创建 + 先删后建 = **任意同名既有目录会被静默删除**（同一台机器上的另一个用户放的同名目录亦然，前提是进程对该路径有写权限）。这比「写进别人目录」更需要写进报告。
-- **结果 3（泄漏）**：作者指认的路径是 `mcp/src/apply.rs:139-143` 的 `diff_package(…)?` 早于 `:144` 的 `remove_copy`。我**没能构造出**「copy 成功而 diff 失败」的输入（目录不可读会让 copy 先失败；两棵树由同一次复制产生），因此该具体路径标**无法判定**。但同一类泄漏**另有可复现路径**：`copy_package` 自身失败时 `mcp/src/apply.rs:87` 的 `?` 在 `remove_copy` 可达之前就返回 —— 用 fixture 里一个 `chmod 000` 的文件复现：
+- **结果 3（泄漏）**：作者指认的路径是 `mcp/apply.rs:139-143` 的 `diff_package(…)?` 早于 `:144` 的 `remove_copy`。我**没能构造出**「copy 成功而 diff 失败」的输入（目录不可读会让 copy 先失败；两棵树由同一次复制产生），因此该具体路径标**无法判定**。但同一类泄漏**另有可复现路径**：`copy_package` 自身失败时 `mcp/apply.rs:87` 的 `?` 在 `remove_copy` 可达之前就返回 —— 用 fixture 里一个 `chmod 000` 的文件复现：
   ```text
   cannot copy /tmp/nichverify/fix2/unreadable.txt: Permission denied (os error 13)
   /tmp/xirang-mcp-preview-416016-0     ← 半份副本留在 /tmp（find 到 .git/config、.git/index、binfile.dat…）
@@ -183,13 +183,13 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 
 ### NEW-B1（建议 MAJOR）—— `xirang.apply edit` 静默忽略 `handle_contracts` / `part_contracts`，而 `EDITABLE_FIELDS` 与工具自述都把它们列为可写
 
-- **位置**：`mcp/src/apply.rs:172-196`（`EDITABLE_FIELDS` 含 `handle_contracts`/`part_contracts`）与工具自述「`edit`（change the `fields` the request names and keep the rest）」；实现 `run_method/src/authoring/operations/face_write.rs:59-79`（`EDIT_FIELD_ORDER`）**不含**这两个字段与 `:114-127`（`handle_traits` 由 `apply_trait_contract(labels, contract_paths)` 处理）。
+- **位置**：`mcp/apply.rs:172-196`（`EDITABLE_FIELDS` 含 `handle_contracts`/`part_contracts`）与工具自述「`edit`（change the `fields` the request names and keep the rest）」；实现 `run_method/authoring/operations/face_write.rs:59-79`（`EDIT_FIELD_ORDER`）**不含**这两个字段与 `:114-127`（`handle_traits` 由 `apply_trait_contract(labels, contract_paths)` 处理）。
 - **探针与输出**（同一 fixture，`action: add` 与 `action: edit` 各一次，都 `apply: true`）：
   - **add** `{module: probe_d, kind: ProbeD, handle_contracts: "crate::Foo::Bar"}` → 文件拿到
     `handle_traits: ["Bar"],` **与** `handle_contracts: [crate::Foo::Bar],` —— 键有效。
   - **edit** `{node: root/probe_c, handle_contracts: "crate::Foo::Bar"}`（对已存在的生成面）→ 回 `action apply / applied …`（**成功**），文件只拿到
     `handle_traits: ["Bar"],`，**没有 `handle_contracts:` 行** —— 键被接受但契约路径被丢弃。
-- **判据**：`handle_contracts` 只出现在 `CREATE_FIELD_ORDER`（`:48-49`，`CREATE_FIELD_ORDER` 从 `:32` 起），不在 `EDIT_FIELD_ORDER`（`run_method/src/authoring/operations/face_write.rs:59-79`）；而 `mcp/src/apply.rs` 的字段白名单与自述把它当可编辑键。于是同一个键在同一个工具的 add 与 edit 里语义不同，edit 侧是**静默降级**：作者要的是「参与编译检查的契约」，拿到的是「未经检查的标签」——正好违反本 crate 自己声明的规则（`run_method/src/authoring/manifest/face/render.rs:12-28` 对 `plugin:` 字段写着「响亮拒绝胜过静默删掉作者写的字段」）。
+- **判据**：`handle_contracts` 只出现在 `CREATE_FIELD_ORDER`（`:48-49`，`CREATE_FIELD_ORDER` 从 `:32` 起），不在 `EDIT_FIELD_ORDER`（`run_method/authoring/operations/face_write.rs:59-79`）；而 `mcp/apply.rs` 的字段白名单与自述把它当可编辑键。于是同一个键在同一个工具的 add 与 edit 里语义不同，edit 侧是**静默降级**：作者要的是「参与编译检查的契约」，拿到的是「未经检查的标签」——正好违反本 crate 自己声明的规则（`run_method/authoring/manifest/face/render.rs:12-28` 对 `plugin:` 字段写着「响亮拒绝胜过静默删掉作者写的字段」）。
 - **修复方向**：① 把两个字段加进 `EDIT_FIELD_ORDER`（`edit_optional(…, FaceWrite::Edit)` 对空值会清空，因此还要决定「空 ⇒ 清空」是否可接受）；或 ② 在 edit 路径上拒绝这两个键（`invalid_field` 增加按动作区分的白名单），并在工具自述里写明「contract 只在 `add` 上可设」。两条都要顺手给 `apply_tests` 加一条钉子。
 - **备注**：这条与下面 V-03 是**同一根因的两面**，建议合并成一条修。
 
@@ -201,11 +201,11 @@ MINOR 抽检覆盖率：14 条主 MINOR 中复核 13 条、注释轴 5 条全部
 
 ## 独立复核队长转达的 V-03：**证伪（不是数据丢失）**
 
-- **被复核的断言**：Studio Edit 表单用「读文件失败 ⇒ 空契约」填 `handle_contracts`/`part_contracts`，提交走全量重渲染，`run_method/src/authoring/manifest/face/render.rs:93-105` 空则不发行 → 改任意别的字段会把源文件里原有的两个 contract 字段**静默抹掉**。
+- **被复核的断言**：Studio Edit 表单用「读文件失败 ⇒ 空契约」填 `handle_contracts`/`part_contracts`，提交走全量重渲染，`run_method/authoring/manifest/face/render.rs:93-105` 空则不发行 → 改任意别的字段会把源文件里原有的两个 contract 字段**静默抹掉**。
 - **我复核的两半**：
-  1. **表单那一半成立**（代码阅读佐证）：`studio/src/studio/app/keyboard.rs:51-56` 确是
+  1. **表单那一半成立**（代码阅读佐证）：`studio/studio/app/keyboard.rs:51-56` 确是
      `std::fs::read_to_string(source_path_for(&info.source.file)).ok().map(|s| declaration_contract_paths(&s)).unwrap_or_default()` —— 读失败与「没写 contract」在**表单显示**上不可区分。
-  2. **提交那一半不成立**：`submit_edit`（`studio/src/studio/app/mutations.rs:152-189`）把表单值装进 `ModuleFacePatch` 后调用 `xirang_run_method::edit_module_face`，而该入口（`run_method/src/authoring/operations/operations.rs:318-332`）走的是 `apply_module_face_values(…, FaceWrite::Edit)` → **`EDIT_FIELD_ORDER`（`run_method/src/authoring/operations/face_write.rs:59-79`）里没有 `handle_contracts`/`part_contracts`**。这两个字段只在**创建**顺序里（`:48-49`，`CREATE_FIELD_ORDER` 从 `:32` 起）。编辑时它们**根本不被写入**，`FaceManifest` 里从源文件解析出来的值原样保留，`render.rs` 于是把它们原样重新发出。
+  2. **提交那一半不成立**：`submit_edit`（`studio/studio/app/mutations.rs:152-189`）把表单值装进 `ModuleFacePatch` 后调用 `xirang_run_method::edit_module_face`，而该入口（`run_method/authoring/operations/operations.rs:318-332`）走的是 `apply_module_face_values(…, FaceWrite::Edit)` → **`EDIT_FIELD_ORDER`（`run_method/authoring/operations/face_write.rs:59-79`）里没有 `handle_contracts`/`part_contracts`**。这两个字段只在**创建**顺序里（`:48-49`，`CREATE_FIELD_ORDER` 从 `:32` 起）。编辑时它们**根本不被写入**，`FaceManifest` 里从源文件解析出来的值原样保留，`render.rs` 于是把它们原样重新发出。
      `handle_traits` 会经 `apply_trait_contract`（`:190-205`）处理：**两个都空就 `return Ok(())`（什么都不改）**；只有标签非空时才改写标签行，仍不碰契约行。
 - **端到端探针（同一执行器，走 MCP）**：先给一个生成面手工加上
   `handle_contracts: [crate::ControlHandle],` 与 `part_contracts: […]`，再调

@@ -144,3 +144,130 @@ fn a_wrapped_array_is_read_whole() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+/// The manifest whose CLI target is gated: the shape a documented install has to respect.
+/// 把 CLI target 门控起来的清单：文档里的安装命令必须尊重的形状。
+const GATED_CLI: &str = "\
+[package]
+name = \"xirang-toolchain\"
+version = \"0.1.6\"
+
+[features]
+default = [\"build\", \"run\"]
+build = []
+run = []
+studio = [\"build\", \"run\"]
+mcp = [\"build\", \"run\"]
+cli = [\"build\", \"run\", \"studio\", \"mcp\"]
+dev-supervisor = []
+
+[[bin]]
+name = \"xirang\"
+path = \"src/bin/xirang.rs\"
+required-features = [\"cli\"]
+
+[[bin]]
+name = \"xirang-dev\"
+path = \"src/bin/xirang-dev.rs\"
+required-features = [\"dev-supervisor\"]
+";
+
+/// A throwaway workspace that also documents an install command.
+/// 一个同时写了安装命令的一次性工作区。
+fn installed_workspace(manifest: &str, document: &str) -> PathBuf {
+    let root = workspace(manifest);
+    fs::write(root.join("README.md"), document).expect("readme");
+    root
+}
+
+/// The failure this rule exists for: `cargo install` without `--features` prints a warning
+/// about every gated binary, installs none of them, and still exits successfully.
+/// 这条规则为之存在的失败：不带 `--features` 的 `cargo install` 为每个门控二进制打印一条警告，
+/// 一个都不装，却仍然成功退出。
+#[test]
+fn a_documented_install_that_installs_nothing_is_reported() {
+    let root = installed_workspace(
+        GATED_CLI,
+        "```sh\ncargo install xirang-toolchain\nxirang new my-app\n```\n",
+    );
+    let found = findings(&root);
+    assert!(
+        found
+            .iter()
+            .any(|finding| finding.contains("installs no `xirang` binary")),
+        "a bare documented install is reported: {found:#?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// The three spellings a working install command takes all reach the same feature set.
+/// 一条能装上的安装命令的三种拼法都能到达同一组特性。
+#[test]
+fn a_documented_install_that_enables_the_cli_is_accepted() {
+    for command in [
+        "cargo install xirang-toolchain --features cli",
+        "cargo install xirang-toolchain --features=cli",
+        "cargo install xirang-toolchain --features \"cli,mcp\"",
+    ] {
+        let root = installed_workspace(GATED_CLI, &format!("```sh\n{command}\n```\n"));
+        let found = findings(&root);
+        assert!(
+            found.is_empty(),
+            "`{command}` installs `xirang`: {found:#?}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+}
+
+/// A command naming a feature no manifest declares is refused, rather than accepted as
+/// "some feature, therefore some binary".
+/// 点名了清单里不存在的特性的命令会被拒绝，而不是被当成"有特性，所以有二进制"接受。
+#[test]
+fn a_documented_install_naming_an_undeclared_feature_is_reported() {
+    let root = installed_workspace(
+        GATED_CLI,
+        "```sh\ncargo install xirang-toolchain --features clii\n```\n",
+    );
+    let found = findings(&root);
+    assert!(
+        found
+            .iter()
+            .any(|finding| finding.contains("does not declare")),
+        "a documented typo is reported: {found:#?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// A command wrapped across two fenced lines is read as one command, because a long install
+/// line is written that way.
+/// 折在围栏两行里的命令按一条命令读取，因为长安装命令就是这么写的。
+#[test]
+fn a_wrapped_documented_command_is_read_whole() {
+    let root = installed_workspace(
+        GATED_CLI,
+        "```sh\ncargo install --git\nhttps://example.test/xirang xirang-toolchain --features cli\n```\n",
+    );
+    let found = findings(&root);
+    assert!(found.is_empty(), "the wrapped command is read: {found:#?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// The rule's stated boundary: a sentence may name the broken command to explain it, and
+/// that sentence is not a command a reader copies. If this test starts failing, the rule was
+/// widened to prose and the contract has to change with it.
+/// 规则写明的边界：散文可以点名那条坏命令来解释它，而那句话不是读者会照抄的命令。这条测试哪天
+/// 开始失败，就说明规则被扩到了散文，契约必须跟着改。
+#[test]
+fn a_sentence_about_the_command_is_not_a_documented_command() {
+    let root = installed_workspace(
+        GATED_CLI,
+        "`--features cli` is what installs the command: a bare \
+         `cargo install xirang-toolchain` would install nothing.\n",
+    );
+    let found = findings(&root);
+    assert!(
+        found.is_empty(),
+        "a sentence explaining the defect is not a documented command: {found:#?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}

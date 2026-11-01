@@ -1,0 +1,8 @@
+# 构建期记录文件 + 生产者：构建在这一包里运行 javac，注解处理器把 `@Soil` 写成版本 3 记录。
+# The build-time record file and its producer: the build runs javac in this package, and the
+# annotation processor writes the `@Soil` declaration as a version-3 record.
+[record]
+file = "native/gauge.faces"
+language = "java"
+constants = "java/gen/xirang/Faces.java"
+command = ["sh", "java/build.sh"]

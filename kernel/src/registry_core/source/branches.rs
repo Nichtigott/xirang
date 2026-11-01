@@ -14,11 +14,11 @@
 //! 任何数据相关的东西：对字段的 `if`、对参数的比较、对值的 `match` 都是运行期事实，静态读取去回答它们
 //! 就是在猜。
 //!
-//! Every judgement runs on [`mask_non_code`] output, the workspace's one rule for what counts as
+//! Every judgement runs on [`super::mask_non_code`] output, the workspace's one rule for what counts as
 //! code. A `Band::Frozen` written inside a `//` comment is prose, and counting it as a construction
 //! would silently erase rule B's row — the same reason `calls.rs` scans masked text instead of
 //! re-lexing.
-//! 所有判断都跑在 [`mask_non_code`] 的输出上——本工作区关于"什么算代码"的唯一规则。写在 `//` 注释里的
+//! 所有判断都跑在 [`super::mask_non_code`] 的输出上——本工作区关于"什么算代码"的唯一规则。写在 `//` 注释里的
 //! `Band::Frozen` 是散文，把它数成构造会静默抹掉规则 B 的那一行——与 `calls.rs` 扫掩码文本而不是自己
 //! 再词法一遍的理由相同。
 //!
@@ -28,7 +28,7 @@
 //! 本模块报的是**事实**而不是裁定：它说哪些臂被判定、本树拼出了哪些路径，而跨文件的连接由调用方做。
 //! 那份连接（以及它陈述的边界）是执行面的事，与可达性那一栏完全相同。
 
-use super::{SourceFunction, function_symbols, is_ident_continue, is_ident_start, mask_non_code};
+use super::{SourceFunction, is_ident_continue, is_ident_start};
 
 /// The derives that cannot build a value out of nothing.
 /// 无法凭空造出值的派生。
@@ -145,20 +145,22 @@ pub struct BranchFacts {
 /// 读取一个文件的分支级事实。
 ///
 /// The arms come from one linear pass over the masked text, and the enclosing function of each arm
-/// is looked up in [`function_symbols`] — the same discovery the call graph uses, so no second
+/// is looked up in [`super::function_symbols`] — the same discovery the call graph uses, so no second
 /// notion of "what is a function" is introduced here.
-/// 臂来自对掩码文本的一次线性扫描，而每个臂所属的函数在 [`function_symbols`] 里查——也就是调用图用的
+/// 臂来自对掩码文本的一次线性扫描，而每个臂所属的函数在 [`super::function_symbols`] 里查——也就是调用图用的
 /// 那份函数发现，因此这里没有引入第二套"什么算函数"。
 pub fn branch_facts(source: &str) -> BranchFacts {
-    let masked = mask_non_code(source);
-    let starts = line_starts(&masked);
-    let functions = function_symbols(source);
+    super::source_facts(source).branches
+}
+
+pub(super) fn from_symbols(masked: &str, functions: &[SourceFunction]) -> BranchFacts {
+    let starts = line_starts(masked);
     let mut facts = BranchFacts::default();
     let mut patterns: Vec<(usize, usize)> = Vec::new();
-    scan_arms(&masked, &starts, &functions, &mut facts, &mut patterns);
-    scan_paths(&masked, &starts, &patterns, &mut facts);
-    scan_enums(&masked, &mut facts);
-    scan_foreign_imports(&masked, &starts, &mut facts);
+    scan_arms(masked, &starts, functions, &mut facts, &mut patterns);
+    scan_paths(masked, &starts, &patterns, &mut facts);
+    scan_enums(masked, &mut facts);
+    scan_foreign_imports(masked, &starts, &mut facts);
     facts
 }
 

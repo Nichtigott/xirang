@@ -26,73 +26,75 @@ use std::path::Path;
 /// 但不会因疏忽而缩短。条目按空白规范化后存放，见 [`xirang_reexports`]。
 pub const SHIMS: &[(&str, &str)] = &[
     (
-        "toolchain/src/run_method/src/lib.rs",
+        "toolchain/src/run_method/lib.rs",
         "pub use xirang_kernel::registry_core;",
     ),
     (
-        "toolchain/src/run_method/src/lib.rs",
+        "toolchain/src/run_method/lib.rs",
         "pub use xirang_kernel::registry_core::*;",
     ),
     (
-        "toolchain/src/run_method/src/registry.rs",
+        "toolchain/src/run_method/registry.rs",
         "pub use xirang_kernel::tree;",
     ),
     (
-        "toolchain/src/run_method/src/registry.rs",
+        "toolchain/src/run_method/registry.rs",
         "pub use xirang_kernel::tree::*;",
     ),
     (
-        "toolchain/src/run_method/src/authoring/face_file.rs",
+        "toolchain/src/run_method/authoring/face_file.rs",
         "pub use xirang_kernel::authoring::{FACE_FIELD_COUNT, face_field};",
     ),
     (
-        "toolchain/src/run_method/src/authoring/parse/parse.rs",
+        "toolchain/src/run_method/authoring/parse/parse.rs",
         "pub use xirang_kernel::authoring::parse::*;",
     ),
     (
-        "toolchain/src/run_method/src/authoring/context.rs",
+        "toolchain/src/run_method/authoring/context.rs",
         "pub use xirang_kernel::authoring::validation::*;",
     ),
     (
-        "toolchain/src/run_method/src/runtime/runtime.rs",
+        "toolchain/src/run_method/runtime/runtime.rs",
         "pub use xirang_kernel::{ COORDINATES_IN_VIEWPORT, Coordinates, FINITE_NUMBER, NON_EMPTY_TEXT, \
          Provenance, ProvenanceStep, RuntimeCheckFailure, RuntimeCheckSpec, RuntimeValue, };",
     ),
     (
-        "toolchain/src/run_method/src/runtime/trace/trace.rs",
+        "toolchain/src/run_method/runtime/trace/trace.rs",
         "pub use xirang_kernel::CallSite;",
     ),
     (
-        "toolchain/src/run_method/src/runtime/trace/trace.rs",
+        "toolchain/src/run_method/runtime/trace/trace.rs",
         "pub use xirang_kernel::declaration::source_file_matches;",
     ),
     (
-        "toolchain/src/run_method/src/runtime/trace/trace.rs",
+        "toolchain/src/run_method/runtime/trace/trace.rs",
         "pub use xirang_kernel::TraceMode;",
     ),
     (
-        "toolchain/src/run_method/src/runtime/evidence.rs",
+        "toolchain/src/run_method/runtime/evidence.rs",
         "pub use xirang_kernel::{CallEdge, EvidenceKind, LogicalCallEdge};",
     ),
     (
-        "toolchain/src/run_method/src/plugin.rs",
+        "toolchain/src/run_method/plugin.rs",
         "pub use xirang_kernel::plugin;",
     ),
     (
-        "toolchain/src/run_method/src/plugin.rs",
+        "toolchain/src/run_method/plugin.rs",
         "pub use xirang_kernel::plugin::*;",
     ),
+    // Keep kernel type aliases; the private parser adapter now owns execution-side reuse.
+    // 保留内核类型别名；私有解析适配器现持有执行层复用。
     (
-        "toolchain/src/build_method/src/syntax.rs",
+        "toolchain/src/build_method/syntax.rs",
         "pub use xirang_kernel::registry_core::syntax::{ FaceSyntax, GraftSyntax, ParentSyntax, \
-         application_entries, graft_entries, parse_face, source_references, };",
+         graft_entries, source_references, };",
     ),
     (
-        "toolchain/src/build_method/src/identity.rs",
+        "toolchain/src/build_method/identity.rs",
         "pub use xirang_kernel::registry_core::identity::NodeId;",
     ),
     (
-        "toolchain/src/build_method/src/identity.rs",
+        "toolchain/src/build_method/identity.rs",
         "pub use xirang_kernel::registry_core::identity::IDENTITY_SCHEMA;",
     ),
 ];

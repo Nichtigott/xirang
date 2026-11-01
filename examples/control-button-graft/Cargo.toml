@@ -10,13 +10,8 @@ name = "control_button_graft"
 path = "src/lib.rs"
 
 [dependencies]
-xirang-toolchain = { path = "../../toolchain", version = "0.1.0", features = ["run", "authoring"] }
+xirang-toolchain = { path = "../../toolchain", version = "0.2.0", features = ["run", "authoring"] }
 
 # This crate declares faces but has no build script, so nothing passes
 # `--check-cfg` for it. The IDE-only field splice uses `cfg(rust_analyzer)`,
-# which lives in this crate; declare the name so `unexpected_cfgs` stays quiet.
-# 本 crate 声明注册面但没有 build script，因此没有人为它传 `--check-cfg`。
-# 仅供 IDE 的字段拼接使用 `cfg(rust_analyzer)`，而该 cfg 属于本 crate；声明这个
-# 名字以免 `unexpected_cfgs` 报警。
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rust_analyzer)'] }

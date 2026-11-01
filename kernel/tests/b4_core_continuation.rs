@@ -319,3 +319,37 @@ fn a_module_gate_is_read_not_merely_noticed() {
         "a declaration inherits the gates around it: {entries:#?}"
     );
 }
+
+/// 一个面不能把子面挂到一个不自持注册机的父面下：这样的批次过去会**静默**丢弃子面（提交成功、面数
+/// 比交给它的少）。判据是"调用方交来的节点一个都不许无声消失"。
+/// A face may not hang its child under a parent that owns no registry: such a batch used to drop the
+/// child in silence (it committed, with one face fewer than it was given). The rule is that nothing
+/// the caller handed over may disappear without being named.
+#[test]
+fn a_child_whose_parent_owns_no_registry_is_refused_by_name() {
+    let namespace = "b4-no-registry-parent";
+    let mut registry = Registry::root_for_namespace(FRAMEWORK, namespace);
+    let parent = face(namespace, "panel/panel.rs", "Panel", "panel");
+    assert!(
+        !parent.needs_registry,
+        "the fixture's parent owns no registry"
+    );
+    let mut child = face(namespace, "panel/area/area.cpp", "Area", "area");
+    child.parent = parent.id;
+    let before = registry.depth_first().len();
+    let refusal = registry
+        .register_snapshot_batch([parent, child])
+        .expect_err("a child cannot attach to a parent that owns no registry");
+    let text = refusal.to_string();
+    assert!(text.contains("`Panel` owns no registry"), "{text}");
+    assert!(text.contains("`Area`"), "{text}");
+    assert!(
+        text.contains("needs_registry"),
+        "the refusal has to name the declaration that is missing: {text}"
+    );
+    assert_eq!(
+        registry.depth_first().len(),
+        before,
+        "a refused batch writes nothing"
+    );
+}

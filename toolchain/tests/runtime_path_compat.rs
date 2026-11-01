@@ -157,9 +157,7 @@ fn the_runtime_and_locals_pages_still_resolve() {
 #[test]
 fn the_public_macro_names_still_resolve() {
     #[allow(unused_imports)]
-    use xirang_toolchain::run_method::{
-        external_object, face_fields, face_fields_mirror, host, static_graft_plan,
-    };
+    use xirang_toolchain::run_method::{external_object, face_fields, host, static_graft_plan};
     #[allow(unused_imports)]
     use xirang_toolchain::{
         __admission, __assert_impls, __control_object, __external_object, __face_string_or,

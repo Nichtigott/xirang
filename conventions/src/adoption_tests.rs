@@ -74,3 +74,43 @@ fn the_shipped_checkout_has_no_lapsed_adoption() {
     let found = findings(&root);
     assert!(found.is_empty(), "{found:#?}");
 }
+
+/// Frozen evaluation archives are history, not live code: a lapsed lease there is not a finding,
+/// while the very same lease under live sources still is.
+/// 冻结评测归档是历史而不是活代码：那里的失效租约不算发现，而活源码里的同一份租约仍然算。
+#[test]
+fn an_archived_evaluation_ledger_is_not_live_code() {
+    let root = scratch("archived");
+    write_fixture(&root.join("src/lib.rs"), "// entry changed\n");
+    ledger(&root, "// entry\n");
+    let archived = root.join("docs/managed-maintenance/evaluation-2026-01-01/round-1/tree");
+    write_fixture(&archived.join("src/lib.rs"), "// entry changed\n");
+    ledger(&archived, "// entry\n");
+    let found = findings(&root);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].contains("adoption lapsed at src/lib.rs"),
+        "{found:?}"
+    );
+    assert!(
+        !found.iter().any(|line| line.contains("evaluation-")),
+        "{found:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The archive exemption is a **path prefix**, not a blanket "docs are exempt".
+/// 归档豁免是一个**路径前缀**，不是"docs 全豁免"。
+#[test]
+fn only_archived_evaluation_paths_are_exempt() {
+    assert!(crate::archived_evaluation(
+        "docs/managed-maintenance/evaluation-2026-01-01/round-1/tree/src/a.rs"
+    ));
+    assert!(!crate::archived_evaluation(
+        "docs/managed-maintenance/status-2026-10-17.md"
+    ));
+    assert!(!crate::archived_evaluation(
+        "toolchain/src/build_method/lib.rs"
+    ));
+    assert!(!crate::archived_evaluation("src/layout/button/button.rs"));
+}

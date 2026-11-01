@@ -1,0 +1,11 @@
+{
+  "name": "xirang-example-ts-gauge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A XiRang registration face declared in TypeScript, registered at import time.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "check": "tsc --noEmit -p tsconfig.json"
+  }
+}

@@ -43,8 +43,8 @@ Three limits come with it, and each one is a refusal rather than a silent approx
   identity need re-identifying, and references to the old type in the host need a hand. The reply
   says both.
 
-See `toolchain/src/mcp/src/apply_promote.rs` for the landing and
-`toolchain/src/mcp/src/apply_promote/source.rs` for how the external declaration is read (through
+See `toolchain/src/mcp/apply_promote.rs` for the landing and
+`toolchain/src/mcp/apply_promote/source.rs` for how the external declaration is read (through
 the kernel's own face parser, so a hand-written `external_object!` and a generated `*_object!` are
 read by one reader).
 

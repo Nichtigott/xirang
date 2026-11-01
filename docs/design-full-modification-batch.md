@@ -225,7 +225,7 @@
   查证结果是**混合的**：`new_project` 调 `build_time::scaffold::create_project`（桥 / CLI `new` / Studio 同一份）✓；
   `apply {add,edit,rename,delete,deepen}` 走 `runtime::AuthoringContext`（与 Studio 同一个执行器、默认只预览）✓；
   **而 graft 切口（`cut(…)`/`graft(…)`）只能手写在宿主源码里** ✗ —— 桥对它们只**数、报**
-  （`toolchain/src/mcp/src/apply.rs:849/856/860/883`），`scaffold` 不写切口，CLI 也没有 `apply` 命令
+  （`toolchain/src/mcp/apply.rs:849/856/860/883`），`scaffold` 不写切口，CLI 也没有 `apply` 命令
   ⇒ **场景 S7（移动/重构）里涉及切口的部分没有写通道**：调用方得自己写出 `static_graft_plan!` 的语法，
   桥既不校验也不代写。
 - **要与 T-15 一起想**：T-15 挂起的原因是"零件层没有可寻址身份"；切口这一条是它的邻居——两条合起来才是

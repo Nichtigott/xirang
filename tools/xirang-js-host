@@ -1,0 +1,60 @@
+#!/bin/sh
+# Gate: a JavaScript-declared face really registers at import time, and the build really reads the
+# same call statically — the two carriers of one declaration, checked against the same file.
+# 门禁：JavaScript 声明的面真的在导入期登记，而构建真的静态读取同一次调用——同一条声明的两种载体，
+# 对着同一个文件检查。
+#
+#   XIRANG_NODE=/path/to/node tools/xirang-js-host
+#
+# Why it exists: the adapter tests are part-level (a source renders, a source reads back). This one
+# runs the committed example under the real interpreter (so the SDK, the bare `xirang` import and the
+# generated object directory are all exercised), then asks the Rust build's static reader about the
+# same file. Neither half alone would catch a spelling only one side accepts.
+# 为什么需要它：适配器测试是部件级的（一份源码渲染、一份源码读回）。这一条在真实解释器下运行入库的示例
+# （因此 SDK、裸 `xirang` 导入与生成对象目录都被走到），再让 Rust 构建的静态读取器读同一个文件。只跑
+# 任何一半都抓不到"只有一侧接受的拼法"。
+#
+# A machine without Node reports "not run" (exit 2) instead of failing a face it cannot execute.
+# 没有 Node 的机器报"未跑"（exit 2），而不是让一个它执行不了的面失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+node=${XIRANG_NODE:-}
+if [ -z "$node" ]; then
+    node=$(command -v node || true)
+fi
+if [ -z "$node" ]; then
+    echo "xirang-js-host: no Node.js runtime; set XIRANG_NODE or install node" >&2
+    exit 2
+fi
+echo "node   $node ($("$node" --version))"
+
+sdk="$root/multilang/sdk/js/xirang"
+if [ ! -f "$sdk/index.mjs" ]; then
+    echo "xirang-js-host: the SDK is not at $sdk; the crate's SDK location and this gate disagree" >&2
+    exit 2
+fi
+
+# 1. The example imports `xirang` by its bare name, so the SDK has to be linked where Node looks for
+#    it. The example ships that link; a checkout that lost it gets it recreated here, because the
+#    link is the in-tree equivalent of `npm install` and rebuilding it is not a network operation.
+# 1. 示例按裸名导入 `xirang`，因此 SDK 必须链接到 Node 会查找的位置。示例自带那个链接；丢了它的检出在这里
+#    重建，因为该链接就是树内的 `npm install` 等价物，重建不需要网络。
+cd "$root/examples/js-gauge"
+if [ ! -e node_modules/xirang ]; then
+    mkdir -p node_modules
+    ln -s ../../../multilang/sdk/js/xirang node_modules/xirang
+fi
+"$node" --test
+
+# 2. The same declaration source, read by the build's static reader (no Node in that path).
+# 2. 同一份声明源码，由构建的静态读取器读取（那条路径里没有 Node）。
+cd "$root"
+CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-js --offline --lib \
+    -- languages::js
+
+# 3. The build says what it does not do: the declared JavaScript face is not registered yet.
+# 3. 构建说出它没做什么：已声明的 JavaScript 面还没有被登记。
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,lang-js --offline --lib \
+    -- javascript_declaration
+
+echo "xirang-js-host: ok (a JavaScript face registers at import, and the build reads the same call)"

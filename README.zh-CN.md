@@ -1,808 +1,252 @@
 <div align="center">
 
-<img src="./picture/XiRang_wordmark.svg" alt="XiRang ASCII 字标">
+<img src="picture/xirang-mark.svg" width="72" alt="息壤：从共同基础生长的注册树">
 
-<p><strong>一种顺应社区扩展本能、服务工程协作与 agentic coding 的 Rust 代码组织模型：被动式递归注册，显式边界合同，任意层级原子替换。</strong></p>
+# XiRang · 息壤
 
-[![license](https://img.shields.io/github/license/Nichtigott/xirang?style=flat-square)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/Nichtigott/xirang/ci.yml?style=flat-square&label=CI)](.github/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/MSRV-Rust%201.96-8250df?style=flat-square)](Cargo.toml)
+**让代码自带组织关系与协作边界，供人和 AI 一起扩展、替换与验证的工程框架。**
 
-<p>
-<a href="#特性"><kbd>特性</kbd></a>
-<a href="#开始使用"><kbd>开始使用</kbd></a>
-<a href="#注册面"><kbd>注册面</kbd></a>
-<a href="#studio-与命令行"><kbd>Studio / CLI</kbd></a>
-<a href="#边界"><kbd>边界</kbd></a>
-</p>
+[English](README.md) · [上手与日常使用](docs/using-xirang.md) · [扩展语言](docs/extending-languages.md) · [设计讨论](https://github.com/Nichtigott/xirang/discussions)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/Nichtigott/xirang/ci.yml?label=CI)](.github/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d8bb82)](LICENSE)
+
+<img src="picture/xirang-overview.svg" width="100%" alt="息壤将对象的注册关系、源码位置和编译归属分开，以共同事实连接人、AI、编译器与编辑器。">
 
 </div>
 
-💬 [Discuss the graft model](https://github.com/Nichtigott/xirang/discussions)
+一个 `Area` 可以挂在 `Panel` 下，源码放在独立目录，由另一个 crate 编译；团队也可以交付一个满足合同的新实现，在宿主选择的位置进行 **graft（嫁接）**。这些变化分别有自己的含义，工具负责维护它们之间的连接。
 
-项目规模越大，一次局部改动越可能波及半个仓库。XiRang 在结构层面处
-理这件事：对象携带小而明确的边界；替换在接入点完成校验；每个对象的
-源码位置对人和工具保持可见。
+息壤以 Rust 宿主为基础，提供注册协议、构建接线、CLI、Studio TUI 和 MCP。适合需要长期维护的框架、组件库，以及多人、多 Agent 共同演进的工程。小型、一次性程序通常直接使用普通模块就足够。
 
-AI 辅助与 agentic coding 放大而非制造了这种压力。模型和人类评审者都
-无法对大型代码库保持完整注意力，幻觉与上下文缺失是常态失效而非意外。
-XiRang 因此把通常只存在于约定中的关键假设固化为可检查的结构：原子
-对象、显式合同、源码溯源，以及团队可共同阅读的开发期注册图。同一套
-边界同样服务于代码评审、社区协作与普通 Rust 开发——AI 是这些结构的
-消费者之一，不是架构存在的理由。
+> **名字的含义**：息壤是中国神话中能够不断生长的土壤。这里借它表达一种工程愿望：新增部分沿着已有结构生长，也能接入来自其他人的实现。`Soil` 是注册声明，`graft` 是嫁接，`Registry` 是承接这些对象的注册树。
 
-这一模型也定义了社区扩展项目的方式。贡献者在原树之外交付实现，声明
-所替换的边界，由宿主完成 graft 校验；相互竞争的实现可以并存，上游源
-码不必沦为 patch 队列。项目保持自身形态，试验发生在命名合同之内。
+这个项目从两个问题汇合而来：**能否让 AI 在动手前就读懂工程责任，而不是每次靠提示词重讲？能否让代码结构本身就为社区的独立实现留下接入点？** 前者需要可检查的上下文与变更边界，后者需要明确的合同与替换机制。息壤把两者放进同一个组织模型。
 
-XiRang 目前处于早期阶段：核心协议已可用于真实工程，静态分析与运行
-时证据均显式标注自身覆盖范围。
+直接收益是：新增对象不必逐一维护父级子对象清单，替换实现有明确的校验入口，人、编辑器与 Agent 可以围绕共同事实交流。收益伴随声明和验证的维护成本，后文也会说明这些取舍。
 
-## 特性
+## 五分钟开始
 
-- **被动、递归注册。** 每个注册面在自己的文件中声明父节点，父节点只
-负责接受，不维护中央子对象清单。注册面还可以拥有下一级 `Registry`，
-同一规则自然递归。
-- **只有一个 Registry 类型。** 根注册机和子注册机使用同一套 API；树是
-注册行为产生的，不靠“根类型/叶类型”特判。
-- **边界合同。** preset/parts 的输出类型和 handle 合同可以在编译期失败；
-`registry_rule` 负责结构，`admission` 负责外部依赖，发布前一次收集全部
-失败项。
-- **原子嫁接。** 替换面向一个逻辑槽位，并且必须匹配声明的输入/输出
-`FlowContract`。验证不通过时，线上注册树保持不变。
-- **两步构建。** 第一阶段按宿主源码发现可达注册面，生成更小的
-`StaticPlan`；之后交给正常的 rustc、LLVM 和链接器做最终代码/符号裁剪。
-前者减少注册元数据和编译范围，后者负责最终机器码体积，它们不是一件事。
-- **按需调试。** `off`、`errors-only`、`full` 三档追踪让发布路径默认不收集
-证据。Studio 消费这套注册树、调用链和数据流模型；MCP 桥提供这些查询，并在落盘
-写入之前先给出预览。
-
-## 开始使用
-
-有两种方式可以试用 XiRang。
-
-### 方式一：安装 XiRang CLI
-
-这种方式不会把 XiRang 源码放进你的应用目录。从 crates.io 安装 CLI，它提供
-`xirang` 命令（包含 Ratatui Studio 的 `xirang studio` 子命令）：
-
-```sh
-cargo install xirang-toolchain
-xirang new my-app
-cd my-app && xirang studio
-```
-
-已发布的版本都在 crates.io（最新的看 `CHANGELOG.md`）。想要检出里的最新提交而不是已发布版本时，Git 源依然可用：
-`cargo install --git https://github.com/Nichtigott/xirang xirang-toolchain`。
-插件二进制同时支持 `cargo xirang <命令>` 形式。如果要检查已有项目：
-
-```sh
-XIRANG_PACKAGE_ROOT=/work/my-app xirang studio
-```
-
-独立的 `xirang-toolchain` 二进制仍可单独安装。
-
-### 方式二：直接克隆源码运行
-
-适合参与开发或想看最新实现，不会安装全局命令：
+当前检出的完整能力建议从源码体验；已发布包与本分支可能处于不同阶段。需要 Rust **1.96.0 或更新版本**、Cargo 和本机链接器；C++ 示例另需 C++ 工具链。
 
 ```sh
 git clone https://github.com/Nichtigott/xirang
 cd xirang
-cargo run -p xirang-toolchain -- studio
+cargo install --path toolchain --features cli,lang-cpp
+
+# --path 指向息壤检出，使新宿主使用这份实现。
+xirang new my-app --lib --path "$PWD"
+cd my-app
+
+# 创建之前先看计划；--write 才落盘。
+xirang face add panel --lang rust --fields '{"needs_registry":true}'
+xirang face add panel --lang rust --fields '{"needs_registry":true}' --write
+xirang check
+cargo build
+xirang explain root/panel --json
+xirang studio
 ```
 
-从源码仓库检查另一个项目：
+发布版安装：`cargo install xirang-toolchain --features cli`。`cli` 会安装 `xirang`、`cargo-xirang`、`xirang-studio` 和 `xirang-mcp`；检出专用的 `xirang-dev` 不在其中。多语言创作能力以 `xirang face languages` 为准。
 
-```sh
-XIRANG_PACKAGE_ROOT=/work/my-app cargo run -p xirang-toolchain -- studio
-```
+这里生成的是注册骨架，业务实现和行为测试仍由你补充。`check` 验证注册事实，`cargo build` 验证实际编译；两者都不能代替业务测试。
 
-Studio 中按 `n` 可以新建 binary 或 library 项目。向导只写 Cargo 清单、
-薄 `build.rs` 和入口文件；按 `a` 才会创建第一个注册面。它不会凭空
-生成 `control` 树。只有注册面确实需要结构规范时，旁边才会生成
-`registry_rule/` 目录。
+[完整使用指南](docs/using-xirang.md)包括接入已有项目、独立目录、编辑、MCP 配置、graft、分区、验证与团队协作。
 
-### 把 XiRang 接入自己的项目
+## 三种变化，三种操作
 
-注册声明属于宿主项目，所以 Cargo 需要一个很薄的构建入口：
+| 你想做什么 | 机制 | 要保持或重新验证什么 |
+| --- | --- | --- |
+| 调整对象的位置、父子关系或源码落点 | `move` 与显式目录映射 | 对象连续性、父级、引用、台账和消费者 |
+| 保留槽位，选择另一个实现 | `graft` | 边界合同、准入规则、有效树和行为 |
+| 调整由哪些包编译 | `crates` 分区 | 逻辑目录、依赖边、类型归属和宿主接线 |
 
-```sh
-# 使用 Git。xirang-toolchain 必须进入 build-dependencies。
-cargo add xirang-toolchain --git https://github.com/Nichtigott/xirang --branch main
-cargo add xirang-toolchain --build --git https://github.com/Nichtigott/xirang --branch main
+**注册树、文件树、编译分区可以对应，但不必一一绑定。** 默认创建遵循规则目录；用 `--file` 指定独立目录后，后代可继承新落点，也可再覆盖。文件夹仍然便于收纳多种语言，注册关系由声明与共同事实维护。
 
-# 或者，在两个本地源码仓库之间联调：
-cargo add xirang-toolchain --path /path/to/xirang/run_method
-cargo add xirang-toolchain --build --path /path/to/xirang/build_method
-```
+身份也有明确边界：当前 `NodeId` 保留源码实例身份的兼容规则；持久对象由 `StableFaceId` 和对象台账连接当前、历史实例。换绝对工作目录不应改变身份，修改源码身份拼写则可能产生新 `NodeId`，需要显式迁移。内容摘要标识所用版本，机器路径只负责定位。
 
-不要把 `xirang-toolchain` 同时以一种来源放进 `[dependencies]`、又以另一种
-来源放进 `[build-dependencies]`。Cargo 要求同一个包在整份清单中只有一个
-canonical source。
+本地来源声明与机器绑定已存在；**任意远程孤岛的固定快照物化、跨平台一致性和全量测试，不属于本轮基础验收的承诺**。生产管线已有 worker/queue 等入口，它们的存在不等于上述整体工作流已验收。
+
+## 写普通代码，声明协作边界
+
+业务类型和算法仍是普通 Rust。一个注册面说明“我是谁、挂在哪里、提供什么”，父对象无需手工维护每个子对象的清单。
 
 ```rust
-// build.rs
-fn main() {
-    xirang_toolchain::build_method::run();
-}
-```
-
-在 crate 根部只接线一次生成计划：
-
-```rust
-xirang_toolchain::run_method::host!();
-```
-
-它展开为 `include!(concat!(env!("OUT_DIR"), "/generated_lib.rs"))`，
-直接书写该 include 是等价的高级写法。`xirang-toolchain` 再导出整个
-kernel，注册面代码中的合同、计划和追踪 API 都通过
-`xirang_toolchain::run_method::…` 引用。
-
-不要求必须有 `main.rs`：二进制项目以 `src/main.rs` 作为入口，前端框架
-这类库项目以 `src/lib.rs` 作为入口。构建适配器扫描的是宿主自己的源码；
-Cargo 不会把使用者的 `main.rs` 交给依赖 crate 的 `build.rs`，因此宿主
-如果还拥有自己的注册面，就需要这一次构建接线。
-
-## 注册面
-
-注册面分成两层。Rust 的 `struct` 和 `impl` 是真正运行的实现；声明宏
-记录它在树中的位置，以及什么对象可以进入或替换它。
-
-```rust
-pub struct Canvas;
-
-pub struct CanvasParts;
-pub struct CanvasPreset;
-
-impl xirang_toolchain::run_method::PresetContract for CanvasPreset {
-    type Output = CanvasParts;
-    const REQUIRED_PARTS: &'static [&'static str] = &["paint"];
-}
-
-impl xirang_toolchain::run_method::PartsContract for CanvasParts {
-    type Output = CanvasParts;
-    const PROVIDED_PARTS: &'static [&'static str] = &["paint"];
-}
-
-impl Canvas {
-    pub fn render(&self, input: CanvasInput) -> CanvasFrame {
-        // 这里仍然是普通 Rust 实现
-        input.into_frame()
-    }
-}
-
-// 父级宏由构建阶段按源码层级生成。
-// 例如放在 node_editor 下，就使用 node_editor_object!。
-crate::node_editor_object! {
-    kind: Canvas,
-    preset: CanvasPreset,
-    parts: CanvasParts,
-    summary: { zh: "二维画布", en: "A 2-D drawing surface" },
-    exports: ["canvas.render"],
-    needs_registry: false,
-    requires: ["viewport" => "layout.viewport"],
-    provides: ["canvas.frame"],
-    flow: xirang_toolchain::run_method::FlowContract::new(
-        xirang_toolchain::run_method::ContractId::new("canvas.render.v1"),
-        1,
-        "CanvasInput",
-        "CanvasFrame",
-    ),
-}
-```
-
-大多数字段都有安全默认值。最小注册面可以写成
-`crate::root_object! { kind: App }`，或者在子级使用生成的
-`<parent>_object! { kind: Child }`。只有确实有信息时再写 `summary`、
-`exports`、`requires`、`flow`，不用为了填满表格重复默认值。
-
-这里有三种不同的校验，故意不合并：
-
-1. **构造合同（编译期）。** `preset` 和 `parts` 的关联输出类型必须一致；
-`handle_contracts` 和 `part_contracts` 让 rustc 直接证明 handle/parts 实现了
-指定 trait。
-2. **注册规范（构建/发布前）。** `registry_rule` 只描述进入这个注册机的
-子对象必须具备的最低结构：preset、parts、exports 和接口。它不维护 kind
-白名单，也不决定谁属于这个父级。缺什么会集中报告，
-不会留下半注册对象。
-3. **准入门禁（依赖边界）。** `admission` 规定注册面可以使用哪些外部
-注册路径。越过门禁的依赖会被拒绝，错误中会带注册面、源码位置和依赖名。
-
-替换时，两边都要发布数据流合同。宿主先比较合同 id、版本、输入和输出，
-通过后才执行嫁接：
-
-```rust
-let plan = xirang_toolchain::run_method::GraftPlan::command(
-    framework,
-    "cut root/canvas graft canvas_fast",
-)?;
-let effective = base.overlay(&plan, &external)?;
-```
-
-扩展对象只需满足目标注册规范；替换对象还必须和槽位的输入/输出合同
-语义兼容。这样换的是中间实现，不是悄悄改了一个模块名。
-
-### 结构规范是最低要求
-
-registry_rule 是最低边界。注册面可以拥有比规范列出的更多字段、方法、
-接口或 exports，但不能少掉任何必需项。规范并不表示“对象只能有这些内容”。
-这对框架演进很重要：给已有注册面增加方法不会破坏旧使用者，删除必需 part
-才会。
-
-### 父级如何约束子注册面
-
-下面是一棵只有两层的完整示例。`Control` 是父注册面，`Button` 是进入
-`Control` 所拥有 Registry 的子注册面。规则属于父级，所以单独放在
-`control/registry_rule/`；子级只声明自己提供了什么。
-
-```text
-src/
-└── control/
-    ├── control.rs                         # 父：Control
-    ├── registry_rule/
-    │   └── registry_rule.rs               # Control 对所有直接子级的最低要求
-    └── object/
-        └── button/
-            └── button.rs                  # 子：Button
-```
-
-父注册面先定义共享接口，并声明自己拥有 Registry：
-
-```rust
-// src/control/control.rs
-pub struct Control;
-pub struct ControlFrame;
-
-pub trait ControlHandle {
-    type Parts;
-
-    fn paint(&self, parts: &Self::Parts) -> ControlFrame;
-}
-
-pub trait ActionPartsContract {
-    fn action_id(&self) -> &str;
-}
-
-crate::root_object! {
-    kind: Control,
-    needs_registry: true,
-    parent: crate::root_node_id(env!("CARGO_PKG_NAME")),
-    // 不再写 `registry_rule:`：这个面拥有注册机，规则会解析到它旁边的规范模块
-    // （`super::registry_rule`），路径因此没有第二份副本需要同步。
-    registry_rule_path: "src/control/registry_rule/registry_rule.rs",
-}
-```
-
-这里的 `needs_registry: true` 才是“Control 可以接收子对象”的声明。
-`parent` 则表示 Control 自己位于包根下。它没有列出 Button；新增另一个合法
-子对象时，不需要回来改 `control.rs`。
-
-父级规则只写最低结构，不写允许进入的 kind 清单：
-
-```rust
-// src/control/registry_rule/registry_rule.rs
-use crate::RegistrationRule;
-
-pub const REGISTRATION_RULE: RegistrationRule = RegistrationRule::new()
-    .require_preset("ActionParts")
-    .require_parts(&["label", "action"])
-    .require_exports(&["control.render"])
-    .require_handle_traits(&["ControlHandle"])
-    .require_part_traits(&["ActionPartsContract"]);
-```
-
-一个能通过这份规则的 Button 如下：
-
-```rust
-// src/control/object/button/button.rs
-use crate::control::{ActionPartsContract, ControlFrame, ControlHandle};
-use crate::{PartsContract, PresetContract};
-
 pub struct Button;
-pub struct ActionParts;
 
-pub struct ButtonParts {
-    pub label: String,
-    pub action: String,
-    pub tooltip: Option<String>, // 父规则没要求，但允许多提供
-}
-
-impl PresetContract for ActionParts {
-    type Output = ButtonParts;
-    const REQUIRED_PARTS: &'static [&'static str] = &["label", "action"];
-}
-
-impl PartsContract for ButtonParts {
-    type Output = ButtonParts;
-    const PROVIDED_PARTS: &'static [&'static str] = &["label", "action", "tooltip"];
-}
-
-impl ControlHandle for Button {
-    type Parts = ButtonParts;
-
-    fn paint(&self, parts: &ButtonParts) -> ControlFrame {
-        let _ = (&parts.label, &parts.action);
-        ControlFrame
-    }
-}
-
-impl ActionPartsContract for ButtonParts {
-    fn action_id(&self) -> &str {
-        &self.action
-    }
-}
-
-crate::control_object! {
-    kind: Button,
-    preset: ActionParts,
-    parts: ButtonParts,
-    parent: crate::control::NODE_ID,
-    exports: ["control.render"],
-    handle_traits: ["ControlHandle"],
-    handle_contracts: [crate::control::ControlHandle],
-    part_traits: ["ActionPartsContract"],
-    part_contracts: [crate::control::ActionPartsContract],
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Button>()
+    .under(crate::control::NODE_ID)
+    .exports(&["control.render"])
+    .needs_registry(false);
 ```
 
-`control_object!` 来自父目录名，让源码一眼能看出层级；真正用于建树的事实是
-`parent: crate::control::NODE_ID`。构建阶段会核对宏名、文件夹位置和 `parent`，
-所以把 Button 误接到另一个 Registry 会在生成代码前失败。
+这是已有 `Control` 父面的声明片段；完整可编译示例在 [control-button](examples/control-button)。`exports` 是声明信息，真实实现和类型合同仍要写出来。
 
-这份声明会经过四层验证：
+| 词汇 | 回答的问题 |
+| --- | --- |
+| `Soil` / 注册面 | 这个实现如何进入共同的工程结构？ |
+| `Registry` | 对象挂在哪里，谁拥有下一层？ |
+| `registry_rule` | 进入这一层至少需要哪些结构、接口与导出？ |
+| `admission` | 这一分支允许使用哪些外部注册路径？ |
+| `FlowContract` | 替换边界承诺怎样的合同标识、版本、输入与输出？ |
+| `catalog` | 如何引用对象，而不把它当前由哪个 crate 编译写死？ |
+| `graft` | 在指定槽位选择哪个兼容实现？ |
 
-| 检查          | 由谁执行                                                 | 在本例中验证什么                                                                                    |
-| ------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 父子拓扑      | `xirang-toolchain`                                     | Button 的宏名、目录位置和 `parent` 是否都指向 Control                                               |
-| Rust 类型合同 | rustc                                                    | `ActionParts::Output` 与 `ButtonParts::Output` 是否同为 `ButtonParts`；两个真实 trait impl 是否存在 |
-| 父级注册规范  | 构建聚合诊断、生成代码的 const 检查，以及开发态 Registry | preset、parts、export 和接口是否不少于 Control 的规则                                               |
-| 外部准入      | Registry 连接器                                          | Button 的跨树 `requires` 是否落在 Control 允许的 `admission` 路径内                                 |
+类型约束交给 rustc；结构规则、准入与嫁接校验由息壤补充。合同标签相同不能证明算法语义相同，仍需消费者测试与反例。
 
-`handle_traits` / `part_traits` 是可存入注册元数据的接口名；对应的
-`handle_contracts` / `part_contracts` 是 Rust trait 路径，负责让 rustc 证明
-`impl` 真的存在。前者供规则和工具读取，后者不创建 trait object 或 vtable。
+## 代码结构如何带有社区性
 
-下面的子声明故意不合格。假设 `WrongPreset` 和 `BrokenParts` 已经实现了输出
-类型相同的 `PresetContract` / `PartsContract`，这样错误只聚焦在父规则：
+贡献者可以维护独立实现，宿主选择接入位置，原始框架和第三方源码各自保留。实现之间因此可以形成“同一合同下的候选”，便于比较、试验与替换。
 
 ```rust
-crate::control_object! {
-    kind: BrokenButton,
-    preset: WrongPreset,
-    parts: BrokenParts,
-    parent: crate::control::NODE_ID,
-    exports: ["control.preview"],
-}
+pub const GRAFTS: &[xirang_toolchain::Graft] = &[
+    xirang_toolchain::graft(crate::catalog::control::object::BUTTON)
+        .with(control_button_graft::button_fast::NODE_ID),
+];
 ```
 
-一次 `cargo check` 会在同一份 XiRang 诊断中列出错误声明的源码位置，以及
-缺少的 `ActionParts` preset、`control.render` export、`ControlHandle` 和
-`ActionPartsContract`。如果只从 `BrokenParts::PROVIDED_PARTS` 删除 `action`，
-生成代码的 const 检查会拒绝缺失的结构 part；如果保留
-`handle_contracts: [crate::control::ControlHandle]` 却删除真实 impl，rustc 会在
-声明点给出 trait bound 错误。这三条路径分别处理“声明缺项”“结构常量缺项”
-和“Rust 实现不存在”，不会伪装成同一种错误。
+这段来自仓内示例的组织方式。嫁接前校验边界，宿主在代码中明确选择；它不自动让所有 Rust 调用改道，也不自动获得热更新。调用与有效注册树的连接必须由宿主完成。
 
-父子归属不由规则筛选 kind，外部对象能否被调用也不由规则决定：
+第三方作者不必为了交付一个替换件维护整个框架 fork；宿主维护者也不用接收每一种实现。**社区性来自可发布的边界和可选择的接入点**，其质量依赖清晰的合同、版本政策和验证，而非只靠目录命名。
 
-| 层次                   | 负责的问题                         |
-| ---------------------- | ---------------------------------- |
-| Rust `struct` / `impl` | 对象真正如何工作                   |
-| `parent` + 父级专属宏  | 对象注册到哪里                     |
-| `registry_rule`        | 进入父 Registry 的对象至少长什么样 |
-| `admission`            | 这个分支允许依赖哪些外部路径       |
-| `FlowContract`         | graft 接口两端的数据是否兼容       |
+阅读：[嫁接与协调替换](docs/graft.zh-CN.md) · [声明与语言扩展](docs/extending-languages.md)。
 
-早期原型里的 `RegistrationRule::new(&["Button"], &[])` 已经删除。迁移时改成
-`RegistrationRule::new()`，只追加上面这些最低结构要求。外部分支的 allow/deny
-移到 `Admission`；旧的 kind 列表不需要搬过去，因为 kind 从来不负责确定父子关系。
+## 项目本身就是记忆
 
-### 输出增加内容时如何兼容
+息壤尝试把工程思维嵌入 AI 工作流：让模型读到当前对象的责任、可用先例、改动边界和验证义务。聊天可以结束，项目保留的声明、规则、采信记录与测试继续存在。
 
-当前 FlowContract 会比较稳定的合同 id、版本，以及声明的输入/输出标签；
-它不会从 Rust 类型自动推断字段级协变。如果新实现返回了更多内容，可以明确
-选择一种做法：
+| 新成员或新 Agent 会问 | 项目应该提供的记忆 |
+| --- | --- |
+| 这个功能放在哪里？ | 对象职责、注册归属、源码位置与依赖关系 |
+| 同类功能通常怎么写？ | 适用的兄弟对象、已采信标本、允许不同的变体 |
+| 哪些接口和边界不能随手改？ | 类型与数据合同、能力提供者、消费者和准入规则 |
+| 命名、别名和注释为什么这样写？ | 约定的来源、适用范围、检查器及例外理由 |
 
-- 保持相同的输出标签，在稳定 envelope（例如 CanvasFrame）中增加向后兼容
-的可选字段；
-- 发布新的合同版本（例如 CanvasFrame v2），一次更新所有消费者边界；或
-- 增加一个适配注册面，把更丰富的输出转换回旧合同。
+记忆需要新鲜度。源码改变后，旧采信可能失效；同级对象写得相似，也不能证明它们正确。有效经验应有适用条件、正常用法、能抓住错误的反例，以及不应被拒绝的合法变体。
 
-后两种做法会把受影响的边界显式留下，而不是静默丢弃数据。只有选定的边界
-合同和目标注册规范都通过，graft 才会接受替换。
+### 横向扩展与纵向演进
 
-### 单个 graft 与协调 graft 集
+新增同族对象时，先找适用标本和父规则，复用边界，再实现差异，并验证旧兄弟的行为仍成立。新增一层职责时，先明确对外承诺，再组织内部对象，并验证消费者真的经过新层。
 
-注册树描述的是对象归属，并不等于完整的数据流图。requires 可以解析到
-另一条分支上的 provider，运行时数据边也可能跨过多个注册边界。当一次替换
-会影响多个消费者时，把受影响的槽位组成一个计划，一起提交。
-
-graft 的三个参与者始终分开。框架原树和第三方实现各自留在原 crate；宿主只在
-自己的 `main.rs` 或 `lib.rs` 中声明覆盖计划：
+MCP 将这条过程接到工具：`explore` 获取源码与责任上下文，`consistency` 比较同族，`converge` 连接合同、消费者与证据，`apply` 提供结构变更预览，`check` 与候选工作流承接验证。
 
 ```text
-framework crate                         external graft crate
-src/                                    src/
-└── control/                            └── button_fast/
-    ├── control.rs                          └── button_fast.rs
-    └── object/button/...                        │
-             │                                   │
-             └──── immutable base Registry       └──── external Registry
-                                  \               /
-                                   GraftPlan + overlay
-                                            │
-                                    effective Registry
-                                            │
-                                  host crate: src/main.rs
+理解目标 → 找适用先例 → 明确范围与预算 → 预览改动
+        → 执行 → 编译与行为验证 → 独立审查 → 接受可复用经验
 ```
 
-宿主入口只声明切口与外部 selector，不复制框架或第三方源码。静态宏本身
-不构造 `Vec` 或 `String`；构建器会把内容直接写进 `StaticPlan`：
+这是推荐的工程工作流。具体强制程度取决于启用的执行模式与项目政策：普通 MCP 无法拦住外部 shell 写入；候选落地检查也不等于操作系统沙箱。发现上游根因时应提出扩大范围的证据，不能靠下游补丁绕过合同，也不能擅自扩大权限。
 
-```rust
-use xirang_toolchain::run_method::{FrameworkId, Registry};
+### 标准如何逐渐固化
 
-const FRAMEWORK: FrameworkId = FrameworkId::new("nichui");
+本项目采用“真实问题 → 最小反例 → 修复 → 回归 → 约定”的演进方式。可机械验证的标准进入 [conventions](conventions)，例如内核不得做 I/O、模块挂载规则、公开路径兼容、文档示例和特性门控。业务语义不能机械判定的部分保留明确的测试和审查义务。
 
-xirang_toolchain::run_method::static_graft_plan!(FRAMEWORK,
-    cut "root/control/button" graft "button_fast",
-);
+标准本身也需要测试：坏实现要被拒绝，好实现和合法例外应能通过；历史记录不能冒充当前证据。新经验先成为候选，经项目政策接受后再复用，不能把一次模型建议直接升级成永久规定。
 
-fn registry_for_this_run(base: &Registry, external: &Registry) -> Registry {
-    base.overlay_static(builtin_static_plan().grafts(), external)
-        .expect("checked graft")
-}
+[使用指南的 MCP 章节](docs/using-xirang.md#mcp)介绍当前入口。项目记忆和托管维护是持续演进的方向；具体保证应以执行模式、代码和对应验收为准。
+
+## 一个模型，多个入口
+
+```mermaid
+flowchart TB
+    H[开发者 · 团队 · AI Agent] --> UI[CLI / Studio / MCP]
+    UI --> A[共享创作服务：解析 · 计划 · 预览 · 事务]
+    A --> F[共同事实：身份 · 来源 · 目录映射 · 模块链]
+    A --> L[语言适配器：声明读写 · 精确编辑 · 编辑器资料]
+    F --> B[build_method：发现 · 校验 · 生成模块与分区接线]
+    L --> B
+    B --> N[原生编译器与语言服务]
+    N --> R[run_method：实际注册树 · graft · 调用证据]
+    R --> UI
+    A -.纯判定.-> K[xirang-kernel：协议词汇与纯方法，无 I/O]
+    L -.共享协议.-> K
+    B -.校验与计划.-> K
+    R -.树与合同.-> K
 ```
 
-切口也可以用 Rust 表达式命名两侧：
-`cut(crate::control::object::button::NODE_ID) graft(button_fast::NODE_ID)`。
-类型化形式在编译期解析，并要求外部实现已链接，因此记录无法覆盖它；上面的字符串形式
-两者都不需要，在覆盖时按选择器名解析。两种形式的完整说明见
-[`docs/graft.zh-CN.md`](docs/graft.zh-CN.md)。
+| 部分 | 职责 |
+| --- | --- |
+| [`kernel/`](kernel) | 身份、注册、树、合同、语法、纯判定；不读文件、不绑定进程 |
+| [`toolchain/`](toolchain) | 构建、运行、证据、插件、Studio、MCP、CLI 七个执行面及共享创作服务 |
+| [`multilang/`](multilang) | 语言适配器、SDK，以及独立的多语言生产管线 |
+| [`macro/`](macro) | Rust 声明的编译期前端 |
+| [`conventions/`](conventions) | 针对本仓库的可执行工程约定，不作为运行依赖发布 |
 
-`overlay` 返回一棵新的 effective Registry。`base` 和 `external` 都不会被修改；
-任一切口的 flow contract、目标父规则、admission 或连接器检查失败，整组计划
-都不会发布。`overlay_static` 省掉动态 `GraftPlan` 及其 selector 字符串分配；
-外部实现若在运行时才加载，effective Registry 的校验和构造仍然只做一次。
+语言差异留在适配器，文件与进程操作留在执行面。CLI、MCP 和 Studio 复用服务；新增语言不应再为三个界面分别实现一次身份、目录和事务逻辑。
 
-普通 cut 只换一个节点，原节点的子树继续接在新实现下面：
+### 如何扩展一门语言
 
-```text
-base                              cut A/a1 graft a1_fast
-A                                 A
-├── a1                            ├── a1_fast       # 只替换 a1
-│   ├── b1                        │   ├── b1         # 从 base 继承
-│   └── b2                        │   └── b2         # 从 base 继承
-├── a2                            ├── a2
-└── a3                            └── a3
-```
+**注册适配器**负责声明；**构建后端**负责实际构建与测试。根据目标分别实现，不能用其中一项代替另一项。
 
-`full` 明确丢弃原节点的整棵子树，改用外部实现携带的子树：
+| 层 | 扩展者需要提供 |
+| --- | --- |
+| 注册与编辑 | `LanguageAdapter` 的能力表、`plan`、`read`，需要时提供 `plan_move` 和 `editor_material` |
+| 编译与运行 | 来源发现、动作计划、真实构建/测试、诊断与证据；可用独立后端进程接入 |
+| 跨语言调用 | 可表达的 ABI、生成绑定、所有权与错误约定、消费者验证 |
+| 完成判据 | 真实宿主、读写往返、混合父子关系、失败无副作用、跨工作目录身份与消费者一致性 |
 
-```text
-external                          cut A/a1 full graft a1_fast
-a1_fast                           A
-└── bx                            ├── a1_fast
-                                  │   └── bx         # 来自 external
-                                  ├── a2
-                                  └── a3
-```
+Rust 与 C++ 已有混合注册的真实宿主演练。Python 有声明适配器和 SDK，**其接入这套基础架构的生产链仍暂停**；这不抹去独立生产管线中已有的 Python 能力。其他语言按后端逐项声明，不能从语言出现在列表中推导“全功能支持”。
 
-需要同时修改多个数据边界时，把切口写在同一个静态声明里：
+普通 rust-analyzer/clangd 消费原生声明与生成资料。跨语言补全需要对应的类型与绑定资料；路径映射无法让任意语言类型无损互通。详见[语言扩展指南](docs/extending-languages.md)。
 
-```rust
-xirang_toolchain::run_method::static_graft_plan!(FRAMEWORK,
-    cut ["root/canvas"] graft "canvas_fast",
-    cut ["root/hit_test"] graft "hit_test_fast",
-    cut ["root/layout"] graft "layout_fast",
-);
-```
+## CLI、Studio 与 AI 协作
 
-只有编辑器、命令行或热加载流程需要在运行时创建和修改计划时，才使用返回
-动态 `GraftPlan` 的 `graft_plan!`。
+<img src="picture/xirang-studio-current.webp" width="100%" alt="当前 XiRang Studio 的真实 PTY 输出，显示示例项目的注册树与对象详情。">
 
-也可以选择同一父 Registry 下的一段兄弟节点：
+*当前程序在临时宿主上的真实终端画面；截取树、详情与操作区，省略旧装饰横幅。*
 
-```rust
-let plan = xirang_toolchain::run_method::GraftPlan::command(
-    framework,
-    "cut [root/a1 to root/a3] graft replacement",
-)?;
-let effective = base.overlay(&plan, &external)?;
-```
+CLI 适合脚本，Studio 适合浏览与交互创作，MCP 适合 Agent 按证据操作。Studio 中用 `a` 添加、`e` 编辑、`g` 管理 graft、`/` 搜索、`r` 重载、`b` 构建检查、`q` 退出。
 
-跨度是两个端点之间按 `registry_name` 顺序连续的那一段兄弟——不是文件顺序或注册
-顺序；端点写反的区间会被拒绝，而不是静默交换。
-
-返回的 effective registry 保留原树和外部树不变，维持目标的逻辑路径，自动继承
-未覆盖的兄弟，并在发布前重新执行目标注册规范、准入和连接器校验。
-
-Studio 的 graft 流程使用 `g`。这里会同时出现三种不同的东西，界面把它们分清楚：
-
-* 宿主入口的 `static_graft_plan!` 是构建步骤读取的**声明**：它让被命名的槽位穿过剪枝
-  存活下来，并填充发布态静态计划。它不删除任何代码。
-* `Registry::overlay` 是**应用**：它在运行期校验并返回有效树，原树与外部树都不被改动。
-* `.xirang/external-grafts/<selector>/graft.plan` 是界面写下的**记录**：它是运行期
-  可以叠加在声明之上的创作输入。它不参与编译；`xirang_toolchain::run_method::apply_recorded_grafts`
-  读取它，`Registry::overlay_recorded` 按 [`docs/graft.zh-CN.md`](docs/graft.zh-CN.md) 中的优先级规则
-  对账——记录覆盖字符串形式的 `static_graft_plan!` 切口，类型化切口保持最终，外部注册机
-  解析不出的记录选择器回退到声明。界面读回它来列出、打开、改范围和删除计划。
-
-`g` 为选中注册面打开撰写界面：显示逻辑槽位，让你填写选择器并选择 `cut`（覆盖层保留原
-节点的子注册机）或 `full`（替换整棵子树）；用宿主入口已声明的切口校验这个槽位——没有
-任何 `cut` 命名的注册面不会被发布；最后给出可直接粘贴进入口的 `static_graft_plan!`
-子句，因为 Studio 永不重写宿主源码。`s` 写入计划并打开它，`o` 再次打开，`f` 切换
-`full`，`d` 把它移入 `.xirang/trash/external-grafts/`。系统不存在复制或替换宿主源码
-的 graft 路径。
-
-XiRang 不限定对象内部采用哪种编程范式。普通函数、trait、泛型、闭包、
-依赖注入或消息传递都可以继续使用；注册面只约束它们对外暴露的边界。声明过
-的 `requires/provides` 和 `FlowContract` 会在注册、连接和 graft 时自动校验。
-改动实现本身不会因为“代码和以前不一样”而失败；只有某个输入找不到合法
-provider、跨过 admission 门禁，或替换端无法接回原数据流时才会失败。错误会
-指出断开的 capability、消费端、候选 provider、源码位置和失败阶段，而不是只给
-一句“注册失败”。这不等于猜测任意 Rust 函数内部所有未声明的数据流。
-
-## 发布静态化、性能与两阶段修剪
-
-XiRang 的两阶段修剪解决两个不同问题。
-
-第一阶段发生在 rustc 展开生成模块之前，颗粒度是整个注册面：
-
-1. 宿主 crate 的薄 `build.rs` 调用 `xirang-toolchain`；
-2. 构建器读取目录注册面以及 `main.rs`、`lib.rs`、`application!(entry = …)` 或
-   `XIRANG_ENTRY` 指定的入口（指不到文件即构建失败；同一个入口同时喂给剪枝与
-   切口表）；
-3. 它保守推导本 crate 需要的注册面——入口可达的面，加上 `static_graft_plan!` 里
-   每个 `cut(` 命名的槽位——只把这些面写入生成模块和 `StaticPlan`；没有任何声明的
-   面不会发布（`XIRANG_SCOPE` 可刻意放宽作用域）；
-4. 遇到无法静态证明的动态分发、生成代码或路径时，回退全树，而不是误删代码。
-
-这一步能减少送进 rustc 的注册面和元数据，但它不是完整 rustc 调用图，也不裁剪
-一个活跃注册面内部的单个函数。
-
-第二阶段由正常 Rust 工具链完成。rustc 的可达性和单态化、LLVM、ThinLTO 与
-链接器垃圾回收继续删除未引用函数和符号。workspace 的 release profile 已启用
-ThinLTO 和单 codegen unit；`tools/xirang-release-audit` 会检查发布产物、拒绝
-残留的 `.inventory` linker section，并可对比 full/minimal 二进制的符号和字节数。
-XiRang 不用源码函数名匹配冒充编译器级精确裁剪。
-
-发布态也不再启动时重建内置注册树。生成代码把通过检查的拓扑固化成
-`&'static [StaticFace]`，把编译前声明的 graft 固化成同一 `StaticPlan` 内的
-`&'static [StaticGraftCut]`。`builtin_static_plan()` 直接借用这些只读数据：没有
-堆分配、全局 constructor、inventory 遍历或启动时注册循环。构建期
-`registry_rule` 检查也不会变成每帧执行的运行时逻辑。注册面自己声明的
-`runtime_checks` 是另一条、由宿主显式开启的路径：宿主在值的边界调用
-`Registry::health_check(node, value, call_path)`（未接 trace 时传空路径），该调用
-只执行这些声明过的检查。
-
-但“静态化”等于成本清楚，不等于所有场景绝对零成本：
-
-本表背后的分配与耗时数字是实测而非推断：
-[`docs/performance-baseline.md`](docs/performance-baseline.md) 记录了它们如何测得、以及每项检查
-断言了什么。
-
-| 使用方式                | 运行时保留什么                               | 成本边界                                                                  |
-| ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
-| 只读内置拓扑            | `StaticFace` 静态切片                        | 启动零分配；`find` 与 `children_of` 都按注册树顺序线性扫描切片，均为 O(n) |
-| 开发态可变 Registry     | `Arc` header、32 页 entries 和索引           | clone 只增加 `Arc` 引用；首次修改只复制命中的页，不复制整棵树             |
-| 编译前静态 graft        | `StaticPlan` 内的静态 selector 切片          | 声明读取零分配；框架若已静态绑定实现，不需要构造 Registry overlay         |
-| 发布后启用 plugin/graft | 所选动态元数据和 effective Registry          | `overlay_static` 不分配计划，但仍要做一次合同、准入和连接器检查           |
-| `CallTrace::runtime()`  | debug 默认 `errors-only`，release 默认 `off` | off 不收集证据；应用仍显式调用追踪 API 时，不承诺指令级零开销             |
-
-因此，先前担心的 Registry 复制页不会出现在“只使用内置静态计划”的发布启动
-路径；只有应用明确构建可变 Registry、启用运行时插件或执行 graft 时才使用页级
-COW。类似地，Studio、MCP、debug 和 plugin-host 是独立工具或可选依赖，应用
-没有链接它们就不会出现在最终二进制里。
-
-XiRang core 不会重写任意 Rust 调用点。所谓“静态绑定实现”需要框架自己的
-生成层按 selector 选择具体 Rust 类型或函数；XiRang 提供经过验证的静态选择
-数据。运行时插件没有可提前链接的实现，所以仍需要一次 overlay。这条区分避免
-为了追求“零开销”而把动态插件能力说成编译期魔法。
-
-性能数字与硬件、文件系统和注册面内容相关，仓库提供复现实验而不写死营销数字：
+MCP 服务启动：
 
 ```sh
-# 构造并索引大树
-cargo run --release -p xirang-toolchain --example scale_audit -- 100000
-
-# fmt、测试、Clippy、文档、release 产物、符号和 linker section
-tools/xirang-release-audit
-
-# 可选：提供两个实际应用产物，生成大小与符号差异
-XIRANG_FULL_BINARY=/path/to/full \
-XIRANG_MINIMAL_BINARY=/path/to/minimal \
-tools/xirang-release-audit
+XIRANG_PACKAGE_ROOT=/absolute/path/to/my-app xirang mcp
 ```
 
-## Studio 与命令行
+从 `xirang.explore {"query":"root/panel"}` 开始；默认入口还有 `xirang.apply` 与 `xirang_tools`。工具回复区分声明、静态候选、构建投影和已记录的运行证据，不能把“找到关联”直接当作“已经证明根因”。[配置与调用示例](docs/using-xirang.md#mcp)。
 
-Studio 是常驻的 Ratatui 界面，不是不断向终端追加文本的脚本。它使用
-备用屏幕，监听项目文件，只有输入、窗口变化或文件事件发生时才重绘。
+团队协作时，共享源码、合同、对象台账和被接受的规则，机器路径留在本机绑定中。每个任务使用独立分支或工作副本、明确写范围，验证绑定到具体快照。多 Agent 并行适合分离的修改与独立审查；同时编辑同一批文件会使证据失效，息壤不替代 Git 合并与冲突处理。
 
-![XiRang Studio](https://raw.githubusercontent.com/Nichtigott/xirang/main/picture/XiRang_studio.png)
+## 从哪些工具学习
 
-| 按键             | 操作                                  |
-| ---------------- | ------------------------------------- |
-| `n`              | 新建 binary/library 项目              |
-| `a` / `e` / `d`  | 添加、编辑、删除注册面                |
-| `g`              | 为选中注册面创建并编辑外部 graft 计划 |
-| `/`              | 搜索文件和函数                        |
-| `1`–`3`          | 搜索、检视、数据页面                  |
-| `Tab`            | 在树和详情之间切换焦点                |
-| 方向键 / `j` `k` | 移动选择或调整当前面板                |
-| `r` / `F5`       | 重新加载项目                          |
-| `b` / `F9`       | 执行构建检查                          |
-| `q` / `Ctrl-C`   | 退出                                  |
+| 工具或方法 | 主要切入点 | 息壤的关系 |
+| --- | --- | --- |
+| Rust 模块、trait、Cargo | 语言类型、模块与包依赖 | 保留这些机制，在其上表达对象归属、边界和替换意图 |
+| CodeGraph / CodeQL | 符号、调用关系、代码分析 | 可协作；息壤侧重声明的责任关系及受控变更，静态分析仍有价值 |
+| Bazel | 构建图、平台、缓存、执行与测试规则 | 借鉴输入闭包和证据意识；不宣称现有分布式能力或生态与其等价 |
+| 插件 / DI / 分布式注册 | 发现实现、选择依赖、装配应用 | 增加递归注册树、合同与 graft；是否需要取决于项目复杂度 |
 
-开发 Studio 自身时，可以让监督器在源码变化后重建并重启子进程：
+目标是减少“理解工程、保持连接、证明改动”的重复劳动。是否更省时间、token 或算力，要在相同任务、配置和验收标准下测量；没有通用领先结论。探索重点是责任上下文、输入闭包和交付证据；尚未据此建立通用性能排名。
+
+## 接受哪些变化
+
+引入息壤意味着维护注册声明、合同和验证；采用宿主构建接线，并让受管理的结构修改经过工具。默认目录约定降低配置成本，独立目录映射提供弹性，但不能把任意手工搬文件视为完成迁移。
+
+生成 crate 是编译产物的组织方式，不天然是另一份可独立编辑的源码仓库。应在权威宿主源码修改，再重生成；多个可写孤岛的版本同步、固定快照测试与远程调度，还需要各自的明确协议和验收。
+
+增量索引、全链路并行和性能优化仍有后续工作；部分原生声明包目前绕过行缓存。注册树也不等于完整调用图：动态分派、FFI 和运行期数据需要实际观测，未观测不能解释成不存在。
+
+## 息壤如何使用息壤
+
+本仓的 [control-button](examples/control-button) 与 [第三方 graft](examples/control-button-graft) 是真实宿主，演示声明、合同、替换和运行期树。结构操作通过 [island-loop](tools/xirang-island-loop) 和 [partition-rehearsal](tools/xirang-partition-rehearsal) 驱动真实 MCP/Cargo，API 兼容用[仓外调用方](tools/xirang-api-compat)验证。
+
+仓库的维护约定写在 `AGENTS.md`，可执行部分进入 conventions。这里的“自用”指真实宿主、工具链和维护流程的持续验证，不意味着每个普通工具函数都被注册成对象。
 
 ```sh
-XIRANG_PACKAGE_ROOT=/work/my-app \
-  cargo run -p xirang-toolchain --features dev-supervisor --bin xirang-dev -- watch
+# 在息壤检出根目录；需要相应工具链。
+tools/xirang-island-loop
+tools/xirang-partition-rehearsal
+tools/xirang-api-compat
+tools/xirang-test
 ```
 
-`xirang-dev` **仅限工作区**：它从本检出重建 Studio，并启动该检出的 `target/debug`
-产物。`dev-supervisor` 特性默认关闭，因此 `cargo install xirang-toolchain` 装的是 TUI，
-而不是一个没有东西可重建的监督器。
+各脚本默认离线设置及冷环境用法见脚本说明。验收结果必须绑定源码快照；历史通过不自动代表当前检出通过。旧 API 兼容入口仍保留，扩展者应同时验证旧调用方与旧 trait 实现者。
 
-命令行入口刻意保持精简：`xirang` 是统一入口——`xirang new` 生成宿主
-项目，`xirang check` 不做完整编译即可运行注册发现与校验，`xirang
-build` 先校验注册树再调用 `cargo build`，`xirang snippets` 把注册面字段的
-编辑器 snippet 注入项目或编辑器配置（`new` 也会写 VS Code 那份；`--editor
-vscode|nvim|blink` 指定一种，`--editor auto` 把本机探测到的编辑器装到各自的
-用户级位置，跳过模糊匹配 snippet 的引擎——blink.cmp 与 LuaSnip 在值位也会命中字段 trigger，
-需要显式 `--editor blink`/`--editor nvim`——`--stdout` 打印任意一份）。值补全本身不需要
-snippet。`xirang grafts` 列出 `.xirang/external-grafts/` 记录以及宿主入口是否声明
-它们的槽位，`xirang explain <node|path>` 报告单个节点的身份、构建作用域、剪枝状态与
-命名它的切口（`explain --overlay` 渲染构建的静态覆盖投影而不是活的树；真正的有效树是
-宿主侧的 `Registry::dump_effective`）。`xirang studio` 负责交互式编辑和调试，
-`xirang mcp` 是给 AI 客户端使用的 JSON-RPC/MCP 桥：源码与注册树查询，加上
-除非给出 `apply: true` 否则先预览的创作写入。`cargo
-check` 仍是构建校验命令：
+## 继续阅读与参与
 
-```sh
-cargo check
-XIRANG_PACKAGE_ROOT=/work/my-app xirang mcp
-```
+[使用指南](docs/using-xirang.md) · [语言扩展](docs/extending-languages.md) · [嫁接](docs/graft.zh-CN.md) · [迁移](docs/migration.zh-CN.md) · [威胁模型](docs/threat-model.zh-CN.md) · [路线图](docs/ROADMAP.zh-CN.md)
 
-MCP 提供 `xirang.search`（面排在最前，按逻辑路径、kind、模块或 `registry_name` 匹配，并标注构建的
-结论——`ok`、`added since build`、`re-identified` 或 `build unknown`；不再描述这批源码的清单会在这些
-结论之上被说成 `stale (run xirang check)`——随后才是文件与函数命中）、
-`xirang.inspect`、`xirang.callgraph`、
-`xirang.read`、`xirang.status` 和 `xirang.registry`——最后一个报告构建推导出的
-注册树，因此代理可以直接读注册树，而不是从宏名重建——以及 `xirang.explain`（构建发布的
-作用域与发布剪枝，源码文本答不出来；给出 `overlay: true` 时改为覆盖投影——每条已声明切口替换哪个
-槽位、作用域剪掉哪些面，也就是替换之后的发布态）、`xirang.diff`（源码与构建之间的面级差异，包括文件没动而
-身份变了的那种；给出 `records: true` 时改为外部 graft 记录与源码的对照——槽位没动而身份变了的记录是
-`re-identified`，而不是被悄悄弄坏）与 `xirang.trace`（已记录 trace 的调用报告——真正跑了什么——artifact 描述的是
-另一棵树时会被拒绝；给出 `values: true` 时改为报告记录下的值与被观察到的数据边，按捕获它们的帧分组）、`xirang.mir`（`-Zunpretty=mir` 文本转储或紧凑 JSONL artifact，两种
-都能读，`jsonl: true` 时还负责**写出**——那条可移植通道以前在工作区里没有任何东西产出过；它写出的是
-点名自己那棵树的快照，而给出 `against` 时两份快照作差得到调用图差异，外来快照按名拒绝）、
-`xirang.unified`（把该图与已记录的 trace 经 `debug_method` 自己的 `UnifiedCallGraph` 合并，
-真实调用在其中确认它的编译器候选，而不是与它并列）、`xirang.usages`（一个面的邻域：树边、它能设置的字段读回、别的面双向提到的
-能力记号）、`xirang.impact`（一次改动的传递爆炸半径：后代、能力消费者与已声明 graft 切口，各带跳数与理由）、
-`xirang.grafts`（每条外部 graft 计划，以及宿主入口是否声明了它针对的槽位，使未被保住的记录在发布剪掉它之前就可见），以及 `xirang.converge`（一次调用给出某个面的收敛起点：作用域与剪枝判断、它的邻域、
-每条需求是否有答案、该读哪些文件——并把内核的拒绝当成判断而不是错误报出来；给出 `trace: true` 时它
-从已记录的运行出发，把整棵树收敛到"既声明了面、又真的跑过"的那些文件，并带上那些帧捕获的值与它们
-之间的边）、
-`xirang.verify`（重跑内核校验并报告那次运行发布的树差异，因此一次编辑是被确认过的，而不只是被写下），还有
-`xirang.apply`：它经与 Studio 相同的
-authoring 执行器新增、编辑、改名或删除注册面，除非给出 `apply: true`，改动会先在一份一次性副本上
-预览。静态调用图会标为 heuristic；动态调用
-和运行时数值只有在宿主真实记录 `CallTrace` 后才具权威性，而 Studio 从宿主写出的 artifact
-读入它（`docs/design-trace-ingest.md`）；没有 artifact 的会话显示 `TRACE: none`，
-而不是展示它并不拥有的数值；而把已记录的 trace 与编译器的 MIR 候选汇合的，正是
-`xirang.unified`。
+欢迎提交具体场景、最小反例、语言适配器和合同兼容的独立实现。提交功能时附上成功路径、失败路径与验证范围；提交新规范时也说明它允许哪些合法差异。
 
-## 什么时候值得用 XiRang
-
-XiRang 不是 Rust 模块系统的替代品。它适合这样的项目：对象图由多人或
-工具共同维护；需要替换中间层而不改动相邻节点；或者 AI 需要一份机器能读
-懂的“这个对象接受什么、提供什么”的说明。小型、集中组装的应用通常直接
-使用普通 Rust 更合适。
-
-## 对比
-
-| 方案                   | 擅长解决                                                                     | 仍需应用自己处理                             |
-| ---------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
-| 模块、trait、依赖注入  | 命名空间、静态行为、显式构造                                                 | 发现、父链闭合、准入、替换策略               |
-| `inventory` / `linkme` | 分布式收集静态条目                                                           | 树语义、合同、溯源、原子嫁接                 |
-| Bevy 风格插件          | 显式组合一个应用                                                             | 通用源码路径和中间层合同校验                 |
-| CodeGraph / CodeQL     | 符号和调用证据                                                               | 运行时注册与替换决策                         |
-| XiRang               | 被动递归注册树、合同、准入、嫁接校验、Studio 视图与带预览写入的 MCP 源码查询 | 动态分发和优化后数值仍受 Rust/编译器边界限制 |
-
-## 边界
-
-- 第一阶段粗修只能看到宿主 crate 的源码，看不到下游应用的 `main.rs`；
-最终二进制仍由 rustc/LLVM/链接器按可达性裁剪。
-- MIR 和静态扫描提供候选证据。`dyn Trait`、函数指针、FFI、运行时选择
-的调用和宏生成代码，可能只能保守保留或依赖现场证据。
-- 优化后的未插桩局部变量可能显示为 `unobserved`；需要真实数值时启用
-`full` 追踪。
-- 进程插件能隔离崩溃和资源限制，但不是操作系统级安全沙箱。Wasm/进程
-加载都是可选能力。
-- Studio、debug、MCP 和 plugin-host 都是可选工具；只使用 core 时，发布
-产物不包含开发界面。
-- 注册面位于 `<name>/<name>.rs`。注册面旁边的普通 `.rs` 模块会被静默跳过，而**确实是**
-  注册面却不在该布局里的文件会变成一条诊断，点名该文件与它应当在的布局——构建永远编译不到它，
-  因此它绝不能悄悄过去。
-- 插件信任默认是校验和，宿主验证签名时才升级为签名：只有
-  `PluginArtifact::verify_signed` 会记录签名保证，也只有它能打开官方通道。撤销在校验期间、
-  接受任何签名之前就被检查。这里的东西都不是操作系统级沙箱——那条边界属于进程适配器，已在
-  上面写明。
-
-## 运行时追踪
-
-```rust
-let trace = xirang_toolchain::run_method::CallTrace::runtime(); // debug: errors-only, release: off
-let quiet = xirang_toolchain::run_method::CallTrace::disabled();
-let detailed = xirang_toolchain::run_method::CallTrace::full();
-```
-
-`errors-only` 只保留失败链路并丢弃成功证据；`full` 保留 frame、局部变量和
-数据边，供 Studio 查看。发布构建默认不收集，除非应用明确选择。
-
-## Kernel 与执行面
-
-XiRang 把 workspace 分成一个纯 kernel 和一组薄执行面。下沉规则很简单：
-**无 I/O、无 `std::env`、无时间/进程绑定的逻辑一律下沉到 kernel**；凡是
-要读文件系统、起进程或驱动终端的能力，都留在执行面里，由执行面把 kernel
-方法绑定到各自的上下文。
-
-`xirang-kernel`（lib 名 `xirang_kernel`）是 kernel：协议名词加纯方法全集——身份、
-声明、解析、树操作、策略、渲染。kernel 内不做任何 I/O，也不绑定环境，因此
-每个工具复用的都是同一套方法。
-
-| Crate                | 目录                       | 执行面职责                                                                                                                                                                   |
-| -------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `xirang-toolchain` | `toolchain/build_method/`    | 构建期文件系统与 `OUT_DIR` 编排：扫源、kernel 校验、`generated_lib` 渲染、manifest/缓存写入、cargo 指令                                                                      |
-| `xirang-toolchain` | `toolchain/runtime/`       | 运行期状态与追踪：`CallTrace` 帧栈/数据边、`host!`/`trace_call!` 宏、authoring 执行器                                                                                        |
-| `xirang-toolchain` | `toolchain/call_evidence/` | 观测证据面：MIR 文本/JSONL 解析与合并、`CallTrace` 与数据流模型、tracing/petgraph 适配、`UnifiedCallGraph`（**产出** MIR 的那次 `cargo rustc` 由 Studio 运行，不在本 crate） |
-| `xirang-toolchain` | `toolchain/plugin_host/`   | 插件宿主执行：wasm/进程沙箱实例、世代部署、懒激活槽位表                                                                                                                      |
-| `xirang-toolchain` | `toolchain/studio/`        | TUI 执行面：渲染与键鼠状态机，消费 kernel 查询与 authoring 方法                                                                                                              |
-| `xirang-toolchain` | `toolchain/mcp/`           | AI 代理 stdio 桥：JSON-RPC 循环、工具分发、路径防护                                                                                                                          |
-| `xirang-toolchain` | `toolchain/cli/`           | 进程胶水：argv 分发、cargo 子进程、子命令转发                                                                                                                                |
-
-`xirang-macro` 是第九个发布的 crate：一个在编译期归一化注册面字段的过程宏
-crate（宽容的分隔符与字段顺序、带 span 的诊断、编辑器镜像）。它是构建期前端而不是
-执行面，因此不在上表。
-
-## 工作区结构
-
-```text
-kernel/       xirang-kernel（lib 名 xirang_kernel）：协议名词 + 纯方法全集——identity、
-              declaration、diagnostic、tree、plugin、mir、requirements、
-              release、source、authoring、syntax、json、lexicon
-macro/        xirang-macro：编译期注册面字段前端（宽容的分隔符与顺序、带 span
-              诊断、编辑器镜像）
-build_method/ xirang-toolchain：构建期源码发现、缓存、第一阶段 StaticPlan
-run_method/   xirang-toolchain：运行期 trace 状态、host!/trace_call! 宏、
-              authoring 执行器
-debug_method/ xirang-toolchain：可选 CallTrace 适配、MIR 证据、数据流与图模型
-cli/          xirang-toolchain：统一入口（xirang new/check/build/snippets/
-              explain/grafts/studio/mcp、cargo-xirang）
-studio/       Ratatui 编辑、搜索、watch 和源码跳转
-mcp/          面向 AI 的 MCP 桥：查询与带预览的写入
-plugin-host/  可选 Wasm/进程插件和原子部署
-examples/     可运行示例：control-button 宿主与其项目外 graft 实现
-conventions/  xirang-conventions：遍历本检出的门禁（内核纯净性、模块挂载、
-              尺寸棘轮、文档代码块）；不发布
-```
-
-技术路线见 [`docs/ROADMAP.zh-CN.md`](docs/ROADMAP.zh-CN.md)，英文版见
-[`docs/ROADMAP.md`](docs/ROADMAP.md)。每个 crate 的 API 说明放在各自目录。
-
-## 构建与许可证
-
-```sh
-cargo fmt --all
-cargo test --workspace --offline
-cargo clippy --workspace --all-targets --offline -- -D warnings
-```
-
-XiRang 使用 [MIT License](LICENSE)。欢迎提交真实项目中的失败案例、设计
-质疑和改进 PR，也欢迎在 GitHub Issues / Discussions 讨论边界问题。
-
-[English](README.md) 
+[MIT License](LICENSE) · [Issues](https://github.com/Nichtigott/xirang/issues) · [Discussions](https://github.com/Nichtigott/xirang/discussions)

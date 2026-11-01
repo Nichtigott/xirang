@@ -85,7 +85,7 @@
   ```
   失败的 `actual`（父身份）与 pkg-b **自己清单里的** `control/control.rs` 身份逐字节相同——同一次运行里
   两处 id 来源不同，正是总账写的签名词（`static_plan` 用缓存、`manifests` 重算）。
-- **代码闭环**（代码阅读佐证）：`build_method/src/node_id.rs:25` 的 `CACHED_NODE_IDS` 是
+- **代码闭环**（代码阅读佐证）：`build_method/node_id.rs:25` 的 `CACHED_NODE_IDS` 是
   `OnceLock<BTreeMap<String, (NodeId, String)>>`（键**只有相对路径**）；`identity_cache.rs:64`
   用 `let _ = CACHED_NODE_IDS.set(values)`（先到先得）；`pipeline.rs:55` 在作用域阶段之前 prime。
 - **严重度**：维持 CRITICAL。**备注**：我的装置与作者的不同点在于——不手写 unit 文件、用公开
@@ -119,7 +119,7 @@
   9 duplicate identity -> Err(plugin lock line 2: duplicates package identity `pkg` `1.0.0`)
   ```
   即同一身份五元组出现两次时 `PluginCatalog::parse` **整份拒绝**——而宿主准入读的就是整份锁。
-- **写侧一半（代码阅读佐证）**：`studio/src/studio/app/mutations.rs:257` 手拼 7 字段记录；
+- **写侧一半（代码阅读佐证）**：`studio/studio/app/mutations.rs:257` 手拼 7 字段记录；
   `:260` 的唯一闸是**整行字符串相等**（`existing.lines().any(|line| line.trim() == record)`）；
   `:299` 的 `contains_record` 只对 `source == "official"` 生效；`:341` 之后直接 `append_line(&lock, …)`，
   **不把追加后的文本回读给解析器**。因此 user 来源改 checksum、或 official 改 mode 而五元组不变，
@@ -207,14 +207,14 @@
   order : path=root/aaa_child          parent_resolved=true   ← 该是 root/zzz_parent/aaa_child
   order2: path=root/aaa_parent/zzz_child  parent_resolved=true   ← 同一个形状，答案正确
   ```
-- **代码闭环**：`build_method/src/face_view.rs` 先在 `collect` 顺序里逐面算路径（`:168` `logical_path`），
+- **代码闭环**：`build_method/face_view.rs` 先在 `collect` 顺序里逐面算路径（`:168` `logical_path`），
   **之后**才 `views.sort_by`（`:172`）；`logical_path`（`:280-298`）只查一层 `paths.get(parent)`，
   未命中回退 `root`（其文档却写「沿已解析的父级链行走」）。
 - **严重度**：维持 MAJOR。**备注**：这条是我用**两个夹具对照**直接演示的，比「读码 + 单点复核」更强。
 
 ### LG-09（MAJOR）货币凭据先于载荷发布 → **部分证实（读码）**
 
-- **代码阅读佐证**：`build_method/src/pipeline.rs:155-164` 在 `compile_errors.is_empty()` 时先写
+- **代码阅读佐证**：`build_method/pipeline.rs:155-164` 在 `compile_errors.is_empty()` 时先写
   `discovery.fingerprint`，`:174-184` 才写五份载荷（并把失败收进 `write_errors`）；
   `cache.rs:36-39` 的 `write_if_changed` 是就地 `fs::write`（非临时文件 + rename）。
   因此「载荷写失败/被截断 + 指纹已发布」是可达状态，`build_output_is_current` 只读指纹。
@@ -223,10 +223,10 @@
 
 ### LG-10（MAJOR）模块迁移无边界文本替换 → **证实（读码）**
 
-- **代码阅读佐证**：`run_method/src/authoring/operations/migration.rs:179-181`
+- **代码阅读佐证**：`run_method/authoring/operations/migration.rs:179-181`
   `.replace(&rust_old, &rust_new).replace(&old_prefix, &new_prefix)`（`rust_old = "crate::<old module>"`
   无 `::` 尾界 → 会命中 `crate::control_extra`；`old_prefix = "src/<old>/"` → 命中 `src/control_extra/`）。
-  同仓对照口径在 `build_method/src/scope_view.rs:109-118`（`selected.as_bytes().get(module.len()) == Some(&b':')`）。
+  同仓对照口径在 `build_method/scope_view.rs:109-118`（`selected.as_bytes().get(module.len()) == Some(&b':')`）。
 - **严重度**：维持 MAJOR。
 
 ### LG-11（MAJOR）`face_views` 静默丢面并把子面改挂根 → **证实**
@@ -244,11 +244,11 @@
 
 ### LG-12（MAJOR）`diff records:true` 只在身份在树里那一支查「已声明」→ **证实（两侧读码闭环）**
 
-- **代码阅读佐证**（`mcp/src/diff.rs:145-175`）：`if faces.iter().any(|face| face.id == target)`
+- **代码阅读佐证**（`mcp/diff.rs:145-175`）：`if faces.iter().any(|face| face.id == target)`
   **先**判定；只有进去以后才看 `row.declared`（`Some(false)` → `undeclared`）。身份缺席时直接走
   `re-identified`/`stale`，**从不看 `declared`** → 计数行永远是 `undeclared 0`。
 - **对侧为什么会出现 `declared=false`**（这是总账没说全的一半）：
-  `build_method/src/graft_view/plan_rows.rs:155-175` 里 `module` 由「树里有这个身份的**面**」决定，
+  `build_method/graft_view/plan_rows.rs:155-175` 里 `module` 由「树里有这个身份的**面**」决定，
   身份缺席 → `module=None`；`declared.rs:147-149` 的 `names_face(path, None)` 对**类型化切口**直接
   `return false`；于是 `declared_state = Some(false)`。字符串切口（`expressions: None`）走
   `self.cut == path` 比对，不受影响——这正好解释了总账「触发条件：宿主入口用类型化切口」。
@@ -256,8 +256,8 @@
 
 ### LG-13（MAJOR）`XIRANG_NAMESPACE` 下 verify 与 diff/search 各用一套命名空间 → **证实**
 
-- **代码阅读佐证**：`mcp/src/verify.rs:43` 用 `package_name(&manifest)`（Cargo 名）作 `check_for` 的
-  package；`mcp/src/registry.rs:59-61` 的 `namespace()` 先读 `XIRANG_NAMESPACE` 覆盖；
+- **代码阅读佐证**：`mcp/verify.rs:43` 用 `package_name(&manifest)`（Cargo 名）作 `check_for` 的
+  package；`mcp/registry.rs:59-61` 的 `namespace()` 先读 `XIRANG_NAMESPACE` 覆盖；
   `tree_delta.rs:101-119` 的 `by_source` 按**源码路径**命中（与命名空间无关），于是每个面都落进
   `Reidentified(previous)`；`build_output_is_current` 的指纹只散列路径与内容，仍报 `current`。
 - **严重度**：维持 MAJOR。**备注**：这条是**我本人**在 t5 的 BR-6 里提出的（作者标了别名 BR-6）；
@@ -265,7 +265,7 @@
 
 ### LG-14（MAJOR）`linked` collector 只留注释 → **证实（读码）**
 
-- **代码阅读佐证**：`run_method/src/macros/face_registration.rs:9-10` 模块文档「收集器标识决定注册信息
+- **代码阅读佐证**：`run_method/macros/face_registration.rs:9-10` 模块文档「收集器标识决定注册信息
   进入哪个链接器段」；`:168-171` 的 `(linked; $registration)` 展开为一个**注释**
   （「采集由 xirang-debug 持有；core 只保留纯声明」）。`development` 臂也是空。
 - **严重度**：维持 MAJOR（自述承诺一类，按本仓标准起记 MAJOR）。**备注**：该臂**零运行期后果**
@@ -286,7 +286,7 @@
 ### LG-16（MAJOR）`compile_error_demo` 魔法名改写构建结果 → **部分证实（读码；触发狭窄）**
 
 - **代码阅读佐证**（四处调用点，逐处读原文）：
-  `build_method/src/contracts.rs:78`（跳过契约聚合）、`registration_check.rs:86-87`（跳过注册检查）、
+  `build_method/contracts.rs:78`（跳过契约聚合）、`registration_check.rs:86-87`（跳过注册检查）、
   `static_plan.rs:74`（不进静态计划）、`renderer/tree.rs:68-70`（给该模块包一层
   `#[cfg(feature = "compile_error_demo")]`）。
 - **严重度**：维持 MAJOR，但**标注「潜伏」**：触发需要宿主存在名为 `compile_error_demo` 的模块/文件，
@@ -295,7 +295,7 @@
 
 ### LG-17（MAJOR）authoring 的 source 回落链硬编码夹具目录名 → **证实（读码）**
 
-- **代码阅读佐证**：`run_method/src/authoring/parse/parse.rs:27-42`：
+- **代码阅读佐证**：`run_method/authoring/parse/parse.rs:27-42`：
   ```text
   let roots = ["compile_error_demo", "control", "engine", "trimmed_core"];
   … if roots.contains(&text.as_ref()) { 从这里截断成相对路径 }
@@ -328,7 +328,7 @@
 - **证据 B（细节修正）**：包外文件可读时，预览回复里**看不到**任何 `outside*` 行——因为项目侧与副本侧
   都经同一个链接读到同一份字节，diff 判定「未变」。即：**外链数据确实被拉进 `/tmp` 副本，而 diff 不会说**。
   残留目录 `/tmp/xirang-mcp-preview-485308-0` 里就有 `outside_link` 这一项（配合 LG-20 的泄漏）。
-- **代码闭环**：`mcp/src/preview.rs:50-52` 用 `source.is_dir()`（跟随链接）且全函数无 visited/深度上限。
+- **代码闭环**：`mcp/preview.rs:50-52` 用 `source.is_dir()`（跟随链接）且全函数无 visited/深度上限。
 - **严重度**：维持 MAJOR。**备注**：作者只测了「自指链接 → faces 124」；我补的这条说明
   **包外数据**这一半也能独立成立，且 diff 不是它的观察面。
 
@@ -339,7 +339,7 @@
   /tmp/xirang-mcp-preview-485308-0   13:30:13（本轮） 内容：binfile.dat Cargo.toml notes.txt outside_link src
   （另有两个更早的：-343377-0 12:38、-416016-0 13:00，是作者/t12 那几轮留下的）
   ```
-  失败路径的清理缺口比总账写的更宽：`mcp/src/apply.rs:84-88` 里 `copy_package(root)?` 一旦失败就
+  失败路径的清理缺口比总账写的更宽：`mcp/apply.rs:84-88` 里 `copy_package(root)?` 一旦失败就
   直接返回，**连 `remove_copy` 都没到**（`:144` 的清理只在更后面）。所以「复制中途失败」本身就足够泄漏。
 - **代码阅读佐证**：`preview.rs:22-29` 手工拼 `temp_dir()/xirang-mcp-preview-{pid}-{seq}` +
   `remove_dir_all` 预清 + `create_dir_all`（无排他创建、无权限收紧）。
@@ -448,7 +448,7 @@
   ```text
   core/src/registry_core/authoring/parse/rules.rs:108-119 parse_requirements_owned：filter_map(item.split_once("=>")?) → 静默丢
   core/src/registry_core/authoring/parse/rules.rs:121-135 parse_requirements：同一输入 Err("requires entries must use capability=>provider syntax")
-  mcp/src/impact.rs:246-255  与 converge.rs:192-207：前者不 push（少一条边），后者 push provider:"?" 的 UNANSWERED
+  mcp/impact.rs:246-255  与 converge.rs:192-207：前者不 push（少一条边），后者 push provider:"?" 的 UNANSWERED
   ```
 - **严重度**：维持 MAJOR。**备注**：桥那两处是我 t5 的 BR-10（同一现象），本轮补上内核两个解析器的原文。
 
@@ -456,7 +456,7 @@
 
 - **代码阅读佐证**：`core/src/registry_core/syntax/entries/graft.rs:104-116`（总账写作 `entries/graft.rs`——
   全路径是 kernel 的这份）的 `visit_item_mod` 里 `attrs.iter().any(|a| a.path().is_ident("cfg"))` 即
-  `return`，**不求值**特性是否开启；而同一仓库有现成的 `build_method/src/static_plan.rs:157`
+  `return`，**不求值**特性是否开启；而同一仓库有现成的 `build_method/static_plan.rs:157`
   `face_cfg_enabled` 给「面」那一边用。
 - **严重度**：维持 MAJOR。**备注**：这条的 `file:line` 在总账里少了目录前缀（`entries/graft.rs` 不存在于
   `build_method/`），引用时应写 `core/src/registry_core/syntax/entries/graft.rs:105-116`。
@@ -477,7 +477,7 @@
 
 ### LG-31（MAJOR）trace 字符串驻留是进程级无回收 `Box::leak` → **证实（读码）**
 
-- **代码阅读佐证**：`run_method/src/runtime/trace/artifact/parse.rs:293-303`：
+- **代码阅读佐证**：`run_method/runtime/trace/artifact/parse.rs:293-303`：
   ```text
   static INTERNER: Mutex<BTreeSet<&'static str>> = …;
   let leaked: &'static str = Box::leak(value.to_owned().into_boxed_str());

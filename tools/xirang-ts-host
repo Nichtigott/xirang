@@ -1,0 +1,100 @@
+#!/bin/sh
+# Gate: a TypeScript-declared face really registers at import time, and its declaration object is
+# really type-checked against the SDK before it runs.
+# 门禁：TypeScript 声明的面真的在导入期登记，而它的声明对象在运行之前真的对照 SDK 做了类型检查。
+#
+#   XIRANG_TSC=/path/to/tsc tools/xirang-ts-host
+#
+# Why it exists: the JavaScript gate proves the call carrier and the Rust reader; TypeScript adds a
+# second consumer of the same declaration — `tsc` — and a type declaration nobody exercises is a
+# comment. This gate runs the example under Node's strip-only TypeScript, type-checks it, and then
+# proves the check has teeth by feeding it a misspelling that must be refused.
+# 为什么需要它：JavaScript 门禁证明了调用载体与 Rust 读取器；TypeScript 给同一条声明加了第二个消费者——
+# `tsc`——而没人用的类型声明只是一段注释。本门禁在 Node 的 strip-only TypeScript 下运行示例、做类型检查，
+# 再喂给它一个必须被拒绝的拼写错误，证明这道检查有牙。
+#
+# A machine without Node or `tsc` reports "not run" (exit 2) instead of failing a face it cannot run.
+# 没有 Node 或 `tsc` 的机器报"未跑"（exit 2），而不是让一个它跑不了的面失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+node=${XIRANG_NODE:-}
+if [ -z "$node" ]; then
+    node=$(command -v node || true)
+fi
+if [ -z "$node" ]; then
+    echo "xirang-ts-host: no Node.js runtime; set XIRANG_NODE or install node" >&2
+    exit 2
+fi
+tsc=${XIRANG_TSC:-}
+if [ -z "$tsc" ]; then
+    tsc=$(command -v tsc || true)
+fi
+if [ -z "$tsc" ]; then
+    echo "xirang-ts-host: no TypeScript compiler; set XIRANG_TSC or install TypeScript" >&2
+    echo "  e.g. nix shell nixpkgs#typescript   (this checkout's dev box has one in the nix store)" >&2
+    exit 2
+fi
+echo "node   $node ($("$node" --version))"
+echo "tsc    $tsc ($("$tsc" --version))"
+
+sdk="$root/multilang/sdk/ts/xirang"
+if [ ! -f "$sdk/index.d.ts" ]; then
+    echo "xirang-ts-host: the typed SDK is not at $sdk; the crate's SDK location and this gate disagree" >&2
+    exit 2
+fi
+
+cd "$root/examples/ts-gauge"
+# The typed SDK's link is the in-tree equivalent of an install; recreate it if it is missing.
+# 带类型 SDK 的链接是树内的安装等价物；缺失时重建。
+if [ ! -e node_modules/xirang ]; then
+    mkdir -p node_modules
+    ln -s ../../../multilang/sdk/ts/xirang node_modules/xirang
+fi
+gate=.ts-gate
+rm -rf "$gate"
+trap 'rm -rf "$gate"' EXIT INT TERM
+
+# 1. Node's strip-only TypeScript runs the example: importing the module registered the face.
+# 1. Node 的 strip-only TypeScript 运行示例：导入模块登记了那个面。
+"$node" --test tests/*.test.ts
+
+# 2. The declaration object is type-checked against the SDK's `index.d.ts`.
+# 2. 声明对象对照 SDK 的 `index.d.ts` 做类型检查。
+"$tsc" --noEmit -p tsconfig.json
+
+# 3. The type check has teeth: a misspelled field must be refused, or step 2 proved nothing.
+# 3. 类型检查有牙：拼错的字段必须被拒绝，否则第 2 步什么也没证明。
+mkdir -p "$gate"
+cat >"$gate/bad.ts" <<'EOF'
+import { faces, soil } from "xirang";
+
+soil.face({
+    under: faces.root.NODE_ID,
+    named: "Gauge",
+    exportz: ["gauge"],
+});
+EOF
+if "$tsc" --noEmit --strict --target es2022 --module nodenext --moduleResolution nodenext \
+    "$gate/bad.ts" >/dev/null 2>&1; then
+    echo "xirang-ts-host: the type checker accepted a misspelled field; the type declaration is" >&2
+    echo "                not in force, so the clean check above proves nothing" >&2
+    exit 1
+fi
+# The control is a gate artifact, not part of the example: removing it here (not only in the EXIT
+# trap) keeps the static reader's view of the example to the files that are actually committed.
+# 这个控制文件是门禁装置、不是示例的一部分：在这里删掉（而不是只在 EXIT trap 里）让静态读取器看到的
+# 示例只剩真正入库的文件。
+rm -rf "$gate"
+
+# 4. The same declaration source, read by the build's static reader (no Node in that path).
+# 4. 同一份声明源码，由构建的静态读取器读取（那条路径里没有 Node）。
+cd "$root"
+CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-ts --offline --lib \
+    -- languages::ts
+
+# 5. The build says what it does not do: the declared TypeScript face is not registered yet.
+# 5. 构建说出它没做什么：已声明的 TypeScript 面还没有被登记。
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,lang-ts --offline --lib \
+    -- typescript_declaration
+
+echo "xirang-ts-host: ok (a typed face registers at import, and the misspelling is refused)"

@@ -5,18 +5,12 @@
 use crate::control::{ControlFrame, ControlHandle};
 use xirang_toolchain::run_method::{ContractId, FlowContract};
 
-crate::control_object! {
-    kind: Slider,
-    exports: ["control.render"],
-    parent: crate::control::NODE_ID,
-    handle_contracts: [crate::control::ControlHandle],
-    flow: FlowContract::new(
-        ContractId::new("control.render.v1"),
-        1,
-        "ControlInput",
-        "ControlFrame",
-    ),
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Slider>()
+    .exports(&["control.render"])
+    .under(crate::control::NODE_ID)
+    .handle_contracts(xirang_toolchain::contracts!(Slider: crate::control::ControlHandle))
+    .flow(FlowContract::new(ContractId::new("control.render.v1"), 1 , "ControlInput" , "ControlFrame" ,));
 
 pub struct Slider;
 

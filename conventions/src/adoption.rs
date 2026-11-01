@@ -25,18 +25,17 @@ use xirang_kernel::lexicon::{ADOPTION_DIR, ADOPTION_FILE, XIRANG_DIR};
 pub fn findings(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
     for ledger in ledgers(root) {
+        let relative = crate::relative(root, &ledger);
+        if crate::archived_evaluation(&relative) {
+            continue;
+        }
         let Ok(text) = std::fs::read_to_string(&ledger) else {
             continue;
         };
         let entries = match parse_adoption(&text) {
             Ok(entries) => entries,
             Err(error) => {
-                found.push(format!(
-                    "{}:{} {}",
-                    crate::relative(root, &ledger),
-                    error.line,
-                    error.message
-                ));
+                found.push(format!("{}:{} {}", relative, error.line, error.message));
                 continue;
             }
         };
@@ -50,10 +49,7 @@ pub fn findings(root: &Path) -> Vec<String> {
             if let AdoptionVerdict::Lapsed { file } = verdict_of(&entry, &held) {
                 found.push(format!(
                     "{}: adoption lapsed at {file}; needs confirmation — {} (adopted at {} by {})",
-                    crate::relative(root, &ledger),
-                    entry.anchor,
-                    entry.at,
-                    entry.verifier
+                    relative, entry.anchor, entry.at, entry.verifier
                 ));
             }
         }

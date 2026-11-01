@@ -1,0 +1,228 @@
+//! The Go declaration scanner: brace matching, `Key: value` entries, string and `[]string{…}` values.
+//! Go 声明扫描器：花括号配对、`Key: value` 条目、字符串与 `[]string{…}` 取值。
+//!
+//! It is the text half of the Go adapter, kept apart from the language's field table and renderer so
+//! each file stays inside the workspace's size budget. The scanner is deliberately narrow: it reads
+//! one composite literal the adapter's own renderer wrote, and refuses a shape it cannot read back.
+//! 这是 Go 适配器的文本那一半，与语言的字段表和渲染器分开，使每个文件都留在工作区的尺寸预算内。
+//! 扫描器有意很窄：它只读适配器自己的渲染器写出的一个复合字面量，读不回的形态按名拒绝。
+
+/// The byte offset of the `}` matching the `{` at `open`.
+/// `open` 处 `{` 的配对 `}` 的字节偏移。
+pub(super) fn matching_brace(source: &str, open: usize) -> Result<usize, String> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (at, character) in source.char_indices().skip_while(|(at, _)| *at < open) {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' && active == '"' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '`' => quote = Some(character),
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Ok(at);
+                }
+            }
+            _ => {}
+        }
+    }
+    Err("a `xirang.Soil{…}` composite literal is not closed".to_owned())
+}
+
+/// The `Key: value` entries of one composite literal body.
+/// 一个复合字面量体里的 `Key: value` 条目。
+pub(super) fn entries(body: &str) -> Result<Vec<(String, String)>, String> {
+    let mut found = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut index = 0usize;
+    while index < body.len() {
+        let character = body[index..].chars().next().expect("a character");
+        let width = character.len_utf8();
+        if let Some(active) = quote {
+            current.push(character);
+            if escaped {
+                escaped = false;
+            } else if character == '\\' && active == '"' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            index += width;
+            continue;
+        }
+        match character {
+            '"' | '`' => {
+                quote = Some(character);
+                current.push(character);
+            }
+            '{' | '[' | '(' => {
+                depth += 1;
+                current.push(character);
+            }
+            ']' | '}' | ')' => {
+                depth = depth.saturating_sub(1);
+                current.push(character);
+            }
+            ',' if depth == 0 => {
+                found.push(current.trim().to_owned());
+                current.clear();
+            }
+            '/' if body[index..].starts_with("//") => {
+                let rest = &body[index..];
+                index += rest.find('\n').unwrap_or(rest.len());
+                continue;
+            }
+            _ => current.push(character),
+        }
+        index += width;
+    }
+    found.push(current.trim().to_owned());
+    let mut parsed = Vec::new();
+    for entry in found {
+        if entry.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = split_entry(&entry) else {
+            return Err(format!(
+                "`{entry}` is not a `Key: value` entry in a `xirang.Soil{{…}}` declaration"
+            ));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err("a declaration entry has an empty key".to_owned());
+        }
+        parsed.push((key.to_owned(), value.trim().to_owned()));
+    }
+    Ok(parsed)
+}
+
+/// Split one entry at its first `:` outside a string and outside brackets.
+/// 在一个条目的第一个不在字符串里、也不在括号里的 `:` 处切开。
+fn split_entry(entry: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (at, character) in entry.char_indices() {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' && active == '"' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '`' => quote = Some(character),
+            '{' | '[' | '(' => depth += 1,
+            ']' | '}' | ')' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return Some((&entry[..at], &entry[at + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// One Go string literal (double-quoted or raw/backtick), refusing anything else.
+/// 一个 Go 字符串字面量（双引号或反引号原始串），其它一律拒绝。
+pub(super) fn string(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if let Some(inner) = trimmed
+        .strip_prefix('`')
+        .and_then(|rest| rest.strip_suffix('`'))
+    {
+        return Ok(inner.to_owned());
+    }
+    let Some(inner) = trimmed
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return Err(format!("`{trimmed}` is not a Go string literal"));
+    };
+    let mut result = String::with_capacity(inner.len());
+    let mut characters = inner.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            result.push(character);
+            continue;
+        }
+        match characters.next() {
+            Some('n') => result.push('\n'),
+            Some('t') => result.push('\t'),
+            Some('"') => result.push('"'),
+            Some('\\') => result.push('\\'),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
+        }
+    }
+    Ok(result)
+}
+
+/// One `[]string{…}` typed slice literal.
+/// 一个 `[]string{…}` 带类型切片字面量。
+pub(super) fn slice(raw: &str) -> Result<Vec<String>, String> {
+    let trimmed = raw.trim();
+    let inner = trimmed
+        .strip_prefix("[]string{")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .ok_or_else(|| format!("`{trimmed}` is not a `[]string{{…}}` literal"))?;
+    let mut values = Vec::new();
+    for entry in split_commas(inner) {
+        if entry.trim().is_empty() {
+            continue;
+        }
+        values.push(string(entry)?);
+    }
+    Ok(values)
+}
+
+/// Split on top-level commas, keeping brackets and strings intact.
+/// 在顶层逗号处切开，括号与字符串保持完整。
+fn split_commas(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut start = 0usize;
+    for (at, character) in text.char_indices() {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' && active == '"' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '`' => quote = Some(character),
+            '{' | '[' | '(' => depth += 1,
+            ']' | '}' | ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&text[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
+}

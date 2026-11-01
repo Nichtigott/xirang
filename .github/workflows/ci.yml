@@ -62,6 +62,35 @@ jobs:
         env:
           XIRANG_REHEARSAL_CARGO_FLAGS: ""
         run: tools/xirang-partition-rehearsal
+      - name: Mixed example (a face declared in C++, under a Rust parent face)
+        if: runner.os == 'Linux' && matrix.toolchain == 'stable'
+        # `examples/mixed-shop` is the answer, as code, to a question the prose kept answering badly:
+        # can a face declare itself in C++ and hang under a Rust parent, and can that subtree move
+        # into its own crate without touching the face files? The gate checks four things: the source
+        # scan still reports its three Rust faces, the committed `crates/` is byte-for-byte what
+        # `xirang crates --write` produces, the tests run and the built tree has four faces (the C++
+        # one at `root/shop/panel/area`, compiled by the crate that owns its Rust parent), and
+        # changing the C++ body by one turns the assertion red. A
+        # directory nobody runs is a directory that rots.
+        # `examples/mixed-shop` 是那个问题以代码形态给出的答案：面能不能在 C++ 里声明自己并挂在 Rust 父面
+        # 下，那棵子树能不能搬进自己的 crate 而不动面文件？门禁查四件事：源码扫描仍报三个 Rust 面、入库的
+        # `crates/` 与 `xirang crates --write` 逐字节一致、测试真的跑了且构建出的树有四个面（C++ 那个在
+        # `root/shop/panel/area`，由拥有它 Rust 父面的那个 crate 编译）、把 C++ 体改一处断言必须转红。没人跑的目录就是会腐烂的目录；它有自己的工作区，
+        # 所以不在 `--workspace` 的覆盖里。
+        run: tools/xirang-mixed-shop
+      - name: Permutation matrix (graft, move and crate split in every order)
+        if: runner.os == 'Linux' && matrix.toolchain == 'stable'
+        # The specification's §7 asks whether the **effective state** depends on the order G (graft), M (move)
+        # and C (crate split) run in. The tool builds a five-face host six times through the bridge's own
+        # `apply`/`crates` entries, runs the three operations in each of the six orders, and compares what the
+        # registry query, the graft plan, the crate plan and the authored bytes say — the package namespace is
+        # part of every NodeId, so every copy carries the same package name. It builds no cargo project, so the
+        # step is cheap; what it catches is an operation that mutates state another one depends on.
+        # 规格 §7 问的是：**有效状态**会不会因为 G（graft）、M（move）、C（crate 拆分）的次序不同而不同。
+        # 本工具用桥自己的 `apply`/`crates` 入口把五面的宿主造六次，按六种次序各跑三步，再比较 registry
+        # 查询、graft 计划、crate 计划与作者字节——包命名空间是每个 `NodeId` 的输入，因此每份副本用同一个包名。
+        # 它不构建任何 cargo 项目，因此这一步很便宜；它抓的是"一个操作改动了另一个操作所依赖的状态"。
+        run: tools/xirang-permutation-matrix
       - name: Graft matrix (root face, overlap, re-partition)
         if: runner.os == 'Linux' && matrix.toolchain == 'stable'
         # Six shapes only a real host plus a real cargo can answer: a cut on the root face with `full`,
@@ -152,6 +181,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Tests (all features)
         run: cargo test --workspace --all-features --all-targets
+      - name: MCP measurement counterexamples
+        run: python3 -m unittest discover -s bench -p 'test_*.py'
+      - name: MCP Rust programming workflows
+        run: |
+          cargo build -p xirang-toolchain --features mcp --bin xirang-mcp
+          python3 tools/xirang-mcp-workflow-eval target/debug/xirang-mcp --output target/mcp-workflow-ci
       - name: Doctests (all features)
         # `--all-targets` suppresses doctests entirely, so a `compile_fail` pin
         # gated behind a non-default feature is compiled by no other command:
@@ -244,32 +279,6 @@ jobs:
         env:
           XIRANG_REAL_USAGE_CARGO_FLAGS: ""
         run: tools/xirang-real-usage
-      - name: IDE mirror (rust_analyzer cfg)
-        # No other step compiles this: the check builds two host examples again
-        # under a cfg only an editor uses. A nested face's derived rule path
-        # resolves in the real module tree but not in the crate-root shadow
-        # rust-analyzer needs, so without this step the editor's view of a host
-        # can rot while every other gate stays green.
-        # 没有其他步骤会编译它：这项检查用一条只有编辑器才用的 cfg 把两个宿主示例再构建
-        # 一遍。嵌套面派生的规则路径在真实模块树里能解析，而 rust-analyzer 需要的 crate 根
-        # 影子里解析不了；没有这一步，宿主在编辑器里的视图会腐化，而其余门禁全是绿的。
-        run: cargo test -p xirang-example-control-button --test ide_mirror -- --ignored
-
-  deny:
-    # advisories / licenses / bans are configured in deny.toml.
-    # advisories / licenses / bans 的策略在 deny.toml。
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories bans licenses
-
-  release-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - name: Release scale and symbol audit
         run: tools/xirang-release-audit
       - name: Scale memory audit

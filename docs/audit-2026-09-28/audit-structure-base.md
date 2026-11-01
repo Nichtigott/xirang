@@ -62,20 +62,20 @@ tools/：6 个可执行脚本，0 行 Rust
 | `core/src/registry_core/json/` | 1 | 98 | 本工作区所有工件共用的 JSON 字符串编码 |
 | `macro/` | 3 | 917 | 编译期注册面字段前端：字段顺序容错、容错分隔符、带跨度的诊断、编辑器镜像 |
 | `build_method/` | 48 | 10,110 | 构建期执行面：源码发现、清单解析、缓存、scope、`StaticPlan` 生成、脚手架模板 |
-| `build_method/src/graft_view/` | 7 | 1,398 | 构建期 graft 视图（已声明/匹配/覆盖行/计划行/查询） |
-| `build_method/src/scaffold/` | 3 | 1,148 | `new` 与 `snippets` 的模板渲染（project/install/snippets） |
-| `build_method/src/renderer/` | 4 | 929 | `generated_lib` 渲染：别名、IDE 视图、通道、树 |
+| `build_method/graft_view/` | 7 | 1,398 | 构建期 graft 视图（已声明/匹配/覆盖行/计划行/查询） |
+| `build_method/scaffold/` | 3 | 1,148 | `new` 与 `snippets` 的模板渲染（project/install/snippets） |
+| `build_method/renderer/` | 4 | 929 | `generated_lib` 渲染：别名、IDE 视图、通道、树 |
 | `run_method/` | 61 | 9,584 | 运行期执行面：注册机实例、`host!`/`trace_call!` 宏、trace 绑定、authoring 执行器 |
-| `run_method/src/authoring/` | 23 | 3,597 | authoring 执行器（`authoring` 特性门控）：文件系统、清单、操作、校验、快照 |
-| `run_method/src/runtime/` | 17 | 3,216 | 运行期状态与 trace：帧栈、数据边、工件 IO/解析、局部值 |
-| `run_method/src/macros/` | 8 | 1,164 | 声明式宏：`host!`、注册面对象、trace、字段辅助 |
+| `run_method/authoring/` | 23 | 3,597 | authoring 执行器（`authoring` 特性门控）：文件系统、清单、操作、校验、快照 |
+| `run_method/runtime/` | 17 | 3,216 | 运行期状态与 trace：帧栈、数据边、工件 IO/解析、局部值 |
+| `run_method/macros/` | 8 | 1,164 | 声明式宏：`host!`、注册面对象、trace、字段辅助 |
 | `debug_method/` | 5 | 481 | 观测证据面：MIR 合并、`UnifiedCallGraph`、tracing/petgraph 适配、inventory 收集器 |
 | `plugin-host/` | 15 | 3,888 | 插件宿主执行面：Wasm/进程沙箱、代际部署、惰性激活槽表、准入 |
 | `plugin-host/tests/` | 4 | 1,901 | 端到端准入、故障矩阵、Wasm 表开销、进程加载开销（占总行数 49%） |
 | `studio/` | 79 | 12,532 | Ratatui 创作/检视 TUI：app 状态机、ui 渲染、键盘/鼠标、图与搜索 |
-| `studio/src/studio/app/` | 46 | 8,718 | Studio 应用层（含其 `tests/`）：状态、导航、变更、键盘、热区、查询、测试 |
-| `studio/src/studio/app/tests/` | 11 | 3,373 | Studio 应用层测试（`#[cfg(test)]` 挂载），占 `app/` 的 39% |
-| `studio/src/studio/ui/` | 20 | 2,709 | Studio 渲染层：面板、表单、图、搜索、状态栏、遮罩 |
+| `studio/studio/app/` | 46 | 8,718 | Studio 应用层（含其 `tests/`）：状态、导航、变更、键盘、热区、查询、测试 |
+| `studio/studio/app/tests/` | 11 | 3,373 | Studio 应用层测试（`#[cfg(test)]` 挂载），占 `app/` 的 39% |
+| `studio/studio/ui/` | 20 | 2,709 | Studio 渲染层：面板、表单、图、搜索、状态栏、遮罩 |
 | `studio/tests/fixtures/` | 7 | 224 | **非工作区成员**的仅源码夹具宿主包（`[workspace]` 自成一界，从不编译） |
 | `mcp/` | 39 | 8,682 | AI 代理 stdio 桥：JSON-RPC 循环、工具分发、路径守卫、预览式写入 |
 | `cli/` | 14 | 2,802 | 进程粘合：argv 分发、cargo 子进程、子命令转发 |
@@ -162,14 +162,14 @@ find . -name 'mod.rs' -not -path '*/target/*' | wc -l
 
 **精确形状（339 条声明的分解）**：**58 条**把模块本体挂在 `<name>/<name>.rs`（即它拥有自己的目录），其余 **281 条**以 `<dir>/<name>.rs` 平铺在父模块的目录里。"自己的目录"不是风格偏好，而是**有子模块时的必要条件**：子模块用裸 `mod x;` 时按 `<父文件所在目录>/x/x.rs` 解析（`conventions/src/mounting.rs` 的 `target_of`），所以父模块的本体必须落在以自己命名的目录里，子模块的目录才会落在它旁边。
 
-**结构观察（不是缺陷，但值得 t14 决定要不要统一）**：这 58 个"有自己目录"的模块里，**28 个的目录里除了模块本体没有任何子模块文件**——目录此刻只为装那一个文件而存在（一旦它长出子模块，这个目录就是必须的）。其中最小的是 `run_method/src/plugin/plugin.rs`（7 行）与 `run_method/src/registry/registry.rs`（7 行）：
+**结构观察（不是缺陷，但值得 t14 决定要不要统一）**：这 58 个"有自己目录"的模块里，**28 个的目录里除了模块本体没有任何子模块文件**——目录此刻只为装那一个文件而存在（一旦它长出子模块，这个目录就是必须的）。其中最小的是 `run_method/plugin/plugin.rs`（7 行）与 `run_method/registry/registry.rs`（7 行）：
 
 ```text
 core/src/registry_core/{json,release,requirements},
 core/src/registry_core/authoring/{snapshot,validation},
 core/src/registry_core/plugin/{catalog,plugin_policy,slot,trust}, plugin/contracts/signing,
 core/src/registry_core/tree/{connector,entry_pages,header,index,inspection,metadata,query,transaction},
-run_method/src/{authoring/filesystem,authoring/parse,authoring/snapshot,authoring/validation,
+run_method/{authoring/filesystem,authoring/parse,authoring/snapshot,authoring/validation,
                 authoring/manifest/parse,call_report,plugin,registry,runtime/trace/edges,runtime/trace/frames}
 ```
 
@@ -177,9 +177,9 @@ run_method/src/{authoring/filesystem,authoring/parse,authoring/snapshot,authorin
 
 ### 2.3 孤儿 / `mod.rs` / `include!`
 
-- **孤儿模块：0**。`conventions/src/mounting.rs` 的 `mounts()` 专门盯内核"没有任何声明指名的模块文件"，今天为绿；我把同一算法套到全部 12 个成员目录，也只有一个预期内的类别例外——`src/bin/*.rs`（`cli/src/bin/xirang.rs`、`cli/src/bin/cargo-xirang.rs`、`studio/src/bin/xirang-dev.rs`）由 cargo 作为二进制源根自动发现，不在 `mod` 图里。
+- **孤儿模块：0**。`conventions/src/mounting.rs` 的 `mounts()` 专门盯内核"没有任何声明指名的模块文件"，今天为绿；我把同一算法套到全部 12 个成员目录，也只有一个预期内的类别例外——`src/bin/*.rs`（`cli/bin/xirang.rs`、`cli/bin/cargo-xirang.rs`、`studio/bin/xirang-dev.rs`）由 cargo 作为二进制源根自动发现，不在 `mod` 图里。
 - **`mod.rs`：0**（`find` 计数）。门禁覆盖。（`core/src/registry_core/diagnostic/build.rs` 这类**叫** `build.rs` 的文件是普通模块，不是 cargo 构建脚本；crate 根的 `build.rs` 才是——`mounting.rs` 的注释专门记了这个坑。）
-- **`include!`：语句位置 1 处**，即 `run_method/src/macros/entry.rs:55` 的 `include!(concat!(env!("OUT_DIR"), "/generated_lib.rs"))`（`host!()` 展开物），与 AGENTS.md 的"唯一一处"一致。另外 6 处文本命中都在**文档注释或字符串字面量**里（`run_method/src/macros/entry.rs` 的 `///` 说明、`build_method/src/renderer/pass.rs` 的断言字符串、`conventions/src/lib.rs` 的夹具字符串、`conventions/src/mounting.rs` 的模块文档），门禁屏蔽后不计入。
+- **`include!`：语句位置 1 处**，即 `run_method/macros/entry.rs:55` 的 `include!(concat!(env!("OUT_DIR"), "/generated_lib.rs"))`（`host!()` 展开物），与 AGENTS.md 的"唯一一处"一致。另外 6 处文本命中都在**文档注释或字符串字面量**里（`run_method/macros/entry.rs` 的 `///` 说明、`build_method/renderer/pass.rs` 的断言字符串、`conventions/src/lib.rs` 的夹具字符串、`conventions/src/mounting.rs` 的模块文档），门禁屏蔽后不计入。
 
 ### 2.4 已确认的结构债务与数字漂移
 
@@ -187,12 +187,12 @@ run_method/src/{authoring/filesystem,authoring/parse,authoring/snapshot,authorin
 
    | 父文件 | 裸 `mod` 数 | 位置是否合法 |
    | --- | ---: | --- |
-   | `studio/src/studio/app/app.rs` | 16 | ✅ 该文件经 `#[path]` 载入 |
+   | `studio/studio/app/app.rs` | 16 | ✅ 该文件经 `#[path]` 载入 |
    | `plugin-host/src/lib.rs` | 7 | ✅ crate 根 |
    | `debug_method/src/lib.rs` | 3 | ✅ crate 根 |
    | `examples/control-button-graft/src/lib.rs` | 3 | ✅ crate 根 |
-   | `studio/src/studio/ui/ui.rs` | 3 | ✅ 经 `#[path]` 载入 |
-   | `studio/src/studio/studio.rs` | 1 | ✅ 经 `#[path]` 载入 |
+   | `studio/studio/ui/ui.rs` | 3 | ✅ 经 `#[path]` 载入 |
+   | `studio/studio/studio.rs` | 1 | ✅ 经 `#[path]` 载入 |
 
    33 处**全部合法**（父文件要么是 crate 根，要么本身经 `#[path]` 载入），门禁的合法位置判定为 0 例外。但 `mounting.rs` 把数字写死在散文里，而 `AGENTS.md` 已经学乖删掉了数字——**同一门禁的两份散文一个记数一个不记数，记数的那份先烂**。建议（t14 落地项）：把该句改成不含数字的表述，或在门禁里断言该计数（`AGENTS.md` 已选择后者不做的理由）。
 
@@ -255,11 +255,11 @@ conventions 与两个 examples 不在发布链上
 
 ### 3.4 跨 crate 的隐性耦合：一处"幻影依赖"
 
-`run_method/src/macros/face_registration.rs:166` 的宏体展开为 `::xirang_debug_method::submit! { … }`，但 `run_method` **不依赖** `debug_method`（§3.1）。也就是说 `run_method` 的公开宏可以发射一个指向"调用方必须自己另外引入的 crate"的绝对路径：
+`run_method/macros/face_registration.rs:166` 的宏体展开为 `::xirang_debug_method::submit! { … }`，但 `run_method` **不依赖** `debug_method`（§3.1）。也就是说 `run_method` 的公开宏可以发射一个指向"调用方必须自己另外引入的 crate"的绝对路径：
 
 - 触发条件：宿主显式写 `collector: debug`（`debug_method/README.md:12` 有记录，`debug_method/tests/collector_integration.rs:7` 是唯一树内用例）；
 - 后果：宿主必须**手工**往自己的 `Cargo.toml` 加 `xirang-debug-method`，否则报"找不到 crate"，且没有任何清单或门禁提示它；
-- 现状：默认模式是 `development`（`run_method/src/macros/face_objects.rs:13`）与 `linked`（`face_external.rs:51`），都不发射该路径，所以仓库自己不会踩到。
+- 现状：默认模式是 `development`（`run_method/macros/face_objects.rs:13`）与 `linked`（`face_external.rs:51`），都不发射该路径，所以仓库自己不会踩到。
 
 这是**真实存在的边界倒挂**（一个 crate 的宏知道另一个 crate 的路径），也是 §6 里 `debug_method` 合并案最硬的技术理由：合并后 `$crate::` 就能表达同一件事，幻影依赖自然消失。
 
@@ -333,7 +333,7 @@ conventions 与两个 examples 不在发布链上
 | `debug_method` 太薄 | 4 文件 / 444 src 行 / 10 pub fn；消费者只有 `studio`、`mcp`；无人 `cargo install` | ⚠️ **唯一的合并候选**（§5.1） |
 | `macro` 太薄 | 3 文件 / 917 行 / 4 个 `#[proc_macro]` 入口 | ✅ **不该并**：proc-macro crate 物理上不能并入普通 lib |
 | `cli` 太薄？ | 2,802 行 / 4 个 pub fn / 2 个 bin | ✅ 不该并：它是 umbrella，闭包 8 个 crate（§3.2） |
-| `mcp` 公开面极小 | 8,682 行但只有 1 个 `pub use protocol::run`（`mcp/src/lib.rs:58`）；库只为 bin 与测试存在 | ✅ 不该并：它有自己的安装面与协议边界 |
+| `mcp` 公开面极小 | 8,682 行但只有 1 个 `pub use protocol::run`（`mcp/lib.rs:58`）；库只为 bin 与测试存在 | ✅ 不该并：它有自己的安装面与协议边界 |
 | `core` 太厚？ | 21,787 行 / 93 文件 / 12 个顶层模块 | ✅ 不该拆：所有 crate 依赖它，拆出子 crate 只会造出 core→core 的第二条线；`syntax` 已经是特性门控（等效隔离） |
 | `build_method` 太厚？ | 10,110 行 / 46 文件，其中 `scaffold` 1,148 行是模板渲染、`graft_view` 1,398 行是视图 | ✅ 暂不该拆：三块都是"给构建步骤准备输入/输出"的同一职能；`scaffold` 是唯一像是在做第二件事的（模板 → 用户项目），但它被 `cli new/snippets` 使用且与 `build_method` 共享 `Cargo.toml` 模板常量，拆出会复制一份模板知识 |
 | `studio` 太厚？ | 12,532 行 / 79 文件，`app` + `ui` + `tests` | ✅ 不该拆：TUI 是一个状态机 + 它的渲染，拆开会让 `ui` 反向依赖 `app` 的私有状态 |
@@ -374,9 +374,9 @@ conventions 与两个 examples 不在发布链上
 
 ### 5.3 该拆的：无
 
-按"混了两种职能"逐 crate 检查（§1.2 的职责列 + §5.2），唯一"像在做第二件事"的是 `build_method/src/scaffold/`（1,148 行，给用户项目生成模板），但它：① 与 `build_method` 共享 `Cargo.toml` 模板常量（`RELEASE_REQUIREMENT`，`build_method/src/scaffold/project.rs:103`）；② 只被 `cli new/snippets` 使用；③ 拆出后 `cli` 要多一条依赖、发布表要多一行。**收益 < 成本，不建议拆**。
+按"混了两种职能"逐 crate 检查（§1.2 的职责列 + §5.2），唯一"像在做第二件事"的是 `build_method/scaffold/`（1,148 行，给用户项目生成模板），但它：① 与 `build_method` 共享 `Cargo.toml` 模板常量（`RELEASE_REQUIREMENT`，`build_method/scaffold/project.rs:103`）；② 只被 `cli new/snippets` 使用；③ 拆出后 `cli` 要多一条依赖、发布表要多一行。**收益 < 成本，不建议拆**。
 
-超过 600 行棘轮上限的文件只有 5 个，其中**生产代码只有 1 个**且已被显式钉在棘轮基线里（`core/src/registry_core/plugin/contracts/contracts.rs`，639 行，`conventions/src/size.rs:56` 的 `CEILING = 600`）；另 4 个是测试形态文件（`cli/src/lib_tests.rs` 1015、`plugin-host/tests/fault_matrix.rs` 968、`examples/control-button/tests/registry.rs` 743、`studio/src/studio/app/tests/call_tree.rs` 702），按 `size.rs` 的边界豁免。**"太厚"在这个仓库里不是结构问题，是 1 个已知欠账。**
+超过 600 行棘轮上限的文件只有 5 个，其中**生产代码只有 1 个**且已被显式钉在棘轮基线里（`core/src/registry_core/plugin/contracts/contracts.rs`，639 行，`conventions/src/size.rs:56` 的 `CEILING = 600`）；另 4 个是测试形态文件（`cli/lib_tests.rs` 1015、`plugin-host/tests/fault_matrix.rs` 968、`examples/control-button/tests/registry.rs` 743、`studio/studio/app/tests/call_tree.rs` 702），按 `size.rs` 的边界豁免。**"太厚"在这个仓库里不是结构问题，是 1 个已知欠账。**
 
 ---
 
@@ -408,7 +408,7 @@ conventions 与两个 examples 不在发布链上
 | 发布单元 = 整个工作区 | 一次 `--publish --yes` 按 7 层发布 9 个 crate；**没有"只发一个 crate"的路径** | `tools/xirang-publish` 的 `--publish` 分支 |
 | CI 里按 crate 名的引用 | 4 处 `-p`（`core`、`build_method`、`plugin-host`、`examples/control-button`） | `grep -rno '\-p xirang[a-z-]*' .github` |
 | 文档里按 crate 名的引用（自身目录之外） | `core` 113 处/43 文件、`build_method` 72/38、`cli` 70/28、`run_method` 65/38、`studio` 55/28、`macro` 43/17、`plugin-host` 32/23、`debug_method` 30/26、`mcp` 28/15、`conventions` 13/9 | `grep -rn '<name>' --include='*.md' --include='*.yml' --include='*.rs' . \| grep -v /target/ \| grep -v '^./<dir>/'` |
-| 脚手架模板里按 crate 名的引用 | 2 个（`xirang-run-method`、`xirang-build-method`），且模板会**生成**宿主的清单 | `grep -rn 'xirang-' build_method/src/scaffold/` |
+| 脚手架模板里按 crate 名的引用 | 2 个（`xirang-run-method`、`xirang-build-method`），且模板会**生成**宿主的清单 | `grep -rn 'xirang-' build_method/scaffold/` |
 | 依赖声明重复 | `serde_json` ×4、`syn` ×5、`proc-macro2` ×3、`tempfile` ×2 | §4.4 |
 | 特性词汇分散 | 7 个特性名 / 4 个 crate / 2 个默认开 | §4.2 |
 | 一次安装要编译的 crate | `cargo install xirang-cli` → 8 个 | §3.2 |
@@ -427,19 +427,19 @@ conventions 与两个 examples 不在发布链上
 合并后的模块归属：
 
 ```text
-run_method/src/evidence/evidence.rs     (原 debug_method/src/lib.rs 的重导出，feature = "evidence")
-run_method/src/evidence/mir.rs          (原 debug_method/src/mir.rs)
-run_method/src/evidence/adapters.rs     (原 debug_method/src/adapters.rs)
-run_method/src/evidence/collector.rs    (原 debug_method/src/collector.rs)
+run_method/evidence/evidence.rs     (原 debug_method/src/lib.rs 的重导出，feature = "evidence")
+run_method/evidence/mir.rs          (原 debug_method/src/mir.rs)
+run_method/evidence/adapters.rs     (原 debug_method/src/adapters.rs)
+run_method/evidence/collector.rs    (原 debug_method/src/collector.rs)
 run_method/tests/collector_integration.rs
 ```
 
-`debug_method/Cargo.toml` 的三个依赖进 `run_method` 的 `[dependencies]`：`petgraph = "0.8"`、`tracing = "0.1"`、`inventory = "0.3.24"`，全部 `optional = true`，由 `evidence = ["dep:petgraph", "dep:tracing", "dep:inventory"]` 开启。`run_method/src/macros/face_registration.rs:166` 改成 `$crate::evidence::submit!`。`mcp`、`studio` 的清单各删一行，各加一处 `features = ["authoring", "evidence"]`；示例宿主默认**不开** `evidence`（它们今天也不依赖 `debug_method`）。
+`debug_method/Cargo.toml` 的三个依赖进 `run_method` 的 `[dependencies]`：`petgraph = "0.8"`、`tracing = "0.1"`、`inventory = "0.3.24"`，全部 `optional = true`，由 `evidence = ["dep:petgraph", "dep:tracing", "dep:inventory"]` 开启。`run_method/macros/face_registration.rs:166` 改成 `$crate::evidence::submit!`。`mcp`、`studio` 的清单各删一行，各加一处 `features = ["authoring", "evidence"]`；示例宿主默认**不开** `evidence`（它们今天也不依赖 `debug_method`）。
 
 **迁移路径与判定标准**（t14 会把每一步展开）：
 
 1. **不可回滚的那一步**：`debug_method` 从 `members` 移除、发布表删名。包名一旦发布就不能删除，已发布的版本只能 yank（yank 之后新的解析拿不到它，已有锁文件仍能用旧版构建），Cargo 也没有"包名重定向"机制。所以一旦这样发出：旧用户停在旧版本、新用户看不到这个名字，而仓库里再没有对应的 crate。因此这一步必须与 0.2.0 的版本推进**同一次**完成。
-2. 可回滚的步骤：模块搬进 `run_method/src/evidence/`、特性加上、`mcp`/`studio` 改依赖——这些在任何时候都能搬回来。
+2. 可回滚的步骤：模块搬进 `run_method/evidence/`、特性加上、`mcp`/`studio` 改依赖——这些在任何时候都能搬回来。
 3. **若维护者不愿付这次破坏**：保留 12/9，把 §6.2 里"零风险的替代"做掉（`[workspace.dependencies]` 收敛 + 版本线决策说清 + 边界表），成本几乎为零，收益（可读性/可维护性）涵盖多 crate 代价的大半。
 
 **所以我给的推荐是分层的**：`debug_method` 合并是"该做且现在最便宜"（0.1.x、公开面未冻结、消费者只有 2 个树内 crate）；`[workspace.dependencies]` 与版本线决策是"无论合不合并都该做"。

@@ -32,8 +32,8 @@ pub mod registry_core;
 #[cfg(feature = "syntax")]
 pub use registry_core::syntax;
 pub use registry_core::{
-    adoption, authoring, declaration, diagnostic, identity, json, lexicon, mir, plugin, release,
-    requirements, source, tree,
+    adoption, authoring, declaration, diagnostic, identity, interchange, json, lexicon,
+    maintenance, mir, plugin, release, requirements, source, tree,
 };
 
 // Identity, registration and the contract/plugin records declarations carry.
@@ -41,7 +41,7 @@ pub use registry_core::{
 pub use registry_core::{
     Admission, ContractId, FlowContract, FrameworkId, NodeId, OwnedFlowContract, PartsContract,
     PluginManifest, PluginMode, PluginSource, PresetContract, ROOT_NODE_ID, RegistrationInfo,
-    RegistrationRule, Registry, assert_contract, root_node_id, sha256_hex,
+    RegistrationRule, Registry, Sha256, assert_contract, root_node_id, sha256_hex,
 };
 
 // Runtime-check and call-evidence nouns the tracing surfaces name directly.

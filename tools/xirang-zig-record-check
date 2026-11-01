@@ -1,0 +1,38 @@
+#!/bin/sh
+# Check: a Zig declaration compiles into the `xirang.faces` section and the native reader reads it.
+# 检查：一条 Zig 声明编译进 `xirang.faces` 段，原生读取器能把它读回来。
+#
+#   XIRANG_ZIG=/path/to/zig tools/xirang-zig-record-check
+#
+# Why it exists: the Zig SDK (sdk/zig/xirang/soil.zig) writes the same 1100-byte record the C++ SDK
+# writes, and the reader is one implementation for both (`kit/record.rs`). Verifying that needs a Zig
+# compiler, which not every machine has, so this check is a tool like `xirang-mixed-shop`, not a
+# ten-face: a machine without Zig reports "not run" instead of a red face.
+# 为什么需要它：Zig SDK（sdk/zig/xirang/soil.zig）写的是与 C++ SDK 同一种 1100 字节记录，读取器是两者共用
+# 的一份实现（`kit/record.rs`）。验证它需要 Zig 编译器，而并非每台机器都有，因此这项检查像
+# `xirang-mixed-shop` 一样是工具、不进十面：没有 Zig 的机器报"未跑"，而不是一个红面。
+#
+# The test itself is `#[ignore]`d in `multilang/tests/zig_record.rs`; this script passes `--ignored`
+# and names the compiler. `nix shell nixpkgs#zig -c` is the checkout's documented way to get one.
+# 测试本体在 `multilang/tests/zig_record.rs` 里标了 `#[ignore]`；本脚本带 `--ignored` 并点明编译器。
+# `nix shell nixpkgs#zig -c` 是本检出给出的取得方式。
+
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+zig=${XIRANG_ZIG:-}
+if [ -z "$zig" ]; then
+    zig=$(command -v zig || true)
+fi
+if [ -z "$zig" ]; then
+    if command -v nix >/dev/null 2>&1; then
+        zig=$(nix shell nixpkgs#zig -c sh -c 'command -v zig')
+    else
+        echo "xirang-zig-record-check: no Zig compiler; set XIRANG_ZIG or install zig" >&2
+        exit 2
+    fi
+fi
+echo "zig    $zig ($("$zig" version))"
+cd "$root"
+XIRANG_ZIG="$zig" cargo test -p xirang-multilang --features lang-zig \
+    --test zig_record --test zig_build --offline -- --ignored --nocapture
+echo "xirang-zig-record-check: ok (a Zig declaration reads back through the shared record reader)"

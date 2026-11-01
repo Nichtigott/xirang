@@ -82,15 +82,15 @@ fn the_other_concepts_records_and_the_changelog_are_not_reported() {
         "quiet",
         &[
             (
-                "toolchain/src/plugin_host/src/lib.rs",
+                "toolchain/src/plugin_host/lib.rs",
                 "//! host\n/// Wrap a slot name; an empty string means no slot was declared.\npub fn host() {}\n",
             ),
             (
-                "toolchain/src/studio/src/ui.rs",
+                "toolchain/src/studio/ui.rs",
                 "//! studio\n// The authoring layout's slot names: the form, the appliers and the tests index\npub fn studio() {}\n",
             ),
             (
-                "toolchain/src/runtime/src/face_manifest.rs",
+                "toolchain/src/runtime/face_manifest.rs",
                 "//! run\n// Field dictionary and slot names shared by the Studio form and the file authoring API\n// Studio 表单与文件创作 API 共用的字段词典与槽位名\npub fn run() {}\n",
             ),
             (

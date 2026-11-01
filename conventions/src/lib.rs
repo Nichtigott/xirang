@@ -40,6 +40,9 @@ pub mod doc_anchors;
 pub mod doc_blocks;
 #[path = "features.rs"]
 pub mod features;
+#[path = "language_shape.rs"]
+pub mod language_shape;
+
 #[path = "lint.rs"]
 pub mod lint;
 #[path = "mounting.rs"]
@@ -92,6 +95,19 @@ pub fn workspace_root() -> PathBuf {
         manifest_file.display()
     );
     root
+}
+
+/// Whether a path belongs to a **frozen evaluation archive** under `docs/managed-maintenance/`.
+/// 路径是否属于 `docs/managed-maintenance/` 下的**冻结评测归档**。
+///
+/// Those trees are historical experiment inputs: they are checked in so a run can be inspected
+/// byte for byte, not so they follow today's live-code conventions. Their faces deliberately contain
+/// bare verbs and their adoption ledgers deliberately record leases that later lapsed. Scanning them
+/// as live code makes the gate red for a decision the archive was built to preserve.
+/// 那些树是历史实验输入：入库是为了逐字节检查一次运行，而不是让它们遵守今天的活代码约定。它们的面故意
+/// 带有裸动词，采信台账故意记录后来失效的租约。把归档当活代码扫描，会让门禁为了归档本来要保留的决定变红。
+pub(crate) fn archived_evaluation(relative: &str) -> bool {
+    relative.starts_with("docs/managed-maintenance/evaluation-")
 }
 
 /// Every crate directory in the workspace that owns a `src/` tree, sorted.

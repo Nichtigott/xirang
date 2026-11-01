@@ -1,0 +1,5 @@
+# 构建期生成物：记录文件、javac 的 classes、构建写的常量类。
+# Build-time artifacts: the record file, javac's classes, and the build-written constants class.
+gauge/native/gauge.faces
+gauge/java/classes/
+gauge/java/gen/

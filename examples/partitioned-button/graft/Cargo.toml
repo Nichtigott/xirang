@@ -22,4 +22,3 @@ xirang-toolchain = { path = "../../../toolchain", features = ["run", "authoring"
 # 每一个使用宏的 crate，而不只是我们生成的那些（有我们构建脚本的包会从 `cargo::rustc-check-cfg` 拿到同样的
 # 声明，因此幽灵与 facade 不需要它）。
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(rust_analyzer)"] }

@@ -7,10 +7,9 @@
 //! 它不从父面导入任何东西：这棵子树一旦交给自己的 crate，父面就只剩下生成的祖先壳，引用它的碎片编译不过。
 //! 自包含正是"划分只是构建形状的改变、不是重写"的原因。
 
-crate::panel_object! {
-    kind: Frame,
-    needs_registry: true,
-    parent: crate::panel::NODE_ID,
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Frame>()
+    .needs_registry(true)
+    .under(crate::panel::NODE_ID);
 
 pub struct Frame;

@@ -26,32 +26,20 @@ xirang_toolchain::run_method::host!();
 /// The example's host identity. A graft requires both sides to share it.
 pub const FRAMEWORK: FrameworkId = FrameworkId::new("xirang.example.control-suite");
 
-// 宿主入口的 graft 计划，用**类型化**写法：两侧都是指向真实注册面的 Rust 路径，
-// 因此编译器与编辑器都能解析它们——写在 `cut(` 之后会补全宿主注册面路径，
-// 写在 `graft(` 之后会补全外部 crate 路径。代价是外部实现必须被静态链接进来。
-// The host's graft plan in the **typed** form: both sides are Rust paths to real
-// faces, so the compiler and any editor resolve them. The cost is that the
-// external implementation must be linked in.
-//
-// 这里声明的每个 `cut(` 都是宿主交出去的槽位，而构建期作用域收窄到这些切口命名的
-// 子树：没有声明的注册面不会被这个应用发布。按钮和滑块都是可替换槽位，因此两条都写；
-// 漏写一条不是"少发布一个面"这么无害，而是让那个槽位在发布态计划里失去目标。
-// Every `cut(` declared here is a slot the host hands over, and the build-time
-// scope narrows to the subtrees these cuts name: a face nobody declared is not
-// shipped by this application. Button and slider are both replaceable slots, so
-// both are declared; leaving one out does not merely ship one face less, it
-// leaves that slot without a target in the release-time plan.
-//
-// 字符串写法仍然完全可用，只是工具无法补全它，也不需要链接外部实现：
-//   cut "root/control/button" graft "button_fast"
-// The string form still works and needs no link, but tooling cannot complete it.
-xirang_toolchain::run_method::static_graft_plan!(
-    FRAMEWORK,
-    cut(crate::control::object::button::NODE_ID)
-        graft(control_button_graft::button_fast::NODE_ID),
-    cut(crate::control::object::slider::NODE_ID)
-        graft(control_button_graft::slider_fast::NODE_ID),
-);
+// `graft` selects a logical host identity; `with` names the linked replacement.
+// `graft` 选择宿主逻辑身份；`with` 指定静态链接的替换件。
+// The catalog remains available when implementations move to another crate.
+// 实现移入其它 crate 后，逻辑身份目录仍然可用。
+// String selectors remain supported: graft("root/control/button").with("button_fast").
+// 字符串选择器仍然受支持，但字符串内容不具备 Rust 路径补全。
+/// Static grafts against logical identities, independent of crate ownership.
+/// 面向逻辑身份的静态 graft，与 crate 归属无关。
+pub const GRAFTS: &[Graft] = &[
+    graft(crate::catalog::control::object::BUTTON)
+        .with(control_button_graft::button_fast::NODE_ID),
+    graft(crate::catalog::control::object::SLIDER)
+        .with(control_button_graft::slider_fast::NODE_ID),
+];
 
 /// 按框架和包命名空间装配这个示例的注册机。
 /// Assemble the example's registry from its framework and package namespace.

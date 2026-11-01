@@ -61,7 +61,7 @@
   热 unit 缓存：A→B → probe-b FAILED（phase=static plan, field=parent, actual=69fb465d… B 的身份, parent node is missing）
               B→A / C→A → ok（其 unit 属别的命名空间，写入侧校验拒成空 map）
   ```
-  另一个可观察痕迹：失败那次运行的 `pruning_manifest.tsv` 是**正确**的 B 身份，而拓扑校验用的是 A 的——同一次运行里两处 id 来源不同（`build_method/src/static_plan.rs:117` 用缓存、`build_method/src/manifests.rs:181-184` 重算）。污染还会被写进下一份 unit 缓存（实测 B 的 unit 里存着 `probe-c` 的 id）。
+  另一个可观察痕迹：失败那次运行的 `pruning_manifest.tsv` 是**正确**的 B 身份，而拓扑校验用的是 A 的——同一次运行里两处 id 来源不同（`build_method/static_plan.rs:117` 用缓存、`build_method/manifests.rs:181-184` 重算）。污染还会被写进下一份 unit 缓存（实测 B 的 unit 里存着 `probe-c` 的 id）。
 - **修复方向**：缓存键加命名空间（`(namespace, relative) → (NodeId, kind)`）；`node_id()` 命中后再用 `package_node_id(&relative, &kind)` 复核；或让 `run_as_package` 结束即清。
 - **不修会怎样**：同进程第二个包得到「看起来正确」的混合命名空间树；实测方向是假失败（安全），但同一缓存值也流进作用域/剪枝选择集，那里没有第二道交叉校验 → 假通过、剪错符号集。
 - **复核状态**：✅ 我本人的 t8 探针（冷/热 + 六序矩阵 + unit 文件内容对照）；t2/t3 两路报告与本条无冲突。
@@ -109,7 +109,7 @@
 ### LG-05 MAJOR — `flow_provider` 编辑入口缺内核已有的嵌套守卫 → 极短输入即可 abort
 - **=** S19（surfaces，由 kernel-auditor 转达）+ K-22（kernel，t9 建议上调 MAJOR，同一机制的另一入口）
 - **影响面**：库内 **abort**（不是 `Result`）——栈溢出会带走整个宿主进程/桥进程。可达入口包括 authoring 的 `edit`（Studio 表单、MCP `apply`）与公开 API 的调用方预算递归。
-- **触发条件**：`flow_provider` 或同类类型路径文本深度超出调用线程可用栈。内核在 `core/src/registry_core/authoring/parse/flow.rs:107` 有 `guard_nesting`（注释自己写明「没有守卫时 542 字节的类型路径会以栈溢出 abort」），而 `run_method/src/authoring/manifest/face/face.rs:140-143` 直接 `syn::parse_str::<syn::Path>`，且 `flow_provider` 确实在 `EDIT_FIELD_ORDER`（`run_method/src/authoring/operations/face_write.rs:79`）里 → 编辑路径先于任何守卫执行。
+- **触发条件**：`flow_provider` 或同类类型路径文本深度超出调用线程可用栈。内核在 `core/src/registry_core/authoring/parse/flow.rs:107` 有 `guard_nesting`（注释自己写明「没有守卫时 542 字节的类型路径会以栈溢出 abort」），而 `run_method/authoring/manifest/face/face.rs:140-143` 直接 `syn::parse_str::<syn::Path>`，且 `flow_provider` 确实在 `EDIT_FIELD_ORDER`（`run_method/authoring/operations/face_write.rs:79`）里 → 编辑路径先于任何守卫执行。
 - **最小复现**（本轮的 `/tmp/nichverify/synprobe`，独立于 t3 的 `/tmp/xirang-probe-surfaces/probe_syn`）：
   ```text
   $ ./target/release/synprobe 100          # 256 KiB 栈，输入 301 字节
@@ -121,7 +121,7 @@
   t3 的实测：8 MiB 栈下 200 层正常、300 层（901 B）abort；256 KiB 栈下 100 层即 abort。
 - **修复方向**：把内核的 `guard_nesting`（已公开）接到 run_method 的这一处；K-22 那条把「按调用方预算递归」的公开 API 改成受本模块上界约束。
 - **不修会怎样**：一个几百字节的字段值就能 abort 宿主进程；错误不是可捕获的 `Err`，宿主没有恢复余地。
-- **复核状态**：✅ abort 本轮实测（exit 134）+ 📖 可达链读码（`run_method/src/authoring/operations/operations.rs:318-332` → `run_method/src/authoring/operations/face_write.rs:79` → `run_method/src/authoring/manifest/face/face.rs:140`）；t9 对 K-22 亦有独立实测。
+- **复核状态**：✅ abort 本轮实测（exit 134）+ 📖 可达链读码（`run_method/authoring/operations/operations.rs:318-332` → `run_method/authoring/operations/face_write.rs:79` → `run_method/authoring/manifest/face/face.rs:140`）；t9 对 K-22 亦有独立实测。
 
 ### LG-06 MAJOR — 同一「trait 契约」规则两处实现：overlay 非 full 分支不查 `needs_registry`
 - **=** K-04（kernel）
@@ -143,18 +143,18 @@
 
 ### LG-08 MAJOR — `FaceView.path` 顺序依赖，与运行期 `path_for` 可不同判
 - **=** S1（surfaces）
-- **影响面**：`build_method` 的只读视图 → CLI `explain`、MCP `registry`/`search`/`overlay`（`build_method/src/graft_view/overlay_rows.rs:137` 用它判「哪个槽位被替换」）。
+- **影响面**：`build_method` 的只读视图 → CLI `explain`、MCP `registry`/`search`/`overlay`（`build_method/graft_view/overlay_rows.rs:137` 用它判「哪个槽位被替换」）。
 - **触发条件**：子面在发现顺序里排在父面之前（`logical_path` 只走一层、父路径缓存未命中即回落 `root`）。
 - **最小复现**：t13 复核（t13 §S1）；现有测试只断言父面 path，**刻意没断言子面**，所以没有任何东西会红。
 - **修复方向**：父链递归解析（或先按依赖序排序再算路径）；补一条子面 path 的钉子。
 - **不修会怎样**：同一个面在只读视图与运行期注册树里路径不同 → overlay/graft 判到另一个槽位（静默）。
-- **复核状态**：🔍 复核（t13）；本轮读码确认两处实现（`build_method/src/face_view.rs:280-298` vs `core/src/registry_core/tree/query/query.rs:86-96`）。
+- **复核状态**：🔍 复核（t13）；本轮读码确认两处实现（`build_method/face_view.rs:280-298` vs `core/src/registry_core/tree/query/query.rs:86-96`）。
 
 ### LG-09 MAJOR — 构建期「货币凭据」先于载荷发布，载荷非事务写
 - **=** S2（surfaces）
 - **影响面**：`target/xirang/out` 是 `explain`/`registry`/`diff`/`search` 的「构建侧真值」；混代产物会被 `build_output_is_current` 读成 `current`。
-- **触发条件**：五份载荷逐个写的中途失败（磁盘满、权限、被中断）；或载荷写入被截断（`build_method/src/cache.rs:36-39` 的 `fs::write` 就地截断）。
-- **最小复现**：t13 复核（t13 §S2）；本轮 📖 复核了顺序（`build_method/src/pipeline.rs:155-164` 指纹在前、`:174-184` 五份载荷在后）。
+- **触发条件**：五份载荷逐个写的中途失败（磁盘满、权限、被中断）；或载荷写入被截断（`build_method/cache.rs:36-39` 的 `fs::write` 就地截断）。
+- **最小复现**：t13 复核（t13 §S2）；本轮 📖 复核了顺序（`build_method/pipeline.rs:155-164` 指纹在前、`:174-184` 五份载荷在后）。
 - **修复方向**：载荷先写、指纹最后且仅在全绿时发布；`write_if_changed` 改临时文件 + rename。
 - **不修会怎样**：读者把上一代的行当本代现状作答（静默错答），且 `current` 为真让这错答案看起来是新鲜的。
 - **复核状态**：🔍 复核（t13）；本轮读码佐证。
@@ -163,7 +163,7 @@
 - **=** S5（surfaces）
 - **影响面**：authoring 的 rename 路径（Studio / MCP `apply rename`）。
 - **触发条件**：被迁移模块名是子树内另一个模块名的**前缀**（如 `control` 与 `control_extra`）。
-- **最小复现**：t13 复核（t13 §S5）；同仓库 `build_method/src/scope_view.rs:109-116` 对同一件事守了 `::` 边界，是现成的对照口径。
+- **最小复现**：t13 复核（t13 §S5）；同仓库 `build_method/scope_view.rs:109-116` 对同一件事守了 `::` 边界，是现成的对照口径。
 - **修复方向**：用 `::`/`/` 边界匹配（复用 `build_method` 那套规则）。
 - **不修会怎样**：兄弟模块被静默改写（数据损坏），文本编辑后编译器才可能报出别的错。
 - **复核状态**：🔍 复核（t13）。
@@ -217,8 +217,8 @@
 - **触发条件**：宿主/工具按模块文档选择 `linked` collector。
 - **最小复现**：📖 本轮读码：
   ```text
-  run_method/src/macros/face_registration.rs:9-10  每个字段假定给出，收集器标识决定注册信息进入哪个链接器段
-  run_method/src/macros/face_registration.rs:168-171  (linked; …) => { /* 只有注释，什么都不提交 */ }
+  run_method/macros/face_registration.rs:9-10  每个字段假定给出，收集器标识决定注册信息进入哪个链接器段
+  run_method/macros/face_registration.rs:168-171  (linked; …) => { /* 只有注释，什么都不提交 */ }
   ```
 - **修复方向**：要么实现链接段提交，要么把文档改成「`linked` 目前不提交任何东西（保留位）」。
 - **不修会怎样**：宿主以为自己在用链接收集器，实际静态计划才是唯一来源；文档与行为不一致属本仓明文标准下的缺陷。
@@ -230,8 +230,8 @@
 - **触发条件**：某面（不叫 `Button`）定义了 `fn optional_pruning_probe`；或某行含 `PRUNING_TABLE`（含注释/字符串）。
 - **最小复现**：📖 本轮读码 + 全仓 grep（`--exclude-dir=target`）：
   ```text
-  build_method/src/manifests.rs:208  } else if line.contains("optional_pruning_probe") && line.contains("fn optional_pruning_probe")
-  build_method/src/manifests.rs:210      "Button::optional_pruning_probe"
+  build_method/manifests.rs:208  } else if line.contains("optional_pruning_probe") && line.contains("fn optional_pruning_probe")
+  build_method/manifests.rs:210      "Button::optional_pruning_probe"
   ```
   三个魔法标识符全仓只有这几行（无声明者、无测试）；被命名的那一面并不存在。
 - **修复方向**：符号列从已解析的注册面/静态计划读出，而不是逐行文本匹配；删除其余魔法名分支。
@@ -244,11 +244,11 @@
 - **触发条件**：宿主 `src/` 下存在名为 `compile_error_demo` 的模块（或同名 `.rs`）。
 - **最小复现**：📖 本轮读码列出四处调用点：
   ```text
-  build_method/src/contracts.rs:78            if node.name == "compile_error_demo" && !include_demo
-  build_method/src/registration_check.rs:87   path.file_name() == Some("compile_error_demo.rs")
-  build_method/src/static_plan.rs:74          if node.name == "compile_error_demo" || …
-  build_method/src/renderer/tree.rs:68-70     writeln!(… "#[cfg(feature = \"compile_error_demo\")]")
-  build_method/src/renderer/pass.rs:169       同上
+  build_method/contracts.rs:78            if node.name == "compile_error_demo" && !include_demo
+  build_method/registration_check.rs:87   path.file_name() == Some("compile_error_demo.rs")
+  build_method/static_plan.rs:74          if node.name == "compile_error_demo" || …
+  build_method/renderer/tree.rs:68-70     writeln!(… "#[cfg(feature = \"compile_error_demo\")]")
+  build_method/renderer/pass.rs:169       同上
   ```
 - **修复方向**：把这个演示开关变成显式的宿主意愿（环境变量/清单字段/特性名常量），不要用目录名当开关。
 - **不修会怎样**：一个合法命名会让该面的契约校验与静态计划**静默跳过**（发布树少一个面）。
@@ -260,7 +260,7 @@
 - **触发条件**：宿主的源码路径里出现 `control`、`engine`、`trimmed_core`、`compile_error_demo` 之一（例如 `/home/me/engine/src/main.rs`）。
 - **最小复现**：📖 本轮读码：
   ```text
-  run_method/src/authoring/parse/parse.rs:31
+  run_method/authoring/parse/parse.rs:31
   let roots = ["compile_error_demo", "control", "engine", "trimmed_core"];
   ```
   随后按第一个命中的组件把路径**截断**成相对路径。
@@ -292,7 +292,7 @@
     → cannot copy /tmp/nichprobe/fix/src/outside_link/secret.txt: Permission denied   ← 包外文件
   ln -sfn . <fix>/src/self  → 预览成功，回复 faces 124，路径出现 self/self/self/…/control/control.rs
   ```
-  同桥的读侧对同一条规则是拒绝的（`mcp/src/index.rs:42-50`、`:66-68`、`:167-174` 的 `is_safe_child`）。
+  同桥的读侧对同一条规则是拒绝的（`mcp/index.rs:42-50`、`:66-68`、`:167-174` 的 `is_safe_child`）。
 - **修复方向**：`copy_directory` 用 `symlink_metadata` 判断类型，不跟随链接（或 canonicalize 后要求仍在根内）+ `visited`/深度上限。
 - **不修会怎样**：一次预览把包外数据读进临时目录；自指链接让预览变成无界复制（实测仍报成功）。
 - **复核状态**：✅ 实测（t8）。
@@ -310,7 +310,7 @@
     → cannot copy …/unreadable.txt: Permission denied
     → 残留 /tmp/xirang-mcp-preview-416016-0（find 到 .git/config、.git/index、binfile.dat…）
   ```
-  **机制更正**：作者设想的「符号链接被顺着写入」被证伪——`mcp/src/preview.rs:27` 先 `remove_dir_all(destination)`，符号链接本身被删、目标未被写入（t12 实测）。真后果是「删除并重建」与「失败泄漏」。
+  **机制更正**：作者设想的「符号链接被顺着写入」被证伪——`mcp/preview.rs:27` 先 `remove_dir_all(destination)`，符号链接本身被删、目标未被写入（t12 实测）。真后果是「删除并重建」与「失败泄漏」。
 - **修复方向**：`tempfile`/`O_EXCL` 排他创建 + 0700；`Drop` 守卫保证任何返回路径都清理（含 `copy_package` 自身失败）。
 - **不修会怎样**：预测路径上的他人数据被静默删除；失败一次即留下一份工程源码副本（多次即填满 `/tmp`）。
 - **复核状态**：✅ 实测（t8 泄漏、t12 删除/泄漏与符号链接证伪）。
@@ -324,7 +324,7 @@
   add  + handle_contracts: "crate::Foo::Bar" → 文件得到 handle_traits: ["Bar"] 与 handle_contracts: [crate::Foo::Bar]
   edit + handle_contracts: "crate::Foo::Bar" → 回 action apply / applied …（成功），文件只有 handle_traits: ["Bar"]，无 contract 行
   ```
-  根因：`run_method/src/authoring/operations/face_write.rs:59-79` 的 `EDIT_FIELD_ORDER` 不含这两个字段（它们只在 `CREATE_FIELD_ORDER`），而 `mcp/src/apply.rs:172-196` 的白名单与工具自述都把它们列为可编辑。
+  根因：`run_method/authoring/operations/face_write.rs:59-79` 的 `EDIT_FIELD_ORDER` 不含这两个字段（它们只在 `CREATE_FIELD_ORDER`），而 `mcp/apply.rs:172-196` 的白名单与工具自述都把它们列为可编辑。
 - **修复方向**：把两个字段加进 edit 字段序（并决定空值语义），或在 edit 路径上显式拒绝这两个键并在自述里写明「contract 只在 add 上可设」。
 - **不修会怎样**：一次「成功」的编辑把作者要的编译器检查契约降级成未检查标签，回复里没有一个字提到。
 - **复核状态**：✅ 实测（t12）。
@@ -396,7 +396,7 @@
 - **=** K-02（kernel）
 - **影响面**：热重载语义（Studio/MCP 编辑后重载）：文件里写着新值，运行期校验仍是旧值。
 - **触发条件**：作者侧快照含 `runtime_checks`（与编译期不同）时走 `merge_authored`。
-- **最小复现**：t9 探针（`K02.merged.runtime_checks = [FiniteNumber]`，而作者侧给的是 `[NonEmptyText]`）；唯一调用点 `run_method/src/authoring/operations/operations.rs:352`。
+- **最小复现**：t9 探针（`K02.merged.runtime_checks = [FiniteNumber]`，而作者侧给的是 `[NonEmptyText]`）；唯一调用点 `run_method/authoring/operations/operations.rs:352`。
 - **修复方向**：与 `flow` 同款「作者侧非空即应用」；或在函数文档里写明「运行期校验以编译期为准，文件编辑需重编译生效」并据此拒绝编辑入口。
 - **不修会怎样**：编辑被静默吃掉，文件与行为不一致（校验强度可能被改弱或改强而无人知）。
 - **复核状态**：🔍 复核（t9）。
@@ -409,8 +409,8 @@
   ```text
   core/src/registry_core/authoring/parse/rules.rs:110-118  parse_requirements_owned：split_once("=>")? → 静默丢
   core/src/registry_core/authoring/parse/rules.rs:120 起   parse_requirements（校验器）：拒绝该形状
-  mcp/src/impact.rs:248                                    if let Some(…) = split_once("=>") → 不 push（静默丢边）
-  mcp/src/converge.rs:197-205                              同一输入 push provider:"?" 的 UNANSWERED 裁决
+  mcp/impact.rs:248                                    if let Some(…) = split_once("=>") → 不 push（静默丢边）
+  mcp/converge.rs:197-205                              同一输入 push provider:"?" 的 UNANSWERED 裁决
   ```
 - **修复方向**：一处解析、一处判定；或「两个工具都报 UNANSWERED」，或「两边都拒绝该输入」。
 - **不修会怎样**：同一份 `requires` 文本被三处解释；`impact` 少报一条依赖边 ⇒ 爆炸半径假阴性。
@@ -447,7 +447,7 @@
 | LG-33 **=** K-03 | MINOR（原 MAJOR） | 错误文案 | 把一个有非空子注册机的面改成叶子 | t9 证伪机制：两条路径同判 `Err`；`UnknownTarget` 兜底不可达 | 只改文案（说明是「不能降级非空子注册机」） | 作者去改身份/父级而不是子注册机 | 🔍 t9 |
 | LG-34 **=** V-03 | MINOR（原「数据丢失」） | Studio 表单显示 | 文件在索引后被删/改名/改权限 | t12 实测：把两个 contract 键指名成空后，文件里两条契约行仍在 | 表单区分「读失败」与「没写」，或显示为未知 | 用户看到空契约行（显示歧义），**不会**丢数据 | ✅ t12 证伪 |
 | LG-35 **=** S13 | MINOR | `render_call_report` 的名字与文档 | 任何调用 | 📖 读码：实现恒为空树 | 改名或实现 | 读者按名字以为拿到调用树 | 🔍 t13 |
-| LG-36 **=** S15 | MINOR | `edit()` 里的恒等分支 | 任何编辑 | 📖 读码 `run_method/src/authoring/manifest/face/face.rs:144-148` | 删除 | 死逻辑，误导读者 | 🔍 t13 |
+| LG-36 **=** S15 | MINOR | `edit()` 里的恒等分支 | 任何编辑 | 📖 读码 `run_method/authoring/manifest/face/face.rs:144-148` | 删除 | 死逻辑，误导读者 | 🔍 t13 |
 | LG-37 **=** K-10/K-17/S11 | MINOR | 文本启发式解析（注册规则 / `registration_kinds` / 规则方法） | 源码注释或字符串里出现 `kind:`、`rule_method(` 等字样 | 📖 读码三处（内核 K-10/K-17、S11） | 走语法解析（内核已有 front end） | 注释里的伪子句被当真；或漏收 | 🔍 t9/t13 |
 | LG-38 **=** S6 | MINOR | 字段集合的真值 | 编辑一个「能改但不能写回」的字段 | 🔍 t13 复核 | 让声明集合 = 写出集合（一处导出） | 编辑后文件里看不到变化 | 🔍 t13 |
 | LG-39 **=** K-18 | MINOR | 静态 vs 运行时对重复身份的判定 | 两个面同身份 | 📖 读码（静态拓扑不查、运行时查） | 静态侧补同一条 | 同一棵树两条路不同判 | 🔍 t9 |
@@ -517,31 +517,31 @@
 
 | # | 位置 | 自述 | 行为 | 严重度 / 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | `run_method/src/macros/face_registration.rs:9-10` vs `:168-171` | 收集器决定进哪个链接段 | `linked` 什么都不提交 | MAJOR（LG-14）📖 |
-| 2 | `mcp/src/apply.rs:172-196` + 工具自述 vs `run_method/src/authoring/operations/face_write.rs:59-79` | `handle_contracts`/`part_contracts` 可编辑 | edit 路径不写这两个字段 | MAJOR（LG-21）✅ |
-| 3 | `mcp/src/tools.rs:139-157` vs `mcp/src/diff.rs:143-239` | 记录只有 ok/stale/re-identified + unreadable | 还有 `undeclared` 桶 | MINOR（LG-12 半边 / BR-8）✅ |
-| 4 | `mcp/src/diff.rs:34`（模块文档） | 两种比较共用 added/gone/re-identified 词汇 | `records:true` 用 ok/undeclared/stale/re-identified | MINOR（LH-09b）✅ |
+| 1 | `run_method/macros/face_registration.rs:9-10` vs `:168-171` | 收集器决定进哪个链接段 | `linked` 什么都不提交 | MAJOR（LG-14）📖 |
+| 2 | `mcp/apply.rs:172-196` + 工具自述 vs `run_method/authoring/operations/face_write.rs:59-79` | `handle_contracts`/`part_contracts` 可编辑 | edit 路径不写这两个字段 | MAJOR（LG-21）✅ |
+| 3 | `mcp/tools.rs:139-157` vs `mcp/diff.rs:143-239` | 记录只有 ok/stale/re-identified + unreadable | 还有 `undeclared` 桶 | MINOR（LG-12 半边 / BR-8）✅ |
+| 4 | `mcp/diff.rs:34`（模块文档） | 两种比较共用 added/gone/re-identified 词汇 | `records:true` 用 ok/undeclared/stale/re-identified | MINOR（LH-09b）✅ |
 | 5 | `mcp/README.md:47`、`README.zh-CN.md:35` | 现在时承诺 `unmatched` 桶 | 该桶已删 | MAJOR（BR-1）✅ |
 | 6 | `mcp/README.md:164-166` | 「树 diff 仍待做」 | 同文件 120 行前就描述 `xirang.diff` | MAJOR（BR-2）✅ |
-| 7 | `mcp/src/tools.rs:77-80` vs `mcp/src/callgraph.rs:41-44/108-113` | schema 只有 function/path/root | 实现读 `limit` 并叫调用方 raise 它 | MINOR（LG-43）✅ |
+| 7 | `mcp/tools.rs:77-80` vs `mcp/callgraph.rs:41-44/108-113` | schema 只有 function/path/root | 实现读 `limit` 并叫调用方 raise 它 | MINOR（LG-43）✅ |
 | 8 | `plugin-host/src/process.rs:341-354`、`plugin-host/src/process/child.rs:119-127` | 已送达的答案不会再被报成超时 | 仍会（LG-32） | MAJOR（BR-C1）✅ |
-| 9 | `mcp/src/preview.rs:14-20` | `target/` 是唯一可能很大的目录 | `.git` 也被复制/列举 | MAJOR（BR-C2）✅ |
-| 10 | `mcp/src/mir.rs:20-29` | 快照表头是来源凭据 | 可凭空盖出 | MAJOR（LG-18）✅ |
+| 9 | `mcp/preview.rs:14-20` | `target/` 是唯一可能很大的目录 | `.git` 也被复制/列举 | MAJOR（BR-C2）✅ |
+| 10 | `mcp/mir.rs:20-29` | 快照表头是来源凭据 | 可凭空盖出 | MAJOR（LG-18）✅ |
 | 11 | `core/src/registry_core/plugin/catalog/catalog.rs` 自述「unknown schemas 一律拒绝」 | 表头拼错即不拒绝 | MAJOR（LG-04）✅ |
 | 12 | `core/src/registry_core/authoring/parse/admission.rs` 模块自述「两种拼法同一个门禁」 | 构造函数形式丢 deny | MAJOR（C-01，与 LG-02 同处）🔍 |
 | 13 | `core/src/registry_core/tree/ports` 自述「绝不静默解析」 | `resolve_path` 取第一个 | MAJOR（C-03）🔍 |
 | 14 | `CallSite` 的 doc 写成一条边（内核 `core/src/registry_core/declaration/call_evidence.rs`） | 类型不是边 | MAJOR（C-02）🔍 |
-| 15 | `studio/src/studio/app/writers.rs:1-22` | 自称拥有全部写入 | 实际零写入 | MAJOR（C-02 studio）🔍 |
-| 16 | `studio/src/studio/app/navigation.rs:165-171` | `retreat_graph_focus` 注释称「反向走」 | 与 `advance` 逐字节相同 | MAJOR（C-01 studio）🔍 |
-| 17 | `studio/src/studio/app/search_queries.rs:9-17` | 「已去重」 | `dedup_by` 只消相邻 | MAJOR（C-03 studio）🔍 |
-| 18 | `studio/src/studio/app/support.rs:1-2` | 只声明几何 | 含项目解析与 cargo 子进程 | MAJOR（C-04 studio）🔍 |
+| 15 | `studio/studio/app/writers.rs:1-22` | 自称拥有全部写入 | 实际零写入 | MAJOR（C-02 studio）🔍 |
+| 16 | `studio/studio/app/navigation.rs:165-171` | `retreat_graph_focus` 注释称「反向走」 | 与 `advance` 逐字节相同 | MAJOR（C-01 studio）🔍 |
+| 17 | `studio/studio/app/search_queries.rs:9-17` | 「已去重」 | `dedup_by` 只消相邻 | MAJOR（C-03 studio）🔍 |
+| 18 | `studio/studio/app/support.rs:1-2` | 只声明几何 | 含项目解析与 cargo 子进程 | MAJOR（C-04 studio）🔍 |
 | 19 | `tools/xirang-package-audit` 头部注释 | 描述一张表 | 该表已不存在 | MAJOR（G-21）🔍 |
 | 20 | `conventions/src/lint.rs:225-227` | 带 `#![deny(warnings)]` 即「带着 missing_docs」 | 该 lint 仍 allow | MAJOR（LG-24）✅ |
 | 21 | `conventions/src/release_workflow.rs` 文档自述已堵住 `!startsWith` 绕过 | `== false` 等价写法放行 | MAJOR（LG-25）🔍 |
 | 22 | `.github/workflows/release.yml` 注释承诺 action pin | 无门禁 | MAJOR（LG-26）🔍 |
-| 23 | `build_method/src/face_view.rs:222-231` | 「绝不打印运行期从未有过的逻辑路径」 | 解析失败时打印 `root/button` | MAJOR（LG-11）✅ |
-| 24 | `run_method/src/runtime/trace/artifact/parse.rs:289-293` | 泄漏「按本 artifact 词表有界」 | 界是进程级历次并集 | MAJOR（LG-31）✅ |
-| 25 | `mcp/src/index.rs:42-50/66-68`（读侧拒绝链接）vs `preview.rs`（写侧跟随） | 同一条边界两个标准 | MAJOR（LG-19）✅ |
+| 23 | `build_method/face_view.rs:222-231` | 「绝不打印运行期从未有过的逻辑路径」 | 解析失败时打印 `root/button` | MAJOR（LG-11）✅ |
+| 24 | `run_method/runtime/trace/artifact/parse.rs:289-293` | 泄漏「按本 artifact 词表有界」 | 界是进程级历次并集 | MAJOR（LG-31）✅ |
+| 25 | `mcp/index.rs:42-50/66-68`（读侧拒绝链接）vs `preview.rs`（写侧跟随） | 同一条边界两个标准 | MAJOR（LG-19）✅ |
 
 **形状 ① 的共性**：这些自述都不是错别字，而是**承诺了一个更强的性质**（决定链接段、可编辑、不再丢答案、来源可证、门禁已开）。修掉这一类的收益不只是文档：其中 8 条的行为本身也错（LG-04/05/14/18/21/24/25/31）。建议在重构方案里把「文档承诺 ↔ 行为」做成可执行的对照表（同 `doc_anchors` 的思路），而不是只靠人工复核。
 
@@ -551,7 +551,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 锁 schema 门禁「文件里有 `# xirang-schema=` 那一行」 | `core/src/registry_core/plugin/catalog/catalog.rs:131-137` | 写成 `# xirang-schema v9`（少 `=`）→ 当注释跳过 | 门禁静默关闭 | ✅ 本轮 |
 | 2 | 同上：判定写在**记录循环内** | 同上 `:138-145` | 无记录 / 表头在记录之后 → 检查不跑 | 门禁对空锁与乱序锁不生效 | ✅ 本轮 |
-| 3 | 剪枝符号「这一行含某个魔法标识符」 | `build_method/src/manifests.rs:200-213` | 中文/别的面/注释里出现同样字样 | 写出错误符号（含硬编码 `Button::…`） | ✅ t13/本轮 |
+| 3 | 剪枝符号「这一行含某个魔法标识符」 | `build_method/manifests.rs:200-213` | 中文/别的面/注释里出现同样字样 | 写出错误符号（含硬编码 `Button::…`） | ✅ t13/本轮 |
 | 4 | 注册面「这一行含 `kind:`」 | `core/src/registry_core/source/source.rs:434-465` | 注释/字符串里出现 | 过收或漏收 | 🔍 t9 |
 | 5 | 注册规则「整文件文本里出现 `rule_method(`」 | 内核 K-10 | 注释里的伪子句 | 读到不存在的规则 | 🔍 t9 |
 | 6 | 规则方法「第一处调用」 | S11 | 注释掉的调用在前 | 取到错的字符串 | 🔍 t13 |
@@ -561,7 +561,7 @@
 | 10 | `missing_docs` 保护「文件里有 `#![deny(warnings)]` 字样」 | `conventions/src/lint.rs:225-227` | 该属性对 allow 级 lint 无效 | 保护静默移除 | ✅ t14/本轮 |
 | 11 | 上传守卫「条件串含 TAG_GUARD 且不含三个否定记号」 | `conventions/src/release_workflow.rs:96-111` | `… == false` 等价否定 | 条件被读成正确 | 🔍 t14 |
 | 12 | 「`compile_error_demo` 这个目录名」 | 四处调用点（LG-16） | 宿主合法命名撞上 | 构建结果被静默改写 | 📖 本轮 |
-| 13 | 「相对路径里出现过 `control`/`engine`/…」 | `run_method/src/authoring/parse/parse.rs:31` | 宿主同名目录 | source 被截断 | 📖 本轮 |
+| 13 | 「相对路径里出现过 `control`/`engine`/…」 | `run_method/authoring/parse/parse.rs:31` | 宿主同名目录 | source 被截断 | 📖 本轮 |
 | 14 | 静态拓扑「身份出现过」但不查重复 | K-18 | 两个面同身份 | 静态/运行时不同判 | 🔍 t9 |
 | 15 | 「路径键存在即唯一」 | K-05 | 兄弟同名 `registry_name` | 三处静默碰撞 | 🔍 t9 |
 | 16 | 符号扫描「字面 `#[cfg(test)` / `mod x;`」 | G-04 | 带空格的写法 | size 门禁漏判 | 🔍 t14 |
@@ -578,7 +578,7 @@
 - **v7「debug_method 幻影依赖」**（t7 转达，boundary-architect）：`::xirang_debug_method::submit!` 只在 `collector: debug` 且 `#[cfg(debug_assertions)]` 下发出；全树唯一生产方是测试 `debug_method/tests/collector_integration.rs:7`；两个示例走 `development` 空 arm。只依赖 run-method 的宿主显式 opt-in 时 debug 构建才 E0433、release 通过。**→ 出厂路径上不成立**（t8 LH-11 实测）。残留 MINOR：该 switch 无文档。
 - **K-03 的机制**：两条路径同判 `Err`，`UnknownTarget` 兜底不可达；只剩错误文案错指原因 → **降 MINOR**（t9）。
 - **V-03 的「静默抹掉 contract 字段」**：`EDIT_FIELD_ORDER` 不含这两个字段，端到端探针后契约行仍在 → **降为「表单显示歧义」（MINOR）**，真缺陷改写为 LG-21（t12）。
-- **BR-19 的「符号链接被顺着写入」**：`mcp/src/preview.rs:27` 先 `remove_dir_all` 删的是链接本身，实测受害目录未被写入 → 机制证伪，改成「删除并重建 + 失败泄漏」（t12）。
+- **BR-19 的「符号链接被顺着写入」**：`mcp/preview.rs:27` 先 `remove_dir_all` 删的是链接本身，实测受害目录未被写入 → 机制证伪，改成「删除并重建 + 失败泄漏」（t12）。
 - **S1 之前的「不可读面文件静默丢面」**（t3 自证伪）：构建侧会报错——与 LG-11 不冲突，LG-11 讲的是**只读视图**那一边。
 
 **数字/引用更正（沿用复核后的口径，勿照抄原 lane 数字）**

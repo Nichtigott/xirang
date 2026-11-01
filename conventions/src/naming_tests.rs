@@ -110,9 +110,9 @@ fn a_reference_to_a_package_that_does_not_exist_is_reported() {
         "thing",
         "[package]\nname = \"xirang-thing\"\n\n[lib]\nname = \"xirang_thing\"\n",
     )]);
-    fs::create_dir_all(root.join("toolchain/src/build_method/src/scaffold")).expect("scaffold dir");
+    fs::create_dir_all(root.join("toolchain/src/build_method/scaffold")).expect("scaffold dir");
     fs::write(
-            root.join("toolchain/src/build_method/src/scaffold/probe.rs"),
+            root.join("toolchain/src/build_method/scaffold/probe.rs"),
             "let requirement = \"xirang-missing = { path = \\\"../missing\\\", version = \\\"0.1.0\\\" }\";\n",
         )
         .expect("template file");
@@ -224,9 +224,9 @@ fn a_name_in_a_comment_is_not_a_requirement() {
         "thing",
         "[package]\nname = \"xirang-thing\"\n\n[lib]\nname = \"xirang_thing\"\n",
     )]);
-    fs::create_dir_all(root.join("toolchain/src/build_method/src/scaffold")).expect("scaffold dir");
+    fs::create_dir_all(root.join("toolchain/src/build_method/scaffold")).expect("scaffold dir");
     fs::write(
-        root.join("toolchain/src/build_method/src/scaffold/probe.rs"),
+        root.join("toolchain/src/build_method/scaffold/probe.rs"),
         "// old invocation kept for reference: xirang-old = { path = \"..\" }\n\
          let requirement = \"xirang-gone = { path = \\\"../gone\\\" }\";\n",
     )
@@ -283,9 +283,9 @@ fn a_renamed_dependency_is_named_through_its_escaped_package_field() {
         "thing",
         "[package]\nname = \"xirang-thing\"\n\n[lib]\nname = \"xirang_thing\"\n",
     )]);
-    fs::create_dir_all(root.join("toolchain/src/build_method/src/scaffold")).expect("scaffold dir");
+    fs::create_dir_all(root.join("toolchain/src/build_method/scaffold")).expect("scaffold dir");
     fs::write(
-        root.join("toolchain/src/build_method/src/scaffold/probe.rs"),
+        root.join("toolchain/src/build_method/scaffold/probe.rs"),
         "let r = \"runtime = { package = \\\"xirang-missing\\\", path = \\\"..\\\" }\";\n",
     )
     .expect("template");

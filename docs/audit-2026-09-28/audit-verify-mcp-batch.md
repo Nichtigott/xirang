@@ -9,14 +9,14 @@
 **被验对象哈希（门禁前后 `diff` 为空，`OBJECT_STABLE=yes`）**：
 
 ```
-66698b5d5489e98e0e14be333fe3e364  mcp/src/preview.rs
-ecc3674117e152dbb0c085a0d96278e6  mcp/src/mir.rs
-d7f0401f2374789138835c5cdd650f96  mcp/src/callgraph.rs
-1c2effe282503a4d980a3eb1d3f6abac  mcp/src/search.rs
-80ef426a5ac9473d79629c5ddd03710d  mcp/src/tools.rs
-02c52c1958001b6a3d773066c29b378c  mcp/src/nodes.rs
-b63435f4a80b7d8eae2f17fc4e337a93  mcp/src/apply.rs
-c1159ccb938013b53d18d0cbae557fd0  mcp/src/protocol.rs
+66698b5d5489e98e0e14be333fe3e364  mcp/preview.rs
+ecc3674117e152dbb0c085a0d96278e6  mcp/mir.rs
+d7f0401f2374789138835c5cdd650f96  mcp/callgraph.rs
+1c2effe282503a4d980a3eb1d3f6abac  mcp/search.rs
+80ef426a5ac9473d79629c5ddd03710d  mcp/tools.rs
+02c52c1958001b6a3d773066c29b378c  mcp/nodes.rs
+b63435f4a80b7d8eae2f17fc4e337a93  mcp/apply.rs
+c1159ccb938013b53d18d0cbae557fd0  mcp/protocol.rs
 ```
 
 ## §1 逐条判定
@@ -34,13 +34,13 @@ c1159ccb938013b53d18d0cbae557fd0  mcp/src/protocol.rs
 装置（只在副本里挂载；真检出零改动）：
 
 ```
-mcp/src/zz_t69_preview_probe.rs   （挂在 preview.rs 内，取私有接缝）
+mcp/zz_t69_preview_probe.rs   （挂在 preview.rs 内，取私有接缝）
   lg20_a_preexisting_directory_is_skipped_not_reused_or_deleted
   lg20_eight_calls_get_eight_names
   lg20_a_failed_copy_removes_what_it_made
   lg20_eight_occupied_candidates_refuse_without_touching_them
   lg23_a_single_long_line_is_cut_and_the_reply_says_so
-mcp/src/zz_t69_probe.rs           （挂在 crate 根，经 pub(crate) 面 + tool_call 驱动）
+mcp/zz_t69_probe.rs           （挂在 crate 根，经 pub(crate) 面 + tool_call 驱动）
   lg43_the_callgraph_limit_contract_holds
   lg51_root_outside_paths_share_one_reply
   lg11_the_unparsable_line_does_not_depend_on_a_match

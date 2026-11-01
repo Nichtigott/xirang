@@ -14,6 +14,22 @@
 //! `required-features = ["dev-supervisor"]`，其余门禁全部沉默，而 `cargo install
 //! xirang-toolchain` 会装出一个没有东西可重建的工具。只有散文陈述的规则会腐化，因此本模块读取
 //! 每个成员的清单并拒绝那些形状。
+//!
+//! A third rule is about the documents rather than a manifest: the install command the
+//! READMEs print has to install a binary. `toolchain` gates every binary behind a feature, so
+//! `cargo install xirang-toolchain` on its own installs nothing at all — Cargo says so and
+//! exits successfully, which is the failure mode nobody notices. The rule reads each
+//! **fenced** `cargo install`, resolves the features it names against `[features]`, and
+//! refuses a command that leaves `xirang` uninstalled. Prose is deliberately outside the
+//! rule: the READMEs explain the defect in a sentence, and a sentence that says a command
+//! installs nothing is not a command a reader copies. The boundary has its own test, so
+//! widening this to prose has to update the contract first.
+//! 第三条规则针对文档而不是清单：README 打印的安装命令必须真的装上一个二进制。`toolchain`
+//! 把每个二进制都门控在某个特性之后，因此裸 `cargo install xirang-toolchain` 什么都不装——
+//! Cargo 会这么说，然后成功退出，这正是没人会注意到的失败形态。规则读取**围栏里**的每条
+//! `cargo install`，把它点名的特性对着 `[features]` 求闭包，并拒绝让 `xirang` 装不上的命令。
+//! 散文被有意排除在规则之外：README 会用一句话解释这个缺陷，而"某条命令什么都不装"的句子不是
+//! 读者会照抄的命令。这条边界有自己的测试，因此把它扩到散文必须先改契约。
 
 use std::fs;
 use std::path::Path;
@@ -95,6 +111,174 @@ pub fn findings(root: &Path) -> Vec<String> {
                     "{name}: `{feature}` gates test-only fixtures and must stay off by default"
                 ));
             }
+        }
+    }
+    found.extend(install_findings(root));
+    found
+}
+
+/// Documents that print install commands a reader will copy.
+/// 打印读者会照抄的安装命令的文档。
+const INSTALL_DOCUMENTS: &[&str] = &["README.md", "README.zh-CN.md"];
+
+/// The documented `cargo install` commands, as `(document, line, command)`.
+/// 文档里写下的 `cargo install` 命令，形如 `(文档, 行号, 命令)`。
+///
+/// Only fenced lines are read: a fence is the copy-paste surface, while a sentence may
+/// discuss the same command to explain what goes wrong with it. A command may wrap onto the
+/// next fenced line, so the window is that line and its successor; a trailing `# comment`
+/// and a closing period are cut off.
+/// 只读围栏里的行：围栏是"照抄"这件事的表面，而散文可以用同一句话来解释它哪里出了问题。命令
+/// 可能折到围栏里的下一行，因此窗口是那一行与它后面一行；行尾的 `# 注释` 与句号会被切掉。
+fn install_commands(root: &Path) -> Vec<(String, usize, String)> {
+    let mut found = Vec::new();
+    for document in INSTALL_DOCUMENTS {
+        let Ok(text) = fs::read_to_string(root.join(document)) else {
+            continue;
+        };
+        let fenced = fenced_lines(&text);
+        for (position, (number, line)) in fenced.iter().enumerate() {
+            let Some(at) = line.find("cargo install") else {
+                continue;
+            };
+            let mut command = line[at..].trim().to_owned();
+            if let (true, Some((_, next))) = (
+                !command.contains("xirang-toolchain"),
+                fenced.get(position + 1),
+            ) {
+                command.push(' ');
+                command.push_str(next.trim());
+            }
+            if !command.contains("xirang-toolchain") {
+                continue;
+            }
+            let command = command
+                .split(" #")
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches(['.', ','])
+                .trim()
+                .to_owned();
+            found.push(((*document).to_owned(), *number, command));
+        }
+    }
+    found
+}
+
+/// The lines inside fenced code blocks, as `(line number, text)`.
+/// 围栏代码块里的行，形如 `(行号, 文本)`。
+fn fenced_lines(text: &str) -> Vec<(usize, &str)> {
+    let mut found = Vec::new();
+    let mut open = false;
+    for (index, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with("```") {
+            open = !open;
+            continue;
+        }
+        if open {
+            found.push((index + 1, line));
+        }
+    }
+    found
+}
+
+/// The features one documented command names, from `--features <list>` or `--features=<list>`.
+/// 一条文档命令点名的特性，来自 `--features <列表>` 或 `--features=<列表>`。
+fn documented_features(command: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut tokens = command.split_whitespace().peekable();
+    while let Some(token) = tokens.next() {
+        let list = if let Some(rest) = token.strip_prefix("--features=") {
+            rest.to_owned()
+        } else if token == "--features" || token == "-F" {
+            tokens.next().unwrap_or_default().to_owned()
+        } else {
+            continue;
+        };
+        for name in list.split([',', ' ']) {
+            let name = name.trim_matches(|character: char| character == '"' || character == '\'');
+            if !name.is_empty() {
+                found.push(name.to_owned());
+            }
+        }
+    }
+    found
+}
+
+/// The features a starting list turns on, following this crate's own implications.
+/// 一组起始特性打开了哪些特性，沿着本 crate 自己的蕴含关系走。
+///
+/// `dep:serde_json` and `xirang-kernel/syntax` name a dependency rather than a feature, so
+/// they are skipped: opening a feature never installs a binary on its own.
+/// `dep:serde_json` 与 `xirang-kernel/syntax` 点名的是依赖而不是特性，因此跳过：打开一个特性本身
+/// 从不安装二进制。
+fn feature_closure(text: &str, start: &[String]) -> Vec<String> {
+    let members: Vec<(String, Vec<String>)> = block(text, "[features]")
+        .map(|body| {
+            body.lines()
+                .filter_map(|line| {
+                    line.split_once('=')
+                        .map(|(key, rest)| (key.trim().to_owned(), crate::quoted(rest)))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut enabled: Vec<String> = Vec::new();
+    let mut queue: Vec<String> = start.to_vec();
+    while let Some(feature) = queue.pop() {
+        if enabled.contains(&feature) {
+            continue;
+        }
+        enabled.push(feature.clone());
+        if let Some((_, list)) = members.iter().find(|(name, _)| *name == feature) {
+            for member in list {
+                if member.contains(':') || member.contains('/') {
+                    continue;
+                }
+                if !enabled.contains(member) {
+                    queue.push(member.clone());
+                }
+            }
+        }
+    }
+    enabled
+}
+
+/// Report every documented install command that would install no `xirang` binary.
+/// 报告每条装不出 `xirang` 二进制的文档安装命令。
+fn install_findings(root: &Path) -> Vec<String> {
+    let Ok(text) = fs::read_to_string(root.join("toolchain").join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    let declared = feature_names(&text);
+    let default = default_features(&text);
+    let targets = target_requirements(&text);
+    let mut found = Vec::new();
+    for (document, line, command) in install_commands(root) {
+        let named = documented_features(&command);
+        for feature in &named {
+            if !declared.contains(feature) {
+                found.push(format!(
+                    "{document}:{line}: the documented command `{command}` names feature \
+                     `{feature}`, which `toolchain/Cargo.toml` does not declare"
+                ));
+            }
+        }
+        let start = if named.is_empty() {
+            default.clone()
+        } else {
+            named
+        };
+        let enabled = feature_closure(&text, &start);
+        let installs = targets.iter().any(|(target, required)| {
+            target == "xirang" && required.iter().all(|feature| enabled.contains(feature))
+        });
+        if !installs {
+            found.push(format!(
+                "{document}:{line}: `{command}` installs no `xirang` binary — every `[[bin]]` \
+                 in this package carries `required-features`, so the documented command has to \
+                 enable the features that install the CLI (for example `--features cli`)"
+            ));
         }
     }
     found

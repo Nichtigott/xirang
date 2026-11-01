@@ -13,12 +13,24 @@ const fn path_byte(value: u8, normalize_path: bool) -> u8 {
     }
 }
 
-const fn sha256_digest(
-    first: &[u8],
-    second: &[u8],
-    separator: bool,
-    normalize_path: bool,
-) -> [u8; 32] {
+/// The state SHA-256 starts from.
+/// SHA-256 的初始状态。
+const INITIAL: [u32; 8] = [
+    0x6a09e667_u32,
+    0xbb67ae85,
+    0x3c6ef372,
+    0xa54ff53a,
+    0x510e527f,
+    0x9b05688c,
+    0x1f83d9ab,
+    0x5be0cd19,
+];
+
+/// Compress one 64-byte block into `state`. This is the only copy of the round function, so the
+/// one-shot entry, the const path and the streaming entry cannot drift apart.
+/// 把一个 64 字节块压进 `state`。轮函数只有这一份，因此一次性入口、const 路径与流式入口不会各自
+/// 漂移。
+const fn compress(state: &mut [u32; 8], block: &[u8]) {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
         0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
@@ -31,97 +43,111 @@ const fn sha256_digest(
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
         0xc67178f2,
     ];
+    let mut words = [0_u32; 64];
+    let mut i = 0;
+    while i < 16 {
+        words[i] = ((block[i * 4] as u32) << 24)
+            | ((block[i * 4 + 1] as u32) << 16)
+            | ((block[i * 4 + 2] as u32) << 8)
+            | (block[i * 4 + 3] as u32);
+        i += 1;
+    }
+    while i < 64 {
+        let a =
+            words[i - 15].rotate_right(7) ^ words[i - 15].rotate_right(18) ^ (words[i - 15] >> 3);
+        let b =
+            words[i - 2].rotate_right(17) ^ words[i - 2].rotate_right(19) ^ (words[i - 2] >> 10);
+        words[i] = words[i - 16]
+            .wrapping_add(a)
+            .wrapping_add(words[i - 7])
+            .wrapping_add(b);
+        i += 1;
+    }
+    let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h) = (
+        state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
+    );
+    i = 0;
+    while i < 64 {
+        let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+        let ch = (e & f) ^ ((!e) & g);
+        let t1 = h
+            .wrapping_add(s1)
+            .wrapping_add(ch)
+            .wrapping_add(K[i])
+            .wrapping_add(words[i]);
+        let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+        let maj = (a & b) ^ (a & c) ^ (b & c);
+        let t2 = s0.wrapping_add(maj);
+        h = g;
+        g = f;
+        f = e;
+        e = d.wrapping_add(t1);
+        d = c;
+        c = b;
+        b = a;
+        a = t1.wrapping_add(t2);
+        i += 1;
+    }
+    state[0] = state[0].wrapping_add(a);
+    state[1] = state[1].wrapping_add(b);
+    state[2] = state[2].wrapping_add(c);
+    state[3] = state[3].wrapping_add(d);
+    state[4] = state[4].wrapping_add(e);
+    state[5] = state[5].wrapping_add(f);
+    state[6] = state[6].wrapping_add(g);
+    state[7] = state[7].wrapping_add(h);
+}
+
+/// The lowercase hex of a finished state. One encoder, shared by both entries.
+/// 一个结束状态的小写十六进制。编码器只有一份，两个入口共用。
+fn hex_of(state: &[u32; 8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(64);
+    for word in state {
+        for byte in word.to_be_bytes() {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    out
+}
+
+const fn sha256_digest(
+    first: &[u8],
+    second: &[u8],
+    separator: bool,
+    normalize_path: bool,
+) -> [u8; 32] {
     let separator_len = if separator { 1 } else { 0 };
     let length = first.len() + separator_len + second.len();
     let blocks = (length + 9).div_ceil(64);
     let padded = blocks * 64;
     let bits = (length as u64) * 8;
-    let mut state = [
-        0x6a09e667_u32,
-        0xbb67ae85,
-        0x3c6ef372,
-        0xa54ff53a,
-        0x510e527f,
-        0x9b05688c,
-        0x1f83d9ab,
-        0x5be0cd19,
-    ];
+    let mut state = INITIAL;
     let mut block = 0;
     while block < blocks {
-        let mut words = [0_u32; 64];
+        let mut bytes = [0_u8; 64];
         let mut i = 0;
-        while i < 16 {
-            let mut value = 0_u32;
-            let mut byte = 0;
-            while byte < 4 {
-                let offset = block * 64 + i * 4 + byte;
-                let input = if offset < length {
-                    if offset < first.len() {
-                        path_byte(first[offset], normalize_path)
-                    } else if separator && offset == first.len() {
-                        0
-                    } else {
-                        path_byte(second[offset - first.len() - separator_len], normalize_path)
-                    }
-                } else if offset == length {
-                    0x80
-                } else if offset >= padded - 8 {
-                    ((bits >> ((padded - 1 - offset) * 8)) & 0xff) as u8
-                } else {
+        while i < 64 {
+            let offset = block * 64 + i;
+            bytes[i] = if offset < length {
+                if offset < first.len() {
+                    path_byte(first[offset], normalize_path)
+                } else if separator && offset == first.len() {
                     0
-                };
-                value |= (input as u32) << (24 - byte * 8);
-                byte += 1;
-            }
-            words[i] = value;
+                } else {
+                    path_byte(second[offset - first.len() - separator_len], normalize_path)
+                }
+            } else if offset == length {
+                0x80
+            } else if offset >= padded - 8 {
+                ((bits >> ((padded - 1 - offset) * 8)) & 0xff) as u8
+            } else {
+                0
+            };
             i += 1;
         }
-        while i < 64 {
-            let a = words[i - 15].rotate_right(7)
-                ^ words[i - 15].rotate_right(18)
-                ^ (words[i - 15] >> 3);
-            let b = words[i - 2].rotate_right(17)
-                ^ words[i - 2].rotate_right(19)
-                ^ (words[i - 2] >> 10);
-            words[i] = words[i - 16]
-                .wrapping_add(a)
-                .wrapping_add(words[i - 7])
-                .wrapping_add(b);
-            i += 1;
-        }
-        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h) = (
-            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
-        );
-        i = 0;
-        while i < 64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ ((!e) & g);
-            let t1 = h
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(words[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let t2 = s0.wrapping_add(maj);
-            h = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(t1);
-            d = c;
-            c = b;
-            b = a;
-            a = t1.wrapping_add(t2);
-            i += 1;
-        }
-        state[0] = state[0].wrapping_add(a);
-        state[1] = state[1].wrapping_add(b);
-        state[2] = state[2].wrapping_add(c);
-        state[3] = state[3].wrapping_add(d);
-        state[4] = state[4].wrapping_add(e);
-        state[5] = state[5].wrapping_add(f);
-        state[6] = state[6].wrapping_add(g);
-        state[7] = state[7].wrapping_add(h);
+        compress(&mut state, &bytes);
         block += 1;
     }
     let mut output = [0_u8; 32];
@@ -173,14 +199,86 @@ const fn sha256_prefix_of(digest: [u8; 32]) -> [u8; 16] {
 /// fingerprint against it; those bytes never pass through a `NodeId`.
 /// 公开是因为插件宿主用它校验插件校验和与公钥指纹；那些字节从不经过 `NodeId`。
 pub fn sha256_hex(input: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let digest = sha256_digest(input, &[], false, false);
-    let mut out = String::with_capacity(64);
-    for byte in digest {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0x0f) as usize] as char);
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    hasher.hex()
+}
+
+/// Incremental SHA-256, for bytes too many to hold at once: feed what arrived, take the digest at
+/// the end. It is the same round function and the same padding as [`sha256_hex`] — the tests check
+/// that at every block boundary, because a second padding scheme is exactly how a streaming digest
+/// starts disagreeing with the one-shot one.
+/// 增量 SHA-256，用于一次拿不下的字节：到手多少喂多少，最后取摘要。轮函数与填充都与 [`sha256_hex`]
+/// 相同——测试在每个块边界上核对这一点，因为「第二份填充方案」正是流式摘要与一次性摘要开始不一致的
+/// 方式。
+pub struct Sha256 {
+    state: [u32; 8],
+    buffer: [u8; 64],
+    filled: usize,
+    length: u64,
+}
+
+impl Default for Sha256 {
+    fn default() -> Self {
+        Self::new()
     }
-    out
+}
+
+impl Sha256 {
+    /// Start a digest.
+    /// 开始一次摘要。
+    pub const fn new() -> Self {
+        Self {
+            state: INITIAL,
+            buffer: [0_u8; 64],
+            filled: 0,
+            length: 0,
+        }
+    }
+
+    /// Feed `bytes`.
+    /// 喂入 `bytes`。
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.length = self.length.wrapping_add(bytes.len() as u64);
+        let mut rest = bytes;
+        if self.filled > 0 {
+            let take = (64 - self.filled).min(rest.len());
+            self.buffer[self.filled..self.filled + take].copy_from_slice(&rest[..take]);
+            self.filled += take;
+            rest = &rest[take..];
+            if self.filled == 64 {
+                compress(&mut self.state, &self.buffer);
+                self.filled = 0;
+            }
+        }
+        while rest.len() >= 64 {
+            let (block, tail) = rest.split_at(64);
+            compress(&mut self.state, block);
+            rest = tail;
+        }
+        if !rest.is_empty() {
+            self.buffer[..rest.len()].copy_from_slice(rest);
+            self.filled = rest.len();
+        }
+    }
+
+    /// Finish: pad the tail, compress it, and return the lowercase hex digest.
+    /// 收尾：填充尾部、压缩它，返回小写十六进制摘要。
+    pub fn hex(mut self) -> String {
+        let bits = self.length.wrapping_mul(8);
+        let mut tail = [0_u8; 128];
+        tail[..self.filled].copy_from_slice(&self.buffer[..self.filled]);
+        tail[self.filled] = 0x80;
+        let blocks = if self.filled < 56 { 1 } else { 2 };
+        let padded = blocks * 64;
+        tail[padded - 8..padded].copy_from_slice(&bits.to_be_bytes());
+        let mut index = 0;
+        while index < blocks {
+            compress(&mut self.state, &tail[index * 64..(index + 1) * 64]);
+            index += 1;
+        }
+        hex_of(&self.state)
+    }
 }
 
 /// Whether a byte is a path separator on either supported platform.
@@ -205,7 +303,7 @@ pub(super) const fn strip_leading_separator(value: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{sha256_hex, sha256_path_prefix, sha256_prefix};
+    use super::{Sha256, sha256_hex, sha256_path_prefix, sha256_prefix};
 
     /// The independent oracle: the audited `sha2` crate, reached only through
     /// the dev-dependency, so the shipped kernel stays dependency-free.
@@ -350,5 +448,49 @@ mod tests {
                 "folded composition differed for {first:?} / {second:?}"
             );
         }
+    }
+
+    /// The streaming entry must agree with the one-shot entry at every block boundary, because
+    /// that is where a second padding scheme starts to differ: 55 and 56 sit on opposite sides of
+    /// the one-block / two-block tail, and 64 and 128 are exact block ends.
+    /// 流式入口必须在每个块边界上与一次性入口一致，因为第二份填充方案正是从那里开始不同：55 与 56
+    /// 落在单块 / 双块尾部的两侧，64 与 128 是整块边界。
+    #[test]
+    fn the_streaming_digest_agrees_with_the_one_shot_entry_at_every_boundary() {
+        for length in [0_usize, 1, 55, 56, 63, 64, 65, 119, 120, 127, 128, 1000] {
+            let input = filler(length);
+            let one_shot = sha256_hex(&input);
+            assert_eq!(one_shot, hex(&oracle(&input)), "one-shot, length {length}");
+            let mut whole = Sha256::new();
+            whole.update(&input);
+            assert_eq!(whole.hex(), one_shot, "one update, length {length}");
+            let mut byte_at_a_time = Sha256::new();
+            for byte in &input {
+                byte_at_a_time.update(std::slice::from_ref(byte));
+            }
+            assert_eq!(
+                byte_at_a_time.hex(),
+                one_shot,
+                "byte at a time, length {length}"
+            );
+            let mut halves = Sha256::new();
+            let (left, right) = input.split_at(length / 2);
+            halves.update(left);
+            halves.update(right);
+            assert_eq!(halves.hex(), one_shot, "two updates, length {length}");
+        }
+    }
+
+    /// The empty input's digest is a fixed value, so a broken padding path is named by value
+    /// instead of hiding behind a self-consistent one-shot entry.
+    /// 空输入的摘要是固定值，因此坏掉的填充路径会按值被点名，而不是躲在一个自洽的一次性入口后面。
+    #[test]
+    fn the_streaming_digest_of_nothing_is_the_known_empty_digest() {
+        let mut hasher = Sha256::new();
+        hasher.update(&[]);
+        assert_eq!(
+            hasher.hex(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 }

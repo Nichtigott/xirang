@@ -1,0 +1,38 @@
+#!/bin/sh
+# One reproducible binding→execution→observation check for the controlled contract.
+# 受控合同的一条可复跑“绑定→执行→观察”检查。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+trace="$root/examples/control-button/.xirang/traces/xirang.trace"
+
+# 1. Build the example and run the real execution entry; it writes a real trace.
+XIRANG_BEHAVIOR_TRACE=1 cargo test -p xirang-example-control-button --test graft_behavior --offline >/tmp/xirang-graft-binding-test.log 2>&1
+test -s "$trace"
+
+# 2. The MCP reads that real artifact and separately reports binding and observed.
+cargo build -p xirang-toolchain --features mcp --bin xirang-mcp --offline >/tmp/xirang-graft-binding-build.log 2>&1
+answer=$(target/debug/xirang-mcp --call callgraph --function 'Button::paint' --root examples/control-button)
+printf '%s\n' "$answer"
+printf '%s\n' "$answer" | grep -q 'binding: declared graft control_button_graft::button_fast::NODE_ID'
+printf '%s\n' "$answer" | grep -q 'observed (one recorded run.*callers \[host\]'
+mv "$trace" /tmp/xirang-graft-binding.trace
+
+# 3. With no current trace, binding remains and observed is absent.
+rm -f "$trace"
+answer2=$(target/debug/xirang-mcp --call callgraph --function 'Button::paint' --root examples/control-button)
+printf '%s\n' "$answer2" | grep -q 'binding: declared graft'
+if printf '%s\n' "$answer2" | grep -q 'observed '; then
+  echo 'no-trace case still shows observed' >&2
+  exit 1
+fi
+
+# 4. Old artifacts are refused: foreign tree, source newer than trace, plan newer than trace.
+cargo test -p xirang-toolchain --features mcp --lib --offline -- \
+  mcp::trace::trace_tests::a_foreign_artifact_is_refused_by_name \
+  mcp::trace::trace_tests::a_trace_older_than_its_source_is_refused_as_stale \
+  mcp::trace::trace_tests::a_trace_older_than_its_binding_plan_is_refused_as_stale \
+  >/tmp/xirang-graft-binding-stale.log 2>&1
+
+rm -f "$trace"
+echo 'xirang-graft-binding: ok (binding + observed from real trace; no-trace and stale refused)'

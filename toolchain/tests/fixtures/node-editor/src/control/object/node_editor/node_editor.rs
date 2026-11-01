@@ -85,17 +85,11 @@ pub fn to_screen(width: u32) -> u32 {
     clamp_canvas_width(width + 1)
 }
 
-crate::control_object! {
-    kind: NodeEditor,
-    exports: ["control.render"],
-    needs_registry: true,
-    parent: crate::control::NODE_ID,
-    handle_contracts: [crate::control::ControlHandle],
-    registry_rule_path: "src/control/object/node_editor/registry_rule/registry_rule.rs",
-    flow: FlowContract::new(
-        ContractId::new("control.render.v1"),
-        1,
-        "ControlInput",
-        "ControlFrame",
-    ),
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<NodeEditor>()
+    .exports(&["control.render"])
+    .needs_registry(true)
+    .under(crate::control::NODE_ID)
+    .registry_rule_path("src/control/object/node_editor/registry_rule/registry_rule.rs")
+    .handle_contracts(xirang_toolchain::contracts!(NodeEditor: crate::control::ControlHandle))
+    .flow(FlowContract::new(ContractId::new("control.render.v1"), 1 , "ControlInput" , "ControlFrame" ,));

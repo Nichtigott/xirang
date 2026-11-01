@@ -6,8 +6,8 @@ use crate::workspace_root;
 use std::fs;
 use std::path::PathBuf;
 
-/// A throwaway checkout with the given files under `toolchain/src/mcp/src`.
-/// 一个只含给定文件的一次性检出，文件放在 `toolchain/src/mcp/src` 下。
+/// A throwaway checkout with the given files under `toolchain/src/mcp`.
+/// 一个只含给定文件的一次性检出，文件放在 `toolchain/src/mcp` 下。
 fn synthetic(files: &[(&str, &str)]) -> PathBuf {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -15,7 +15,7 @@ fn synthetic(files: &[(&str, &str)]) -> PathBuf {
         std::env::temp_dir().join(format!("xirang-online-{}-{sequence}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     for (name, contents) in files {
-        let path = root.join("toolchain/src/mcp/src").join(name);
+        let path = root.join("toolchain/src/mcp").join(name);
         fs::create_dir_all(path.parent().expect("parent")).expect("fixture dir");
         fs::write(&path, contents).expect("fixture file");
     }

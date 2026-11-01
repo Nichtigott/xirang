@@ -1,0 +1,171 @@
+#!/bin/sh
+# Gate: a C#-declared face really lands in the runtime registration tree, produced by a real Roslyn
+# generator — no committed record file, the build runs the producer.
+# 门禁：C# 声明的面真的落进运行期注册树，由真实 Roslyn 生成器产出——没有入库的记录文件，构建自己运行生产者。
+#
+#   XIRANG_DOTNET=/path/to/dotnet tools/xirang-csharp-host
+#
+# Why it exists: the record-file gate proves the carrier with a producer stand-in. This one replaces
+# the stand-in with the real .NET toolchain: the build runs `[record] command`, the generator parses
+# the package's C# sources with the SDK's own Roslyn (no NuGet package, no network), writes
+# version-3 records, and the Rust build reads them. The negative controls prove the generator's
+# refusals have teeth: a parent that is not 32 hex characters and an unknown named argument must both
+# fail, by name.
+# 为什么需要它：记录文件门禁用生产者替身证明载体。这一条用真实 .NET 工具链替换替身：构建运行
+# `[record] command`，生成器用 SDK 自带的 Roslyn 解析包的 C# 源码（不需要 NuGet 包、不需要网络），写版本 3
+# 记录，Rust 构建读它们。反控证明生成器的拒绝有牙：不是 32 个十六进制字符的父级与未知命名参数都必须按名失败。
+#
+# A machine without the .NET SDK reports "not run" (exit 2) instead of failing a face it cannot build.
+# 没有 .NET SDK 的机器报"未跑"（exit 2），而不是让一个它构建不了的面失败。
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+dotnet=${XIRANG_DOTNET:-}
+if [ -z "$dotnet" ]; then
+    dotnet=$(command -v dotnet || true)
+fi
+if [ -z "$dotnet" ]; then
+    echo "xirang-csharp-host: no dotnet; set XIRANG_DOTNET or install the .NET SDK" >&2
+    exit 2
+fi
+echo "dotnet $dotnet ($("$dotnet" --version 2>&1 | tail -1))"
+
+# A writable CLI home and package cache: the default ones may be read-only on this machine.
+# 可写的 CLI home 与包缓存：本机的默认位置可能是只读的。
+export DOTNET_CLI_HOME="${DOTNET_CLI_HOME:-${TMPDIR:-/tmp}/xirang-dotnet-home}"
+export NUGET_PACKAGES="${NUGET_PACKAGES:-${TMPDIR:-/tmp}/xirang-nuget-packages}"
+export DOTNET_NOLOGO=1
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+mkdir -p "$DOTNET_CLI_HOME" "$NUGET_PACKAGES"
+
+sdk="$root/multilang/sdk/csharp"
+if [ ! -d "$sdk/Xirang.Sdk" ] || [ ! -d "$sdk/Xirang.Faces" ]; then
+    echo "xirang-csharp-host: the C# SDK is not at $sdk; the crate's SDK location and this gate disagree" >&2
+    exit 2
+fi
+example="$root/examples/csharp-gauge/gauge"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/xirang-csharp-host-XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# 1. Build from scratch: no committed record file, so the build has to run the producer.
+# 1. 从零构建：没有入库的记录文件，因此构建必须运行生产者。
+rm -rf "$example/native/gauge.faces" "$example/csharp/src/gauge/Faces.cs" \
+    "$example/csharp/bin" "$example/csharp/obj"
+cd "$root/examples/csharp-gauge"
+XIRANG_DOTNET="$dotnet" CARGO_NET_OFFLINE=true cargo clean -p gauge >/dev/null
+XIRANG_DOTNET="$dotnet" CARGO_NET_OFFLINE=true cargo test --offline
+
+# 2. The producer really ran and wrote one version-3 record.
+# 2. 生产者真的运行了，并写出一条版本 3 记录。
+record="$example/native/gauge.faces"
+if [ ! -f "$record" ]; then
+    echo "xirang-csharp-host: the build succeeded but produced no record file" >&2
+    exit 1
+fi
+bytes=$(wc -c <"$record")
+if [ "$bytes" -ne 1228 ]; then
+    echo "xirang-csharp-host: the record file is $bytes bytes; a version-3 record is 1228" >&2
+    exit 1
+fi
+
+# 2b. The build also wrote the constants class the attribute names its parent through.
+# 2b. 构建还写出了特性点名父级所用的常量类。
+constants="$example/csharp/src/gauge/Faces.cs"
+if [ ! -f "$constants" ]; then
+    echo "xirang-csharp-host: the build produced no Faces.cs; a non-root parent cannot be named" >&2
+    exit 1
+fi
+if ! grep -q "PanelNodeId" "$constants"; then
+    echo "xirang-csharp-host: the generated XirangFaces class does not name the Rust parent module:" >&2
+    cat "$constants" >&2
+    exit 1
+fi
+
+# 3. Negative control 1: a parent that is not 32 hex characters must fail the generator.
+# 3. 反控一：不是 32 个十六进制字符的父级必须让生成器失败。
+mkdir -p "$tmp/bad-parent"
+cat >"$tmp/bad-parent/Bad.cs" <<'BAD'
+using Xirang;
+
+[Soil(Parent = "not-hex", Named = "Bad")]
+public sealed class Bad { }
+BAD
+cd "$sdk"
+if "$dotnet" run --project Xirang.Faces/Xirang.Faces.csproj -- -source "$tmp/bad-parent" \
+    -root "$tmp" -out "$tmp/bad.faces" >"$tmp/bad.out" 2>&1; then
+    echo "xirang-csharp-host: the generator accepted a parent that is not hex" >&2
+    exit 1
+fi
+if ! grep -q "hex\|not 32" "$tmp/bad.out"; then
+    echo "xirang-csharp-host: the generator failed, but not by the parent check:" >&2
+    cat "$tmp/bad.out" >&2
+    exit 1
+fi
+
+# 4. Negative control 2: a named argument the generator does not know must fail by name.
+# 4. 反控二：生成器不认识的命名参数必须按名失败。
+mkdir -p "$tmp/bad-field"
+cat >"$tmp/bad-field/Bad.cs" <<'BAD'
+using Xirang;
+
+[Soil(Parent = "d50df7e06896ebbf0b0912f3603dbc67", Named = "Bad", Exportz = new[] { "x" })]
+public sealed class Bad { }
+BAD
+if "$dotnet" run --project Xirang.Faces/Xirang.Faces.csproj -- -source "$tmp/bad-field" \
+    -root "$tmp" -out "$tmp/bad2.faces" >"$tmp/bad2.out" 2>&1; then
+    echo "xirang-csharp-host: the generator accepted an unknown named argument" >&2
+    exit 1
+fi
+if ! grep -q "unknown named argument" "$tmp/bad2.out"; then
+    echo "xirang-csharp-host: the generator failed, but not by the unknown-argument check:" >&2
+    cat "$tmp/bad2.out" >&2
+    exit 1
+fi
+
+# 4b. Negative control 3: a constant the generated XirangFaces class does not declare must fail the
+#     C# compile.
+# 4b. 反控三：生成的 XirangFaces 类没有声明的常量必须让 C# 编译失败。
+mkdir -p "$tmp/bad-const"
+cp "$constants" "$tmp/bad-const/Faces.cs"
+cat >"$tmp/bad-const/BadConst.cs" <<'BADCONST'
+using Xirang;
+
+[Soil(Parent = XirangFaces.Nope, Named = "Bad")]
+public sealed class BadConst { }
+BADCONST
+cat >"$tmp/bad-const/BadConst.csproj" <<BADPROJECT
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$sdk/Xirang.Sdk/Xirang.Sdk.csproj" />
+  </ItemGroup>
+</Project>
+BADPROJECT
+if "$dotnet" build "$tmp/bad-const/BadConst.csproj" -v q >"$tmp/badconst.out" 2>&1; then
+    echo "xirang-csharp-host: dotnet accepted a constant the generated XirangFaces class does not declare" >&2
+    exit 1
+fi
+if ! grep -q "Nope" "$tmp/badconst.out"; then
+    echo "xirang-csharp-host: the compile failed, but not by the missing-constant check:" >&2
+    cat "$tmp/badconst.out" >&2
+    exit 1
+fi
+
+# 5. The authoring adapter plans the same declaration the build reads (create reads back, modify
+#    preserves the class body, and the generated source really compiles with dotnet).
+# 5. 创作适配器规划出构建读取的同一种声明（create 能读回、modify 保留类体、生成的源码真的能在 dotnet 下编译）。
+cd "$root"
+XIRANG_DOTNET="$dotnet" CARGO_NET_OFFLINE=true cargo test -p xirang-multilang --features lang-csharp --offline \
+    --lib -- languages::csharp
+
+# 6. The producer refusals keep their teeth (failing command, zero-with-no-output, table shape).
+# 5. 生产者的拒绝保住牙（失败命令、退出 0 但无输出、表的形状）。
+cd "$root"
+CARGO_NET_OFFLINE=true cargo test -p xirang-toolchain --features build,native-record --offline --lib \
+    -- record_file
+
+echo "xirang-csharp-host: ok (the Roslyn generator and constants class work, and bad parents/unknown arguments/missing constants are refused)"

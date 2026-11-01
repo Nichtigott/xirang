@@ -3,17 +3,11 @@
 
 use xirang_toolchain::run_method::{ContractId, FlowContract};
 
-crate::root_object! {
-    kind: Panel,
-    needs_registry: true,
-    parent: crate::root_node_id(crate::XIRANG_NAMESPACE),
-    flow: FlowContract::new(
-        ContractId::new("panel.frame.v1"),
-        1,
-        "PanelInput",
-        "PanelFrame",
-    ),
-}
+#[xirang_toolchain::soil]
+pub const SOIL: xirang_toolchain::Soil = xirang_toolchain::Soil::of::<Panel>()
+    .needs_registry(true)
+    .under(crate::root_node_id(crate::XIRANG_NAMESPACE))
+    .flow(FlowContract::new(ContractId::new("panel.frame.v1"), 1 , "PanelInput" , "PanelFrame" ,));
 
 /// 父面交给子对象的绘制结果。
 /// The frame a parent face hands to its children for painting.

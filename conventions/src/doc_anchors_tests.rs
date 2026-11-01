@@ -202,7 +202,7 @@ fn an_ambiguous_or_unknown_bare_name_is_left_alone() {
         )],
         &[
             ("kernel/src/same.rs", "fn a() {}\n"),
-            ("toolchain/src/cli/src/same.rs", "fn b() {}\n"),
+            ("toolchain/src/cli/same.rs", "fn b() {}\n"),
         ],
     );
     assert_eq!(findings(&root), Vec::new());

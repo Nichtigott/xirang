@@ -1,0 +1,10 @@
+[package]
+name = "verify"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+shop = { path = "../shop" }
+shop-panel = { path = "../crates/shop-panel" }
+xirang-toolchain = { path = "../../../toolchain", version = "0.2.0" }

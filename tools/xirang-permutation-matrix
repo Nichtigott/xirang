@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""Run graft, move and crate-split in every order and compare what the tree ends up being.
+
+The specification's §7 matrix (`docs/managed-maintenance/authorization-design-2026-10-17.md` §4.9) asks one
+question: does the **effective state** depend on the order those three operations ran in? "Effective" is
+read from the product entries only — the registry query (identity, source, logical path, kind, parent),
+the graft plan, the crate plan — plus the authored bytes on disk. Nothing here reads an internal structure
+or assumes a directory layout.
+
+Measured result on 2026-10-18 (all six orders, one run): the effective object set, the graft plan and the
+crate plan are **identical**; the one file that differs by order is the move's own record
+(`.xirang/moves/<n>/move.plan`), which is history rather than state — so it is excluded from the
+comparison, and that exclusion is printed on every run rather than kept quiet.
+
+Two things here are premises rather than conveniences:
+· every copy carries the **same package name**, because the package namespace is an input to every
+  `NodeId` (`hash(namespace, source path, name)`) — two differently named copies could never agree on
+  identities, and the harness would report a difference it had created itself;
+· `declare` is a preview like every other action, so it needs `apply: true` to create `add_crates.rs`.
+
+规格 §7 矩阵只问一件事：**有效状态**会不会因为 graft、move、crate 拆分这三步的次序不同而不同？"有效"
+只读产品入口——`registry` 查询（身份、来源、逻辑路径、kind、父级）、graft 计划、crate 计划——加上磁盘上
+作者写下的字节。这里不读内部结构，也不假设目录布局。
+
+2026-10-18 实测（六种次序、同一次运行）：有效对象集合、graft 计划、crate 计划**完全相同**；唯一随次序
+不同的是 move 自己的记录（`.xirang/moves/<n>/move.plan`），它是历史而不是状态——因此从比较里排除，并且
+这个排除在每次运行里**印出来**，而不是悄悄发生。
+
+这里有两件事是前提而不是便利：每份副本用**同一个包名**，因为包命名空间是每个 `NodeId` 的输入
+（`hash(namespace, source path, name)`）——两份名字不同的副本永远不可能在身份上一致，而那样报出来的差异是
+夹具自己造的；`declare` 和别的动作一样只是预览，所以它需要 `apply: true` 才会创建 `add_crates.rs`。
+"""
+
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+MCP = REPO / "target/debug/xirang-mcp"
+PACKAGE = "perm-host"
+# History, not state: the move's own record names the sequence it ran in, so two orders cannot agree on it.
+# 历史而不是状态：move 自己的记录写着它是第几次，因此两种次序不可能一致。
+HISTORY = ".xirang/moves/"
+
+
+def call(root, tool, arguments):
+    process = subprocess.run(
+        [str(MCP), "--call", tool, "--json", json.dumps(arguments), "--root", str(root)],
+        capture_output=True, text=True)
+    if process.returncode != 0:
+        raise AssertionError(
+            f"{tool} {json.dumps(arguments)} failed rc={process.returncode}:\n"
+            f"{process.stdout}{process.stderr}")
+    return process.stdout + process.stderr
+
+
+def fixture(destination, label):
+    root = destination / label
+    root.mkdir(parents=True)
+    (root / "src").mkdir()
+    (root / "Cargo.toml").write_text(
+        f'[package]\nname = "{PACKAGE}"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n')
+    (root / "src/lib.rs").write_text("// host entry\n")
+    for request in [
+        {"action": "add", "fields": {"module": "control", "kind": "Control", "needs_registry": True}, "apply": True},
+        {"action": "add", "parent": "root/control",
+         "fields": {"module": "button", "kind": "Button", "needs_registry": True}, "apply": True},
+        # One face carries a flow contract, so the comparison covers a **contract** as well as an identity:
+        # the `.flow(FlowContract::new(…))` call is part of the declaration text, which the byte half compares.
+        # 有一个面带 flow 合同，好让比较覆盖到**合同**而不只是身份：`.flow(FlowContract::new(…))` 那次调用
+        # 是声明文本的一部分，而字节那一半比的正是声明文本。
+        {"action": "add", "parent": "root/control/button",
+         "fields": {"module": "cap", "kind": "Cap", "flow": "control.render.v1|1|ControlInput|ControlFrame"},
+         "apply": True},
+        {"action": "add", "parent": "root/control",
+         "fields": {"module": "panel", "kind": "Panel", "needs_registry": True}, "apply": True},
+        # The moved face names no graft and is named by none, so a move of it cannot change graft coverage —
+        # which is what makes it a *state* operation here rather than a repair exercise (the move's designed
+        # refusal for a coverage change is a separate, already-pinned behaviour).
+        # 被搬的面不与任何 graft 相关，因此搬它不会改变切口覆盖——这才让它在这里是一次**状态**操作，而不是一次
+        # repair 演练（覆盖变化时 move 按设计拒绝，那是另一条已钉住的行为）。
+        {"action": "add", "parent": "root/control", "fields": {"module": "shelf", "kind": "Shelf"}, "apply": True},
+    ]:
+        call(root, "apply", request)
+    return root
+
+
+G = ("G", {"action": "cut", "cut": "crate::control::object::button::object::cap::NODE_ID",
+           "graft": "crate::control::object::panel::NODE_ID", "full": True, "apply": True})
+M = ("M", {"action": "move", "node": "root/control/shelf", "to": "root/control/panel", "apply": True})
+C = ("C", {"action": "declare", "crate": "objects", "subtree": "crate::control::SUBTREE", "apply": True})
+
+
+def operate(root, operation):
+    name, arguments = operation
+    if name == "C":
+        reply = call(root, "crates", arguments)
+        reply += call(root, "crates", {"action": "write", "apply": True})
+        return reply
+    return call(root, "apply", arguments)
+
+
+def registry(root):
+    rows = []
+    for line in call(root, "registry", {"full": True}).splitlines():
+        if "logical_path=" not in line:
+            continue
+        fields, head = {}, line.split()
+        if len(head) > 2:
+            fields.update(id=head[1], source=head[2])
+        for token in line.split():
+            if "=" in token and not token.startswith("http"):
+                key, _, value = token.partition("=")
+                fields[key] = value
+        rows.append(tuple(sorted(fields.items())))
+    return tuple(sorted(rows))
+
+
+def grafts(root):
+    return tuple(sorted(line.strip() for line in call(root, "grafts", {}).splitlines()
+                        if " cut `" in line or " graft `" in line))
+
+
+def crates(root):
+    interesting = ("package", "crate ", "generated", "declares", "belongs", "partition of")
+    return tuple(sorted(line.strip() for line in call(root, "crates", {"action": "plan"}).splitlines()
+                        if line.strip() and any(word in line for word in interesting)))
+
+
+def consumers(root):
+    """The registry-level consumer relation: which face each face hangs under, as paths.
+
+    Read from two product entries rather than from a file layout: `explain` prints a face's `parent` **id**, and
+    `registry` prints every face's `id` — so the pair can be joined without assuming where anything lives. The
+    call-level edges (`calls=`) come from the build's published record and need a build to refresh; that is the
+    half this dimension does **not** cover, and it is stated in the report rather than left to be assumed.
+    两个产品入口拼出来、而不是从文件布局推：`explain` 印一个面的 `parent` **id**，`registry` 印每个面的
+    `id`——于是这对关系可以拼起来，而不必假设东西住在哪。调用级边（`calls=`）来自构建发布的记录、要一次构建才刷新；
+    那是本维度**不**覆盖的那一半，并且写在报告里，而不是留给读者去假定。
+    """
+    rows = {}
+    for line in call(root, "registry", {"full": True}).splitlines():
+        if "logical_path=" not in line:
+            continue
+        fields = {}
+        head = line.split()
+        if len(head) > 2:
+            fields["id"] = head[1]
+        for token in line.split():
+            if "=" in token:
+                key, _, value = token.partition("=")
+                fields[key] = value
+        if "id" in fields and "logical_path" in fields:
+            rows[fields["id"]] = fields["logical_path"]
+    edges = []
+    for path in sorted(rows.values()):
+        reply = call(root, "explain", {"node": path})
+        for line in reply.splitlines():
+            words = line.split()
+            if len(words) == 2 and words[0] == "parent":
+                edges.append((rows.get(words[1], f"unresolved:{words[1]}<={path}"), path))
+    return tuple(sorted(edges))
+
+
+def files(root):
+    return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+            and not set(path.relative_to(root).parts) & {"target", ".git"}
+            and not str(path.relative_to(root)).startswith(HISTORY)}
+
+
+def snapshot(root):
+    return {"registry": registry(root), "grafts": grafts(root), "crates": crates(root),
+            "consumers": consumers(root), "files": files(root)}
+
+
+def run_order(workspace, order):
+    root = fixture(workspace, order.lower())
+    steps = {"G": G, "M": M, "C": C}
+    print(f"[{order}]")
+    for index, symbol in enumerate(order):
+        before = snapshot(root)
+        reply = operate(root, steps[symbol])
+        after = snapshot(root)
+        headline = next((line for line in reply.splitlines() if line.strip()), "")
+        print(f"  {index + 1}. {symbol} — {'changed' if before != after else 'NO OBSERVABLE CHANGE'}"
+              f" ({headline[:96]})")
+        if before == after:
+            raise AssertionError(f"{order}: step {symbol} left the tree unchanged; a no-op is not a pass")
+    return snapshot(root)
+
+
+def main():
+    if not MCP.is_file():
+        raise SystemExit(f"{MCP} is missing: build the bridge first (`cargo build -p xirang-toolchain --features mcp --bin xirang-mcp`)")
+    orders = sys.argv[1:] or ["GMC", "GCM", "MGC", "MCG", "CGM", "CMG"]
+    for order in orders:
+        if sorted(order) != ["C", "G", "M"]:
+            raise SystemExit(f"`{order}` is not a permutation of G, M and C")
+    workspace = Path("/tmp") / f"perm-matrix-{os.getpid()}"
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    workspace.mkdir(parents=True)
+    print(f"workspace {workspace}")
+    print(f"compared: registry · grafts · crates · consumer edges · authored bytes, excluding `{HISTORY}**` (history, not state); call-level calls= needs a build and is not covered")
+    finals = {order: run_order(workspace, order) for order in orders}
+    baseline = orders[0]
+    failed = False
+    # A dimension that measured nothing would compare equal in every order for the wrong reason, so its size is
+    # printed and an empty one fails the run. This is the same rule the per-step assertion applies to operations.
+    # 一个什么都没量到的维度会在所有次序里"相同"，而原因不对。因此它的规模要印出来，空的直接失败。这与逐步断言对
+    # 操作用的是同一条规则。
+    sizes = {half: len(finals[baseline][half])
+             for half in ("registry", "grafts", "crates", "consumers", "files")}
+    print(f"dimension sizes in {baseline}: " + " · ".join(f"{name}={size}" for name, size in sizes.items()))
+    if 0 in sizes.values():
+        failed = True
+        print("a dimension measured nothing — an empty dimension agreeing with itself proves nothing")
+    print()
+    for order in orders[1:]:
+        report = [f"{half}={'same' if finals[baseline][half] == finals[order][half] else 'DIFFERS'}"
+                  for half in ("registry", "grafts", "crates", "consumers", "files")]
+        print(f"{baseline} vs {order}: " + " · ".join(report))
+        if "DIFFERS" in " ".join(report):
+            failed = True
+            for half in ("registry", "grafts", "crates", "consumers"):
+                left, right = finals[baseline][half], finals[order][half]
+                if left != right:
+                    print(f"  {half} only in {baseline}: {sorted(set(left) - set(right))}")
+                    print(f"  {half} only in {order}: {sorted(set(right) - set(left))}")
+            left, right = finals[baseline]["files"], finals[order]["files"]
+            if left != right:
+                print(f"  paths only in {baseline}: {sorted(set(left) - set(right))}")
+                print(f"  paths only in {order}: {sorted(set(right) - set(left))}")
+                print("  same path, different bytes: "
+                      f"{sorted(path for path in set(left) & set(right) if left[path] != right[path])}")
+    print()
+    print("VERDICT:", "DIFFERS — the order changed the effective state" if failed
+          else "the effective state is the same in every order tested")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

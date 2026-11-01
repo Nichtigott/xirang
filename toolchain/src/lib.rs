@@ -13,6 +13,43 @@
 //! 模块里，构建入口写成 `crate::build_method::run()`。
 #![warn(missing_docs)]
 
+#[cfg(any(feature = "build", feature = "authoring"))]
+#[path = "source_cache.rs"]
+mod source_cache;
+
+#[cfg(any(feature = "studio", feature = "mcp"))]
+#[path = "cargo_mir.rs"]
+mod cargo_mir;
+
+#[cfg(any(feature = "cli", feature = "mcp"))]
+mod isolation;
+
+#[cfg(feature = "build")]
+#[path = "cargo_metadata.rs"]
+mod cargo_metadata;
+
+// Where a package's registration faces live is one rule with one implementation, and
+// two execution surfaces need it: the build (which walks it) and the authoring writer
+// (which writes into it). It lives at the crate root so the authoring surface reaches
+// the same answer **without** the `build` feature — a feature-dependent copy is how a
+// custom `[lib] path` layout silently got its faces written into `src/`.
+// 一个包的注册面住在哪里是一条规则、一份实现，而两个执行面都需要它：构建（遍历它）与创作写入方
+// （写进它）。它住在 crate 根，使创作执行面**无需** `build` 特性就能拿到同一个答案——依赖特性的
+// 副本正是自定义 `[lib] path` 布局把面静默写进 `src/` 的原因。
+#[cfg(any(feature = "build", feature = "authoring"))]
+#[path = "source_layout.rs"]
+pub(crate) mod source_layout;
+
+// The bridge from a face view to the project's object ledger. It reads and renders the project file
+// and nothing else, so `authoring` alone is the gate: the structural migration that renames a module
+// must update the mapping **inside the same transaction**, and that path must also compile for a
+// consumer that authors without the build surface.
+// 从注册面视图到项目对象台账的桥。它只读写这个项目文件、不碰别的，因此门控只到 `authoring`：改名模块的
+// 结构迁移必须在**同一个事务**里更新映射，而这条路径也要能为不带构建面的创作调用方编译。
+#[cfg(feature = "authoring")]
+#[path = "object_ledger.rs"]
+pub(crate) mod object_ledger;
+
 // The merged crate has to be able to name itself. Macros that the old per-crate layout expanded
 // into carry `::xirang_toolchain::…` paths — they were written when every surface was its own
 // crate and the host was an external caller — and the in-crate test modules that arrived with
@@ -39,27 +76,46 @@ extern crate self as xirang_toolchain;
 #[cfg(test)]
 pub const XIRANG_NAMESPACE: &str = env!("CARGO_PKG_NAME");
 
+// The shared authoring service: one request vocabulary, one plan, one transaction, for every
+// surface that creates or edits a registration face. It needs `authoring` for the Rust generator
+// and `build` for the source layout / declared-native readers.
+// 共享创作服务：一套请求词汇、一份计划、一个事务，服务每个创建或编辑注册面的执行面。它需要
+// `authoring` 提供 Rust 生成器，需要 `build` 提供源码布局与声明式本地面读取器。
+#[cfg(all(feature = "authoring", feature = "build"))]
+#[path = "authoring_service/service.rs"]
+pub mod authoring_service;
+
 // t115-mount: begin
 #[cfg(feature = "build")]
-#[path = "build_method/src/lib.rs"]
+#[path = "build_method/lib.rs"]
 pub mod build_method;
 #[cfg(feature = "evidence")]
-#[path = "call_evidence/src/lib.rs"]
+#[path = "call_evidence/lib.rs"]
 pub mod call_evidence;
 #[cfg(feature = "cli")]
-#[path = "cli/src/lib.rs"]
+#[path = "cli/lib.rs"]
 pub mod cli;
 #[cfg(feature = "mcp")]
-#[path = "mcp/src/lib.rs"]
+#[path = "mcp/lib.rs"]
 pub mod mcp;
+/// The multilingual production surface, re-exported from `xirang-multilang`.
+/// 多语言生产面，从 `xirang-multilang` 重导出。
+///
+/// The implementations live in the crate that owns language adapters; this module is the historical
+/// path every execution surface calls, and it holds no second implementation.
+/// 实现住在拥有语言适配器的那个 crate 里；本模块是每个执行面调用的历史路径，它不持有第二份实现。
+#[cfg(any(feature = "cli", feature = "mcp", feature = "studio"))]
+pub mod multilang {
+    pub use xirang_multilang::production::*;
+}
 #[cfg(feature = "plugins")]
-#[path = "plugin_host/src/lib.rs"]
+#[path = "plugin_host/lib.rs"]
 pub mod plugin_host;
 #[cfg(feature = "run")]
-#[path = "run_method/src/lib.rs"]
+#[path = "run_method/lib.rs"]
 pub mod run_method;
 #[cfg(feature = "studio")]
-#[path = "studio/src/lib.rs"]
+#[path = "studio/lib.rs"]
 pub mod studio;
 // t115-mount: end
 

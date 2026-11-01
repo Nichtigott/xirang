@@ -24,13 +24,13 @@
 这不是"发现"，是**环境事实**，它决定了下文若干处"为什么我复算的数字与报告不完全一样"：
 
 - 五个**源码**文件在产物冻结之后被修改（mtime 17:43–17:53；`audit-findings.json` / `audit-report.md` / `audit-structure-map.html` 的 mtime 是 17:12，`audit-inventory.json` 是 12:43）：
-  `build_method/src/node_id.rs`（117→181 行）、`build_method/src/identity_cache.rs`（101→306）、`core/src/registry_core/authoring/parse/admission.rs`（235→366）、`core/src/registry_core/plugin/catalog/catalog.rs`（455→535）、`studio/src/studio/app/mutations.rs`（395→586）；`git diff --stat` 合计 +845/−94。
+  `build_method/node_id.rs`（117→181 行）、`build_method/identity_cache.rs`（101→306）、`core/src/registry_core/authoring/parse/admission.rs`（235→366）、`core/src/registry_core/plugin/catalog/catalog.rs`（455→535）、`studio/studio/app/mutations.rs`（395→586）；`git diff --stat` 合计 +845/−94。
 - 这五个文件正是 **LGC-LG-01 / LGC-LG-02 / LGC-LG-03（三条 CRITICAL）与 LGC-LG-04（MAJOR）** 的所在文件，diff 的形态是**修复 + 回归测试**（例：`admission.rs` 新增 `both_lists_survive_the_read_and_write_round_trip`；`mutations.rs` 新增 `mod lock_writes` 与"锁不可解析时绝不允许成功"的断言；`node_id.rs` 把缓存键改成 `(命名空间, 相对路径)`，注释直接复述 LGC-LG-01 的机制）。
 - 后果（我已逐条量化）：
   1. **§1.1 的代码规模基准已不再复现**：报告写 394 文件 / 78,951 行；我按同一口径实测 **394 文件 / 79,622 行**，差 **+671 行**，正好等于上述 5 个文件的行数增量（+205+64+131+80+191）。
   2. **R-4 的枚举数已变**：报告贴出的输出是"模块名 **296** / 声明处 **440**"，我今天跑同一脚本得 **297 / 442**；差额由修复引入的两处 inline 声明解释——`identity_cache.rs` 新增 `mod tests {`（+1 站点，名字 `tests` 已存在）与 `mutations.rs` 新增 `mod lock_writes {`（+1 站点且 +1 新名字）。**R-4a/R-4b/R-4c 的裁决数不受影响**（见第 7 项）。
-  3. **4 条"权威定位"（标题 `file:line`）指向的内容已移位**：`LGC-LG-01` 的 `build_method/src/node_id.rs:36` 冻结时是那句 `CACHED_NODE_IDS.get()…` 的缓存读取，现在是修复后的一行文档注释；`LGC-LG-02` 的 `core/src/registry_core/authoring/parse/admission.rs:40` 由 `return match (allow.is_empty(), deny.is_empty())` 变成文档注释；`LGC-LG-40` 的 `core/src/registry_core/plugin/catalog/catalog.rs:281`、`STU-S-08` 的 `studio/src/studio/app/mutations.rs:320`、`STU-V-01` 的 `studio/src/studio/app/mutations.rs:332` 同样移位。按报告 §1.5 自己声明的口径（文件存在 + 行号在界内）这些锚点**仍全部为 0 违规**（文件变长了），但"标题行就是这个缺陷发生处"的承诺在当前树上**对这 5 个文件已不成立**。
-- 我的处理：七项检查里凡涉及"当前树"的量（锚点扫描、R-4 枚举、394/78,951）都**按今天的树实测**并在此标注差异；凡涉及"冻结时的事实"（212 条字段、计数、命名报告文本）按产物自身比对。**这一条是否阻塞交付，留给队长**——它不在七项检查的判据内，但会让读者按报告去 `build_method/src/node_id.rs:36` 时看不到它描述的代码。
+  3. **4 条"权威定位"（标题 `file:line`）指向的内容已移位**：`LGC-LG-01` 的 `build_method/node_id.rs:36` 冻结时是那句 `CACHED_NODE_IDS.get()…` 的缓存读取，现在是修复后的一行文档注释；`LGC-LG-02` 的 `core/src/registry_core/authoring/parse/admission.rs:40` 由 `return match (allow.is_empty(), deny.is_empty())` 变成文档注释；`LGC-LG-40` 的 `core/src/registry_core/plugin/catalog/catalog.rs:281`、`STU-S-08` 的 `studio/studio/app/mutations.rs:320`、`STU-V-01` 的 `studio/studio/app/mutations.rs:332` 同样移位。按报告 §1.5 自己声明的口径（文件存在 + 行号在界内）这些锚点**仍全部为 0 违规**（文件变长了），但"标题行就是这个缺陷发生处"的承诺在当前树上**对这 5 个文件已不成立**。
+- 我的处理：七项检查里凡涉及"当前树"的量（锚点扫描、R-4 枚举、394/78,951）都**按今天的树实测**并在此标注差异；凡涉及"冻结时的事实"（212 条字段、计数、命名报告文本）按产物自身比对。**这一条是否阻塞交付，留给队长**——它不在七项检查的判据内，但会让读者按报告去 `build_method/node_id.rs:36` 时看不到它描述的代码。
 
 ---
 
@@ -60,7 +60,7 @@
 | --- | --- | --- |
 | K1 是否存在没有 `severity_note` 的降级 | **通过（0 违规）** | 212 条里 `severity < max(severity_sources)` 只有 2 条：`LGC-LG-33`（MAJOR→MINOR）与 `STU-S-04`（MAJOR→MINOR），**都带 `severity_note`**；`severity > max` 0 条；`severity_required` 与逐条来源最大值一致；`counts.severity_changed_with_note` 列出 3 条（含 `LGC-LG-50` 的 MINOR→MAJOR）。**独立重读**：我读了 432 个来源行，412 行在行内直接带有所记录的严重度 token，20 行是"该行不带严重度词"的表头/叙述行，**0 处记录与来源行矛盾** |
 | K2 `meta.note` 的取值集与逐条字段一致 | **通过** | 逐条字段实际集：`verify_status ∈ {confirmed, partial, unverified}`（**无 `falsified`**）、`evidence_kind ∈ {runtime, read, reviewed, none}`；`meta.note` 声明的两个集**逐字相同**；`meta.note` 声明的 `severity_source` 分布（ambiguity-report 20、declared-table 110、ledger-table 44、max-of-sources 3、naming-report 30、verified-override 5）与 `counts.by_severity_source`、与逐条重算**三处逐项相等** |
-| K3 全文旧总数 163 | **通过** | 报告里 2 处、JSON 里 4 处，全部是**行号/区间引用**（`studio/src/studio/app/navigation.rs:155-163`、`studio/src/studio/ui/search/detail.rs:15/163`、`build_method/src/graft_view/declared.rs:163`、JSON 的 `"line": 163` 字段），没有一处是旧总数 |
+| K3 全文旧总数 163 | **通过** | 报告里 2 处、JSON 里 4 处，全部是**行号/区间引用**（`studio/studio/app/navigation.rs:155-163`、`studio/studio/ui/search/detail.rs:15/163`、`build_method/graft_view/declared.rs:163`、JSON 的 `"line": 163` 字段），没有一处是旧总数 |
 
 ---
 
@@ -85,10 +85,10 @@
 | 1 | `NAM-40`「394/394 一致」改成正确口径（14 处四族） | **已改** | `docs/audit-2026-09-28/audit-naming-review.md:346`（结论级更正："这条是错的"）→ `:349` 给出 14 处分四族；`:15` 修订表①"照改"；`:344` 条目标题已改为"结论已修订（原'干净'被证伪）" |
 | 2 | D-10/D-11 不再引用它 | **已不再引用该结论** | D-10（`:402`）判定列改为"文件 stem 比对（不是 `module_path`）"，现状列把"文件名 43/44 成对"与"模块名自由（14 处有意）"分开写并指向**更正后的** `NAM-40`；D-11（`:403`）通篇不提 `NAM-40`。全文 5 处 `394/394` 全部在"被证伪/是错的/不要引用"语境（`:15`、`:23`、`:346`、`:362`、`:538`） |
 | 3 | `D-3` 统一为递归谓词 34（仓库）/ 28（发布面）+ 豁免 | **已统一且我独立复算一致** | `:395` 的 D-3 行写明谓词（递归 `.rs` 集合恰为 `{<dir>.rs}`）∧ 路径不以 `examples/`/`studio/tests/` 开头，三口径"仓库 34 / 发布面 28 / 豁免后 0"，并声明不再用 39/67；**我的自写计数器**（os.walk 递归集合比对，排除 `target/`）实测 **34 / 28 / 6**，与豁免清单（`examples/control-button/...` 3 处 + `studio/tests/fixtures/node-editor/...` 3 处）逐条一致 |
-| 4 | `NAM-05` 降 MINOR + 修法改对（`build_evidence.rs`） | **已改** | `:108` 标题即"MINOR（原 MAJOR，t27 复核后降级）"；正文承认计数应为 **12/17**，修法采用 `mcp/src/evidence.rs` → **`build_evidence.rs`**，并写明"`build_evidence` 只指 mcp 侧文件，`debug_method` 模块名是 `call_evidence`"（`:108` 的注 + `:20` 的表） |
+| 4 | `NAM-05` 降 MINOR + 修法改对（`build_evidence.rs`） | **已改** | `:108` 标题即"MINOR（原 MAJOR，t27 复核后降级）"；正文承认计数应为 **12/17**，修法采用 `mcp/evidence.rs` → **`build_evidence.rs`**，并写明"`build_evidence` 只指 mcp 侧文件，`debug_method` 模块名是 `call_evidence`"（`:108` 的注 + `:20` 的表） |
 | 5 | `NAM-06` 降 MINOR + 修法改对（`write_guard.rs`） | **已改** | `:422` 标题"MINOR（原 MAJOR，t27 复核后降级并改修法）"；正文**撤回**"并入 `mutations.rs`"，改为改名 **`write_guard.rs`**；两个目标文件在工作树里都还不存在（`ls` 均 No such file），与"只出报告、源码不改"一致 ✓ |
 | 6 | `D-5`/`D-7` 计数与逐行清单一致 | **一致** | D-5（`:397`）：全量 **24 行**、白名单 9、非入口位 **15 处**；我逐行数 `NAM-32` 的表：**24 行 / 15 个"违规" / 9 个 WL**，24−9=15 ✓。D-7（`:399`）：计入 **8**、全量 **25**；我数 `NAM-34`：计入表 **8 行**，"不计入的 17 行"两类合计 **17**（领域词 14 + 惯用语/实现分界 3），8+17=25 ✓ |
-| 7 | `NAM-02` 引的类型真实存在 | **已改且存在** | `NAM-02`（`:1` 起）现写 `CallRef`/`CallTreeView`，并明确"原写的 `CallRefRing` 在本仓不存在"；我 grep 实测 `studio/src/studio/app/state/misc.rs:55 pub struct CallRef`、`:76 pub struct CallTreeView` ✓ |
+| 7 | `NAM-02` 引的类型真实存在 | **已改且存在** | `NAM-02`（`:1` 起）现写 `CallRef`/`CallTreeView`，并明确"原写的 `CallRefRing` 在本仓不存在"；我 grep 实测 `studio/studio/app/state/misc.rs:55 pub struct CallRef`、`:76 pub struct CallTreeView` ✓ |
 | 8 | §0 的目录数 105 | **一致且我独立复算** | `:35` 写"394 个 `.rs` + 全部 105 个目录（谓词：394 个文件所在的不同父目录）"；我的计数器实测 **105** ✓（同一谓词） |
 | 9 | 四条漏项补上 | **全部补上** | ① `NAM-03`（`:99`）有 ⚠️"这是公开路径变更（t27 补的漏项）"，点名 `conventions/src/shims.rs:50` 与同表其余条目；② `NAM-43`（`:363`）新增，记录四家族；③ `*_tests → mod tests` 的不统一写在同一处（44 个 `*_tests.rs` 里 40 个直接挂载、4 个挂 `mod tests`）；④ `entry_pages::get_mut` 出现在 `NAM-37`（`:336`/`:337`，明标"不计"）、`NAM-32` 第 21 行与 D-4 行 |
 | 10 | 「干净」类结论写成「谓词 + 命令 + 输出」 | **已改** | §F 标题即"每条写成 谓词 + 命令 + 输出"，修订注说明"原来把结论写成 X/N 一致而不给谓词"；表头为 `结论 / 谓词（§G 编号）/ 命令 / 输出`，并指向 §G 的 P1–P8 可复算脚本 |

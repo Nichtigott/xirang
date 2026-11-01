@@ -213,7 +213,7 @@ impl SourceWatcher {
             .map_err(io::Error::other)?;
         for root in [
             package_root.join("src"),
-            package_root.join("toolchain/src/studio/src"),
+            package_root.join("toolchain/src/studio"),
             // Plugin selection is source too. Watching only the extension
             // crate leaves catalog changes invisible until restart.
             // 插件选择文件同样属于源码。只监听 extension crate 会让目录修改
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn accepts_remove_rename_and_cargo_changes() {
         let removed = Event::new(EventKind::Remove(notify::event::RemoveKind::File))
-            .add_path("toolchain/src/studio/src/old.rs".into());
+            .add_path("toolchain/src/studio/old.rs".into());
         let renamed = Event::new(EventKind::Modify(notify::event::ModifyKind::Name(
             notify::event::RenameMode::Both,
         )))

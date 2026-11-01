@@ -112,11 +112,11 @@ test ...the_shipped_manifests_name_one_version ... FAILED      （panicked at co
 
 ### 2.4 G-07 naming 剥注释 —— 证实（含邻域披露 F-3）
 
-夹具：`build_method/src/scaffold/probe.rs` 里的 `// … xirang-linecomment = …`、`/* … xirang-blockcomment = … */`、以及**字符串字面量里**的 `xirang-ghost = {{ package = \"xirang-elsewhere\" }}`；`.github/workflows/ci.yml` 里的注释 `# cargo test -p xirang-commented is history` 与两条真要求（`-p xirang-ghost`、`--package=xirang-elsewhere`）。
+夹具：`build_method/scaffold/probe.rs` 里的 `// … xirang-linecomment = …`、`/* … xirang-blockcomment = … */`、以及**字符串字面量里**的 `xirang-ghost = {{ package = \"xirang-elsewhere\" }}`；`.github/workflows/ci.yml` 里的注释 `# cargo test -p xirang-commented is history` 与两条真要求（`-p xirang-ghost`、`--package=xirang-elsewhere`）。
 
 绿：恰好 3 条发现（模板键名 1 + 工作流 2），三条注释一条都没报。红（M4，变异 = 原文不剥注释）：作者的 `a_name_in_a_comment_is_not_a_requirement` 红（3 → 我这边会多出注释里的名字），我的夹具同向红；还原零残留。
 
-**F-3（前置邻域，非 G-07 引入）**：`requirement_names`（`conventions/src/naming.rs:328`）匹配的是未转义的 `package = "`，而真实模板写的是转义引号（`build_method/src/scaffold/project.rs:115`：`package = \"xirang-run-method\"`）——那半边在真实拼法下不匹配。今天被同一个名字的**依赖键**掩盖（键名与包名相同，:115 两处都如此），所以真实树 0 发现不受影响；但一条**重命名**的内部依赖（`kernel = { package = "xirang-core" }`）写在模板字符串里就是隐形的。我的两条夹具分别演示了：未转义（raw string）→ 报；转义 → 不报。严重度 low–medium，属 G-07 边界之外，供挂账决策。
+**F-3（前置邻域，非 G-07 引入）**：`requirement_names`（`conventions/src/naming.rs:328`）匹配的是未转义的 `package = "`，而真实模板写的是转义引号（`build_method/scaffold/project.rs:115`：`package = \"xirang-run-method\"`）——那半边在真实拼法下不匹配。今天被同一个名字的**依赖键**掩盖（键名与包名相同，:115 两处都如此），所以真实树 0 发现不受影响；但一条**重命名**的内部依赖（`kernel = { package = "xirang-core" }`）写在模板字符串里就是隐形的。我的两条夹具分别演示了：未转义（raw string）→ 报；转义 → 不报。严重度 low–medium，属 G-07 边界之外，供挂账决策。
 
 ### 2.5 G-08 属性栈含文档注释 —— 证实
 
@@ -300,7 +300,7 @@ a disjunction: [] / an inequality: [] / an operator the gate does not enumerate:
 | --- | --- | --- | --- | --- |
 | F-1 | low | t4 交付文本 / `conventions/src/doc_anchors.rs:166` | "52 处新锚点"复现不出；门禁实际口径（33 份非 record markdown）里今天只有 1 处，全 `docs/` 树是 124 处（104 处在本轮报告里，且 record 本就被豁免） | 报告只写覆盖面与来源，不给计数；或说明口径与日期 |
 | F-2 | low | `conventions/src/size.rs:216`（注释）与 `:204`（`declares_module`） | 注释称 `mod  x ;` 与 `mod  x;` 同义，实现只归一化空白串 → 该拼法仍被度量（我的夹具实证 610 行被报） | 比较前把 `;` 前的空白也吃掉，或删掉注释里的那个拼法 |
-| F-3 | low–medium | `conventions/src/naming.rs:328` vs `build_method/src/scaffold/project.rs:115` | `package = "…"` 半边匹配未转义引号，真实模板是转义引号 → 重命名的内部依赖写在模板字符串里就是隐形的（今天被同名依赖键掩盖） | 判定改在剥转义的文本上做，或补一条"重命名 + 转义引号"的钉子 |
+| F-3 | low–medium | `conventions/src/naming.rs:328` vs `build_method/scaffold/project.rs:115` | `package = "…"` 半边匹配未转义引号，真实模板是转义引号 → 重命名的内部依赖写在模板字符串里就是隐形的（今天被同名依赖键掩盖） | 判定改在剥转义的文本上做，或补一条"重命名 + 转义引号"的钉子 |
 | F-4 | low | `conventions/src/mounting.rs:10` | 同句仍写 "churning five crates"；我两种口径分别量到 10 与 2 个 crate | 给出测量口径与日期，或与 29 一起删掉 |
 
 另有两条**观察**（不算缺陷）：① 非 Rust 围栏不被跟踪，`~~~text` 内的 ```rust 会被读成顶层围栏并按未闭合报出（§2.1 边界；真实树无此形状，且 record 文档本就不参与围栏解析）；② `doc_anchors` 的 record 豁免与 `doc_blocks` 同源（`markdown_files` 末尾 `retain(… && !is_record(path))`）——本文件自己（`audit-*.md`）因此也不参与门禁，这也是 F-1 那个数字只在 record 文档里增长的机制。

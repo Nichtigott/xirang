@@ -62,7 +62,7 @@ Cargo.toml:2   members  "core" → "kernel"
 - 词边界也决定了**本批唯一一次全局替换**是安全的：目标串 `xirang_kernel::` 与其余 8 个 lib 名互不为前缀（方案 §3.6 第 1 步）。
 - 形态清单（都要替换）：
   - `use xirang::…` / `xirang::foo::Bar` 常规路径；
-  - **`::xirang::…` 前缀写法**：`run_method/src/macros/entry.rs:37-38`（`::xirang::lexicon::…`）；
+  - **`::xirang::…` 前缀写法**：`run_method/macros/entry.rs:37-38`（`::xirang::lexicon::…`）；
   - 文档注释里的 `xirang::`（同一次 sed 覆盖）。
 - 复核命令：`grep -rnE '(^|[^A-Za-z0-9_])xirang::' --include=*.rs .`（**判别性**：295 → 0）。
 - **反向后果**：替换后 `registry_core::`/`xirang_*::` 不受影响；`examples/`、`studio/`、`plugin-host/`、`debug_method/` 的 `xirang::` 计数为 **0** ⇒ 批 1 不动身份红线区与 studio 夹具。
@@ -75,7 +75,7 @@ Cargo.toml:2   members  "core" → "kernel"
 | `mounting` | `conventions/src/mounting.rs:258` `root.join("core/src")` | → `root.join("kernel/src")` |
 | `naming` | `conventions/src/naming.rs:39` `LIB_NAME_EXCEPTIONS = &[("core", "xirang")]` | **删掉该例外表**（`kernel/` + `xirang-kernel` + `xirang_kernel` 三件套自动成立）；若想保守，可先改成 `("kernel", "xirang_kernel")` 再删 |
 | `size` | `conventions/src/size.rs:82` `BASELINE = &[]` | **无需改**（0 条基线；方案里的那条 `contracts.rs` 基线已在命名批次中清掉） |
-| `shims` | 见 §1.6 | 表内路径**不改**（17 条全在 `run_method/src/**` 与 `build_method/src/**`），**pin 字符串与检测器字面量要改** |
+| `shims` | 见 §1.6 | 表内路径**不改**（17 条全在 `run_method/**` 与 `build_method/**`），**pin 字符串与检测器字面量要改** |
 | `release_version` / `release_workflow` / `bilingual` / `doc_blocks` / `doc_anchors` | — | 自动跟随新名字 / 只扫 md；批 1 只受 §1.7 的锚点影响 |
 | 夹具里的 `"core"` | `conventions/src/lib.rs:507`（合成 members）、`:553/:555`（合成 `core/src`） | **可选**：它们是**合成夹具**，不指向真实树；建议与本批同改以免读者误会，但不改也不会红 |
 
@@ -97,15 +97,15 @@ Cargo.toml:2   members  "core" → "kernel"
 | `tools/xirang-publish` 头部散文 | 多处点名 `xirang-core`（共 13 处） | 同步文（不改逻辑） |
 | `.github/workflows/ci.yml:56` | `cargo package -p xirang-core --locked --allow-dirty` | → `-p xirang-kernel`（**判别性**） |
 | `.github/workflows/ci.yml` 注释 | `:53`、`:129`、`:133` 点名 `xirang-core`/`xirang-cli` | 同步文 |
-| `build_method/src/scaffold/project.rs:76` | `workspace.join("core").is_dir()` | → `join("kernel")`（`:77` 的 `build_method` 属批 2） |
-| `build_method/src/scaffold/project.rs:111-112/:154-…` | `workspace.join("run_method"/"build_method")`、生成文本里 `xirang_run_method::…` | **批 2**（不在本批） |
-| `cli/src/lib.rs`、`cli/src/commands/new.rs` | 各 2 处 `xirang-core` 文本 | 同步文（若指向真实包名则必改） |
+| `build_method/scaffold/project.rs:76` | `workspace.join("core").is_dir()` | → `join("kernel")`（`:77` 的 `build_method` 属批 2） |
+| `build_method/scaffold/project.rs:111-112/:154-…` | `workspace.join("run_method"/"build_method")`、生成文本里 `xirang_run_method::…` | **批 2**（不在本批） |
+| `cli/lib.rs`、`cli/commands/new.rs` | 各 2 处 `xirang-core` 文本 | 同步文（若指向真实包名则必改） |
 | `conventions/src/{release_version.rs,release_version_tests.rs,naming.rs}` | 2 / 11 / 4 处 `xirang-core` | 同步文（`release_version` 的表格与钉子要跟着改） |
 | `core/tests/ungated_authoring_data.rs` | 2 处 `xirang-core` | 同步文（批 1 后该文件在 `kernel/tests/`） |
 
 ### 1.6 SHIMS 表（批 1 的精确落点）
 
-- **条目数与路径**（现算 17 条，方案写 16）：`run_method/src/runtime/trace/trace.rs` 3、`run_method/src/lib.rs` 2、`run_method/src/registry.rs` 2、`run_method/src/plugin.rs` 2、`run_method/src/authoring/face_file.rs` 1、`run_method/src/authoring/parse/parse.rs` 1、`run_method/src/authoring/context.rs` 1、`run_method/src/runtime/runtime.rs` 1、`run_method/src/runtime/evidence.rs` 1（合计 14）；`build_method/src/identity.rs` 2、`build_method/src/syntax.rs` 1（合计 3）。
+- **条目数与路径**（现算 17 条，方案写 16）：`run_method/runtime/trace/trace.rs` 3、`run_method/lib.rs` 2、`run_method/registry.rs` 2、`run_method/plugin.rs` 2、`run_method/authoring/face_file.rs` 1、`run_method/authoring/parse/parse.rs` 1、`run_method/authoring/context.rs` 1、`run_method/runtime/runtime.rs` 1、`run_method/runtime/evidence.rs` 1（合计 14）；`build_method/identity.rs` 2、`build_method/syntax.rs` 1（合计 3）。
 - **批 1 动作**：条目的**文件路径不改**（没有一条指向 `core/`）；要改的是**每条 pin 的语句字符串**里的 `pub use xirang::` → `pub use xirang_kernel::`（`conventions/src/shims.rs` 全文共 **20** 处该字面量，含检测器 `xirang_reexports()` 的口径串）。
 - **判别性**：`grep -c 'pub use xirang::' conventions/src/shims.rs` **20 → 0**；`cargo test -p xirang-conventions --offline` 必须绿（`missing_shims` 对缺失文件是 **panic**，所以 pin 与真实语句必须同批改）。
 - 方案 §5.1 说「路径 → `toolchain/src/{run,build}/**`」是**批 2** 的事。
@@ -155,7 +155,7 @@ grep -rn 'xirang-core' --include=*.md --include=*.toml . | wc -l
    # 还原 conventions 的 purity/mounting/naming 与 shims 的 20 处 pin 串
    git checkout -- .    # 注意：本批的团队规则禁在工作树里用 checkout；这里是"未来批次回滚"的说明
    ```
-3. **必须一起回滚的东西**：`kernel/Cargo.toml`、根 `Cargo.toml:2`、6 行依赖、`conventions/src/{purity,mounting,naming,shims}.rs`、`.github/workflows/ci.yml:56`、`tools/xirang-publish` 的层表/依赖表/散文、`build_method/src/scaffold/project.rs:76`、§1.7 的文档面。**生成物**（`examples/*/target/xirang`）无需回滚：批 1 结束后本来就该清掉（方案 §4.4）。
+3. **必须一起回滚的东西**：`kernel/Cargo.toml`、根 `Cargo.toml:2`、6 行依赖、`conventions/src/{purity,mounting,naming,shims}.rs`、`.github/workflows/ci.yml:56`、`tools/xirang-publish` 的层表/依赖表/散文、`build_method/scaffold/project.rs:76`、§1.7 的文档面。**生成物**（`examples/*/target/xirang`）无需回滚：批 1 结束后本来就该清掉（方案 §4.4）。
 4. **回滚后自证**：§2 的判别性谓词全部回到批 1 前读数（295 / 20 / 25 / 6 / 1 / 1）。
 
 ## 4. 批 2 / 批 3 的前置与不可回滚点
@@ -165,7 +165,7 @@ grep -rn 'xirang-core' --include=*.md --include=*.toml . | wc -l
 1. **批 1 已合入**（方案 §7：批 1 与批 2 之间不允许并行——批 2 的所有替换都以内核已叫 `xirang_kernel` 为前提）。
 2. **方案 §4.2 的 `git mv` 表必须按当前树重算**：命名批次已把被搬运子树内部改了形状（A1 収平 24 处、mcp 三个模块改名、run_method 七个站点、`evidence.rs`→`build_evidence.rs`、`locals/call_trace.rs`→`recording.rs`、`trace/artifact/`→`trace/snapshot/`、`face_manifest.rs`→`face_file.rs`、`validation/validation.rs`→`context.rs`、`cache.rs`→`discovery_cache.rs`）。批 2 开工前应再跑一次同口径的重算（尤其 §4.2 的每行 `git mv` 目标路径）。
 3. **`#[path]` 结论前提已变**：方案 §3.5「0 处 `#[path]` 需要改」建立在「子树内部形状不变」上；命名批次已经动过形状，但**全部仍是相对路径**（432 条源声明、非相对 0）⇒ 结论本身仍成立（合并只搬整棵子树，相对解析不变）。**不要**照抄方案的 339。
-4. **同一批必须落的清单**（方案 §4.4，节选）：`RUN_METHOD_CRATE`（现 `lexicon.rs:63` + 钉子 `lexicon_tests.rs:15`）、宏里的绝对路径（`run_method/src/macros/entry.rs:37-38`、`face_registration.rs:263`）、`shims` 17 条的**路径**（`toolchain/src/{runtime,build_time}/**`）、`features`/`lint`/`bilingual` 的门禁路径、`tools` 三处、CI 两处、`AGENTS.md` 与 README（含 12 个 README 删除）、脚手架模板。
+4. **同一批必须落的清单**（方案 §4.4，节选）：`RUN_METHOD_CRATE`（现 `lexicon.rs:63` + 钉子 `lexicon_tests.rs:15`）、宏里的绝对路径（`run_method/macros/entry.rs:37-38`、`face_registration.rs:263`）、`shims` 17 条的**路径**（`toolchain/src/{runtime,build_time}/**`）、`features`/`lint`/`bilingual` 的门禁路径、`tools` 三处、CI 两处、`AGENTS.md` 与 README（含 12 个 README 删除）、脚手架模板。
 5. **前置的事实性检查**（现算）：5 个 bin（`xirang`、`cargo-xirang`、`xirang-studio`、`xirang-dev`(required-features `dev-supervisor`)、`xirang-mcp`）与 4 组 feature（`core::syntax`、`run_method::authoring`、`studio::{default,node-graph,prototype-fixtures,dev-supervisor}`、`plugin-host::{default,wasm,process-tools}`）——批 2 要保持这些名字不变。
 6. **清缓存**：批 2 验收前 `rm -rf examples/*/target/xirang`（`build_output_is_current` 的指纹不含渲染器输出，旧产物可能被判"仍最新"）。
 

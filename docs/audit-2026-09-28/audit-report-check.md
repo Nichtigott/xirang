@@ -48,7 +48,7 @@ PY
 | 7 | HTML 数字可追溯 + 离线自包含 | **通过**：`audit-structure-map.html` 无任何 `http(s)://`、无 `<link>`/外部 `<script src>`（`<style>`/`<script>`/内嵌 `application/json` 数据块全内联）；内嵌 12 个 crate 的 `files/lines/fn/pubfn/src_lines/test_lines` 与 `audit-inventory.json` **逐项相等（0 mismatch）**，合计 387/78,727 = inventory 的成员合计；28 项动作与方案的 28 个 `R-01…R-28` **一一对应**（无一方多/少）。 |
 | 8 | 目录内非 `audit-` 前缀文件 | **通过**：`docs/audit-2026-09-28/` 现有 20 个文件，全部 `audit-` 前缀，无残留（若残留，`conventions/src/doc_blocks.rs:133` 的 `is_record` 不豁免、`cargo test --workspace` 会红）。 |
 | 9 | 关键数字可追溯 + 四处口径差 | **部分通过**：394/78,951 可追溯到 `audit-structure-base.md`（4 处）与 `audit-inventory.md`（1 处）、报告自己也写了 3 处；387/78,727 可追溯到 `audit-inventory.md`（2 处）+ 报告 1 处；121 vs 120 在 §1.2（`audit-report.md:51-57`）显式说明三口径；严重度计数在 §1.4（`:69-82`）显式说明。**「约 84k」这一口径在总报告里没有对账**（只在 `audit-structure-base.md:22` 与 `:497` 提出，且那两处明确点名「请 t17 报告对账时以本条口径为准」）→ §3-N2。 |
-| 10 | 随机 10 条 `.rs:NNN` 锚点 | **通过（我自己跑的脚本）**：163 条的 `file`/`line` 字段全部命中真实文件且 `1 ≤ line ≤ 总行数`（0 违规）；正文随机 10 条（`seed=20260928`）全部命中且无歧义：`studio/src/studio/ui/forms/project.rs:47`、`run_method/src/authoring/operations/face_write.rs:85`、`studio/src/studio/app/writers.rs:1`、`studio/src/studio/app/tests/call_tree.rs:25`、`core/src/registry_core/release/release.rs:259`、`run_method/src/macros/face.rs:139`、`build_method/src/contracts.rs:193`、`core/src/registry_core/declaration/declaration.rs:344`、`core/src/registry_core/tree/graft_ops/overlay.rs:111`、`core/src/registry_core/tree/graft_ops/resolution.rs:22`。 |
+| 10 | 随机 10 条 `.rs:NNN` 锚点 | **通过（我自己跑的脚本）**：163 条的 `file`/`line` 字段全部命中真实文件且 `1 ≤ line ≤ 总行数`（0 违规）；正文随机 10 条（`seed=20260928`）全部命中且无歧义：`studio/studio/ui/forms/project.rs:47`、`run_method/authoring/operations/face_write.rs:85`、`studio/studio/app/writers.rs:1`、`studio/studio/app/tests/call_tree.rs:25`、`core/src/registry_core/release/release.rs:259`、`run_method/macros/face.rs:139`、`build_method/contracts.rs:193`、`core/src/registry_core/declaration/declaration.rs:344`、`core/src/registry_core/tree/graft_ops/overlay.rs:111`、`core/src/registry_core/tree/graft_ops/resolution.rs:22`。 |
 | 队长 1 | 计数独立重数 | 见第 4 项：**严重度计数五处一致**（3/48/112/163）；**但 `verify_status` 与 `evidence_kind` 的计数有三套数字互不相同** → 阻塞 B-2/B-3/B-6。 |
 | 队长 2 | 被证伪项只出现在「撤销/降级」 | 见第 2 项：点名的 5 项全部合规（`LGC-LG-50` 按总账「取最高」维持 MAJOR，§4 与 §2.2.1 一致）。 |
 | 队长 3 | `unverified` 不许冒充「已确认」 | **通过**：12 条 `unverified` 在 §2.3 表里**每条都带 `unverified` 字样**（我逐行核过）；CRITICAL/MAJOR 的 `unverified` = **0**，作者「无 CRITICAL/MAJOR 未复核」的声明成立。**但**未复核的**条数**自相矛盾 → 阻塞 B-2。 |
@@ -81,7 +81,7 @@ PY
 ### B-3 同一对缺陷被算了两次：`LGC-LH-10` 与 `LGC-LG-51`+`LGC-LG-52`
 
 - `audit-report.md:1178`（§10.1）：「**`LGC-LG-51+52`**（MINOR）：成员 `LGC-LH-10`。…拆得比原报告更细，予以采纳；**LH-10 作为组不再单独成行**。」
-- 但 `LGC-LH-10` **仍是独立行**：`audit-findings.json` 里它有 `severity=MINOR`、`old_ids=["LH-10","LG-51+52"]`、evidence 里同时含 a（`plugin-host/src/process.rs:392` 坏帧上下文）与 b（`mcp/src/mir.rs:217` 存在性 oracle）两个子项；`audit-report.md:615` 的 §2.3 表里也有它。
+- 但 `LGC-LH-10` **仍是独立行**：`audit-findings.json` 里它有 `severity=MINOR`、`old_ids=["LH-10","LG-51+52"]`、evidence 里同时含 a（`plugin-host/src/process.rs:392` 坏帧上下文）与 b（`mcp/mir.rs:217` 存在性 oracle）两个子项；`audit-report.md:615` 的 §2.3 表里也有它。
 - 而 `LGC-LG-51`（= 子项 b）与 `LGC-LG-52`（= 子项 a）同样是独立行（`:612`、`:613`）。于是 MINOR 的 112 里至少有 1 行是作者自己宣布「不再单独成行」的组行。
 - 必须修：删掉 `LGC-LH-10` 行（MINOR 112→111、合计 163→162），**或**撤回 §10.1 那句话并把 LH-10 保留为组行、同时删掉 LG-51/52 两行（同样 111）。无论哪种，§10.2、`counts`、§2.3 表、`id_map` 都要同步重算。
 
