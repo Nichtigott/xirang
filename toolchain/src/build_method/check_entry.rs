@@ -9,10 +9,10 @@ use crate::build_method::registry_identity;
 
 use super::{DeclaredFailure, declared_cuts, run_declared};
 
-/// Run the same discovery and validation pipeline as [`run_for`], but hand the
+/// Run the same discovery and validation pipeline as [`crate::build_method::run_for`], but hand the
 /// caller the structured [`xirang_kernel::BuildDiagnostics`] instead of the text a
 /// terminal or `compile_error!` reads.
-/// 运行与 [`run_for`] 相同的发现与校验管线，但把结构化的
+/// 运行与 [`crate::build_method::run_for`] 相同的发现与校验管线，但把结构化的
 /// [`xirang_kernel::BuildDiagnostics`] 交给调用方，而不是终端或 `compile_error!` 读的文本。
 ///
 /// This is the machine-readable twin of `run_for`: a CI job or `xirang check

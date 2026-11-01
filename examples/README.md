@@ -16,12 +16,12 @@ build them are in [`tools/`](../tools).
 
 | example | what it is | in the root workspace | gate |
 | --- | --- | --- | --- |
-| [`control-button`](control-button) | The README's `Control`/`Button` tree as a real host crate: a folder face that owns a `Registry`, its direct children, a sibling range and a `graft` cut. | yes | `cargo test --workspace` |
+| [`control-button`](control-button) | The README's `Control`/`Button` tree as a real host crate: a folder face that owns a `Registry`, its direct children, a sibling range and a `graft` cut. | yes | `cargo test --workspace`, `tools/xirang-graft-binding` |
 | [`control-button-graft`](control-button-graft) | An **out-of-project** replacement for `Slider`, used by the sibling-range cut above. | yes | `cargo test --workspace` |
-| [`control-suite`](control-suite) | A host partitioned by `[crate]` declaration: the subtrees that become their own crates, the generated `crates/` and the fragment that compiles them. | no | `tools/xirang-partition-rehearsal` |
-| [`partitioned-button`](partitioned-button) | The committed shape of a partitioned host — `host/`, the split-off `crates/`, and the `graft/` entries that cross the boundary — as the gates build it. | no | `tools/xirang-partition-rehearsal`, `tools/xirang-graft-matrix` |
+| [`control-suite`](control-suite) | A host partitioned by `[crate]` declaration: the subtrees that become their own crates, the generated `crates/` and the fragment that compiles them. | no | `tools/xirang-daily-behaviors` |
+| [`partitioned-button`](partitioned-button) | The committed shape of a partitioned host — `host/`, the split-off `crates/`, and the `graft/` entries that cross the boundary — as the gates build it. | no | `tools/xirang-partition-rehearsal`, `tools/xirang-graft-matrix`, `tools/xirang-mcp-session` |
 | [`mixed-shop`](mixed-shop) | A registration tree whose `Area` face is **declared in C++** (`native/area/area.cpp` writes a `XIRANG_SOIL` record) and hangs under the Rust `Panel` face, with the `panel` subtree split into a crate of its own. | no | `tools/xirang-mixed-shop` |
-| [`record-gauge`](record-gauge) | A face declared in a **build-time record file**, folded in by the build and visible from the run-time registration tree. | no | `tools/xirang-daily-behaviors` |
+| [`record-gauge`](record-gauge) | A face declared in a **build-time record file**, folded in by the build and visible from the run-time registration tree. | no | `tools/xirang-record-file` |
 | [`c-gauge`](c-gauge) | A face declared in **C** and compiled through the native driver. | no | `tools/xirang-c-host` |
 | [`go-gauge`](go-gauge) | A face declared in **Go** (the constants file the build writes, then the record the SDK emits). | no | `tools/xirang-go-host` |
 | [`java-gauge`](java-gauge) | A face declared in **Java** through the `@Soil(…)` annotation and its `SoilProcessor`. | no | `tools/xirang-java-host` |
