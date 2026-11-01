@@ -120,7 +120,20 @@ pub(crate) fn acquire_within(out_dir: &Path, budget: Duration) -> Result<Publish
                     stolen_from: None,
                 });
             }
+            // Two shapes mean "somebody else has it": the file exists (`AlreadyExists`), and — on
+            // Windows — a handle or a scanner still holding it (`PermissionDenied`, where a sharing
+            // violation lands). The second was fatal until the windows-1.96 job measured a writer
+            // racing another and getting a hard error instead of the wait this module promises, while
+            // the job beside it passed. Both arms stay bounded by the same deadline, and a directory
+            // that simply denies creation has no lock file, so it still fails fast below instead of
+            // waiting out the budget for nothing.
+            // 两种形状都表示"别人拿着它"：文件存在（`AlreadyExists`），以及在 Windows 上还有句柄或扫描器
+            // 正拿着它（`PermissionDenied`——共享冲突落在这里）。第二种过去是致命的，直到 windows-1.96 作业
+            // 量到一次与别的写者抢跑、拿到硬错误而不是本模块承诺的等待，而同批另一作业却通过了。两条臂仍受
+            // 同一个截止时间约束，且真正不允许建文件的目录里没有锁文件，因此仍在下面快速失败，而不是空等整个预算。
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied && path.exists() => {
+            }
             Err(error) => {
                 return Err(format!(
                     "cannot take the publish lock {}: {error}",
