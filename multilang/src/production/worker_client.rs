@@ -112,8 +112,13 @@ fn wait_with_timeout(
         if started.elapsed() >= limit {
             let _ = child.kill();
             let _ = child.wait();
-            let _ = stdout_reader.join();
-            let _ = stderr_reader.join();
+            // The readers are **not** joined here: a worker wrapper can leave a grandchild holding
+            // the same pipe, and joining would wait for that grandchild exactly like the un-killed
+            // run (measured on CI: a `sleep 5` worker with `--timeout 1` still took 5.0 s). Their
+            // buffers are only used on success, so detaching them costs nothing.
+            // 这里**不** join 读取线程：worker 的包装壳可能留下仍持有同一根管道的孙进程，join 会像没杀
+            // 一样等它（CI 实测：`sleep 5` 的 worker 配 `--timeout 1` 仍耗 5.0 s）。它们的缓冲区只在成功
+            // 路径使用，脱离即可。
             return Err(format!(
                 "the worker did not finish within {}s",
                 limit.as_secs()
