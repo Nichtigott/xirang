@@ -67,7 +67,7 @@ pub(crate) fn reexports(shape: &ShapeDeclaration, host_root: &Path) -> String {
 /// One nested module chain whose innermost module re-exports the generated crate's module.
 /// 一条嵌套模块链，最内层 re-export 生成 crate 的模块。
 fn nested(module: &str, ident: &str, depth: usize) -> String {
-    let (head, rest) = module.split_once("::").map_or((module, ""), |pair| pair);
+    let (head, rest) = module.split_once("::").unwrap_or((module, ""));
     let indent = "    ".repeat(depth);
     if rest.is_empty() {
         return format!(

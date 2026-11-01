@@ -1,5 +1,14 @@
+#![cfg(unix)]
 //! The write scope: the real location decides, and the whole set is refused together.
 //! 写入作用域：由真实位置决定，且整个集合一起被拒绝。
+//!
+//! These pins build directory links to prove that a link out of the package is refused by its real
+//! location. `std::os::unix::fs::symlink` is the only spelling of that fixture here, and Windows
+//! spells links differently (`symlink_dir`/`symlink_file`, with its own privilege rules) — so the
+//! file is Unix-only rather than silently asserting a Windows behaviour it never built.
+//! 这些钉子用目录链接证明"指向包外的链接按真实位置被拒"。这里唯一的夹具写法是
+//! `std::os::unix::fs::symlink`，而 Windows 的拼法不同（`symlink_dir`/`symlink_file`，还有自己的
+//! 权限规则）——因此本文件只在 Unix 上编译，而不是悄悄断言一个它从未构建过的 Windows 行为。
 
 use super::*;
 

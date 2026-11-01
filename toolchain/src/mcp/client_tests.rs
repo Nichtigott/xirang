@@ -608,7 +608,7 @@ fn the_flow_table_packages_the_seven_shapes_with_their_stop_conditions() {
 /// 这里的形状名与表里的**逐字相同**、且每行都带那三个结构信号。
 #[test]
 fn the_scenario_fixture_covers_every_shape_and_cannot_drift_from_the_table() {
-    const CASES: &str = include_str!("../../../docs/design-scenario-cases.md");
+    const CASES: &str = include_str!("design-scenario-cases.md");
     let shapes = [
         "S1 空树",
         "S2 范围型",
