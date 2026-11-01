@@ -112,6 +112,24 @@ still spells the two host-facing modules `build_time` / `runtime`, and its kerne
 
 ### Changed
 
+- **One home per shared rule: the adapters, the identity spelling, the manifest paths (2026-11-01).** The
+  in-place `modify` plan assembly was written out verbatim in seven language adapters; it is now
+  `kit::adapter::modify`, and `Editable` / `EditHooks` carry only what a language actually decides —
+  how to read a declaration, name its parent, render its arguments, and what a `kind` change renames.
+  Java, C# and JavaScript share the element splitter and the dotted-constant test (Go keeps its own:
+  backtick strings and `:` instead of `=`); C and C++ share the cc invocation; the kernel reads a
+  leading identifier in one place; both record writers spell an identity through `NodeId`'s `Display`;
+  and the CLI calls the build surface's host-edge rule instead of carrying a copy, with
+  `manifest_path::relative` the one spelling both manifest writers use. Nothing a caller observes
+  changes: every refusal sentence, edit range and plan shape is the one the adapters already produced.
+  **一条共享规则只有一个家：适配器、身份拼写与清单路径（2026-11-01）。** 就地 `modify` 的计划装配曾在七个
+  语言适配器里逐字写开；现在它是 `kit::adapter::modify`，`Editable` / `EditHooks` 只承载语言真正决定的
+  东西——怎么读声明、怎么点名父级、怎么渲染实参、改 `kind` 会重命名什么。Java、C# 与 JavaScript 共用
+  元素切分器与点分常量判定（Go 保留自己的：反引号字符串、用 `:` 而不是 `=`）；C 与 C++ 共用 cc 调用；
+  内核在一处读前导标识符；两个记录写入方都经 `NodeId` 的 `Display` 拼写身份；CLI 调用构建面的宿主依赖边
+  规则而不是自带一份副本，而 `manifest_path::relative` 是两个清单写入方共用的唯一拼法。调用方观察到的
+  一切都不变：每一条拒绝句、每一个编辑区间与每一种计划形状都仍是适配器本来产出的那个。
+
 - **The two host-facing modules are named after the cargo method they implement (2026-10-07, breaking).**
   `build_time` is now `build_method` and `runtime` is now `run_method`, so the host entries read
   `xirang_toolchain::build_method::run()` and `xirang_toolchain::run_method::host!()`. Nothing else
