@@ -85,7 +85,7 @@ fn a_worker_runs_a_test_job_through_a_command_transport() {
 fn a_client_refuses_an_answer_that_is_not_one_result_document() {
     let root = project("not-json");
     let empty = root.join("empty.sh");
-    std::fs::write(&empty, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::write(&empty, "#!/bin/sh\ncat > /dev/null\nexit 0\n").unwrap();
     set_executable(&empty);
     let refused = xirang(&root, &["remote", "--worker", empty.to_str().unwrap()]);
     assert!(!refused.status.success());
@@ -95,7 +95,11 @@ fn a_client_refuses_an_answer_that_is_not_one_result_document() {
         text(&refused)
     );
     let wrong = root.join("wrong.sh");
-    std::fs::write(&wrong, "#!/bin/sh\necho '{\"protocol\":2}'\n").unwrap();
+    std::fs::write(
+        &wrong,
+        "#!/bin/sh\ncat > /dev/null\necho '{\"protocol\":2}'\n",
+    )
+    .unwrap();
     set_executable(&wrong);
     let wrong_protocol = xirang(&root, &["remote", "--worker", wrong.to_str().unwrap()]);
     assert!(!wrong_protocol.status.success());
