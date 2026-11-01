@@ -71,6 +71,17 @@ def probe(host, label, expect, rows, with_decl):
     """
     check_want, build_want = expect
     env = dict(os.environ, CARGO_TARGET_DIR="/tmp/behave-target")
+    # The cargo target directory is shared across fixtures for build speed, and that is also where
+    # xirang keeps its discovery cache and published record. Two fixtures share every relative path
+    # (`src/panel/panel.rs` …), so one fixture's record answered for another's file and `check`
+    # reported the *other* tree's facts (measured: case 9 said ok until this cache was cleared).
+    # The xirang half is cheap to rebuild (a fraction of a second), so it is cleared per probe; the
+    # cargo half stays shared.
+    # cargo target 目录为构建速度在夹具间共用，而 xirang 的发现缓存与已发布记录也住在那里。两个夹具共享
+    # 每一个相对路径（`src/panel/panel.rs` …），于是一个夹具的记录替另一个的文件作答，`check` 报的
+    # 是**另一棵树**的事实（实测：清掉这半缓存之前第 9 格一直说 ok）。xirang 那一半重建很便宜（零点几秒），
+    # 因此每次探测前清掉它；cargo 那一半继续共用。
+    shutil.rmtree("/tmp/behave-target/xirang", ignore_errors=True)
     rc_check, out = run(f"{XIRANG} check .", host, env)
     rc_build, bout = run(f"cargo build {CARGO_FLAGS}", host, env)
     rc_crates = "-"
@@ -110,6 +121,7 @@ def mutate(host, kind):
     """施加一种日常改动。"""
     src = host / "src"
     control = src / "control" / "control.rs"
+    panel = src / "panel" / "panel.rs"
     panel_rule = src / "panel" / "registry_rule" / "registry_rule.rs"
     if kind == "1 add plain module":
         (src / "helper.rs").write_text("//! A plain module, not a face.\npub fn twice(n: u32) -> u32 { n * 2 }\n")
@@ -149,9 +161,16 @@ def mutate(host, kind):
     elif kind == "8b delete the only face of a claimed subtree":
         # `panel::frame` 被 `frames` 认领，而 `widget` 是它下面唯一的面：删掉之后声明必须跟着改。
         (src / "panel" / "frame" / "widget" / "widget.rs").unlink()
-    elif kind == "9 add path: field" and control.exists():
-        t = control.read_text()
-        control.write_text(t.replace("kind:", "path: \"control/renamed\",\n    kind:", 1))
+    elif kind == "9 add source: field" and panel.exists():
+        # The native builder form has no `path:` field; the identity-bearing placement field is
+        # `source(...)`. A source that names no file bakes one id and compiles another, so `check`
+        # must refuse it — the same guard the old `path:` case stood for.
+        # 原生构建器形没有 `path:` 字段；承载身份的落点字段是 `source(...)`。点名不到文件的 source 会
+        # 烘焙一个 id、编译出另一个，因此 `check` 必须拒绝它——这正是旧 `path:` 那一格守的东西。
+        t = panel.read_text()
+        panel.write_text(t.replace(
+            ".needs_registry(true)",
+            ".needs_registry(true)\n    .source(\"control/renamed\")", 1))
     elif kind == "10 registry_rule edit" and panel_rule.exists():
         panel_rule.write_text(panel_rule.read_text() + "\n// touched\n")
     elif kind == "11 delete an existing rule":
@@ -162,10 +181,13 @@ def mutate(host, kind):
     elif kind == "13 rule folder moved out":
         shutil.move(str(src / "panel" / "registry_rule"), str(src / "panel" / "rules"))
     elif kind == "14 registry face names its rule instead":
-        # 同一个面改成显式点名规则：没有兄弟模块也必须过（否则就是假拒绝）。
+        # 同一个面改成显式点名规则：没有兄弟模块也必须过（否则就是假拒绝）。原生构建器形用
+        # `.registry_rule(...)`，不是 `registry_rule:` 字段。
         panel = src / "panel" / "panel.rs"
         panel.write_text(panel.read_text().replace(
-            "    parent:", "    registry_rule: crate::RegistrationRule::ANY,\n    parent:", 1))
+            ".needs_registry(true)",
+            ".needs_registry(true)\n    .registry_rule(xirang_toolchain::run_method::registry_core::RegistrationRule::ANY)",
+            1))
         panel_rule.unlink()
 
 # 期望＝(check, 宿主 build 是否成功)。没有声明的阶段里 `add_crates.rs` 已经删掉，因此切分带来的
@@ -185,7 +207,7 @@ KINDS = [
     ("7 move a face", REFUSE),
     ("8 delete a leaf face", OK),
     ("8b delete the only face of a claimed subtree", {"after-split": ("refuse", True), "no-declaration": OK}),
-    ("9 add path: field", REFUSE),
+    ("9 add source: field", REFUSE),
     ("10 registry_rule edit", OK),
     ("11 delete an existing rule", REFUSE),
     ("12 rename an existing rule", REFUSE),
@@ -201,7 +223,7 @@ failed = []
 for phase in ("no-declaration", "after-split"):
     w = pathlib.Path(f"/tmp/behave-{phase}")
     shutil.rmtree(w, ignore_errors=True)
-    shutil.copytree(BASE, w, ignore=shutil.ignore_patterns("target", "crates", ".cargo", "Cargo.lock"))
+    shutil.copytree(BASE, w, ignore=shutil.ignore_patterns("target", "crates", ".cargo"))
     host = w / "host"
     # 复制到检出之外必须重指指向本检出的 path 依赖，并把它从我们的工作区里摘出去——
     # 否则 cargo metadata 一上来就失败，矩阵测到的是装置而不是产品（第一次跑就是这样全红）。
@@ -247,7 +269,7 @@ for phase in ("no-declaration", "after-split"):
         # 第 5 步之后的五行全是同一个 cargo 报错）。
         w2 = pathlib.Path(f"/tmp/behave-{phase}-{kind.split()[0]}")
         shutil.rmtree(w2, ignore_errors=True)
-        shutil.copytree(BASE, w2, ignore=shutil.ignore_patterns("target", "crates", ".cargo", "Cargo.lock"))
+        shutil.copytree(BASE, w2, ignore=shutil.ignore_patterns("target", "crates", ".cargo"))
         h2 = w2 / "host"
         if phase == "no-declaration":
             (h2 / "add_crates.rs").unlink(missing_ok=True)

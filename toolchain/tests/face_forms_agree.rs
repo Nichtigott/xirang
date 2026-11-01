@@ -146,7 +146,12 @@ fn both_spellings_produce_one_registration_info() {
         macro_side.getting_from_other_registry,
         assembled.getting_from_other_registry
     );
-    assert_eq!(macro_side.registry_rule_path, assembled.registry_rule_path);
+    assert_eq!(
+        macro_side.registry_rule_path.replace('\\', "/"),
+        assembled.registry_rule_path,
+        "the macro derives this from `file!()`, which spells a native separator on Windows; the \
+         record format is `/`-separated"
+    );
     assert_eq!(macro_side.admission, assembled.admission);
     assert_eq!(macro_side.requires, assembled.requires);
     assert_eq!(macro_side.provides, assembled.provides);

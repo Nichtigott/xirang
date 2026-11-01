@@ -46,35 +46,34 @@ template = (src / "object" / "button" / "button.rs").read_text()
 rule = (src / "registry_rule" / "registry_rule.rs").read_text()
 
 def self_contained(kind, parent, registry, own_trait=None):
-    text = template.replace("use crate::control::{ControlFrame, ControlHandle};\n", "")
-    text = re.sub(r"\n\s*handle_contracts: \[[^\]]*\],", "", text)
-    text = re.sub(r"\nimpl ControlHandle for \w+ \{.*?\n\}\n?", "\n", text, flags=re.S)
-    text = text.replace("kind: Button", f"kind: {kind}")
-    text = text.replace("parent: crate::control::NODE_ID", f"parent: {parent}")
-    text = text.replace("pub struct Button;", f"pub struct {kind};")
+    """Rewrite one cloned face for the native builder form the example uses today.
+
+    The template is a `#[xirang_toolchain::soil]` constant built with methods, not the old macro
+    block with `kind:`/`parent:` fields; the transform therefore edits the builder chain and the
+    declared type, not field lines. A fragment must be self-contained: the host's `ControlHandle`
+    and `ControlFrame` may not appear in it, because a ghost mounts only the files it claims.
+    把克隆出的面改写成示例今天使用的原生构建器形。
+    模板是方法链构造的 `#[xirang_toolchain::soil]` 常量，而不是旧宏块的 `kind:`/`parent:` 字段；因此
+    变换改的是构建器调用链与声明类型，不是字段行。碎片必须自包含：宿主的 `ControlHandle` 与
+    `ControlFrame` 不能出现在里面，因为幽灵只挂载它认领的文件。
+    """
+    text = template
+    text = re.sub(r"use crate::control::\{ControlFrame, ControlHandle\};\n", "", text)
+    text = re.sub(r"\n\s*\.handle_contracts\([^\n]*\)", "", text)
+    text = re.sub(r"\nimpl ControlHandle for \w+ \{.*?\n\}", "", text, flags=re.S)
+    text = text.replace("Soil::of::<Button>()", "Soil::of::<%s>()" % kind)
+    text = text.replace("pub struct Button;", "pub struct %s;" % kind)
+    text = text.replace(".under(crate::control::NODE_ID)", ".under(%s)" % parent)
     if registry:
-        # A container is a direct child of `control`, so it still has to satisfy that rule's handle
-        # requirement — and it cannot name the host's trait, because the host keeps it. It brings one
-        # of its own, inside the subtree it claims: the requirement is on the name, not on the crate.
-        # 容器是 `control` 的直接子对象，因此仍要满足那条规则里的 handle 要求——而它不能点名宿主的 trait
-        # （宿主保留着它）。它自带一个，且就在自己认领的子树里：那条要求认的是**名字**，不是哪个 crate。
         text = text.replace(
-            f"kind: {kind},",
-            f"kind: {kind},\n    needs_registry: true,\n    handle_contracts: [{own_trait}],",
+            ".under(%s)" % parent,
+            ".under(%s)\n    .needs_registry(true)\n    .handle_contracts(xirang_toolchain::contracts!(%s: %s))"
+            % (parent, kind, own_trait),
             1,
         )
-        # `handle_contracts` is the **compiler-checked** half: it asserts that this face implements the
-        # named trait, so declaring one and defining the trait without an implementation is a tree no
-        # `cargo build` can compile — and it went unnoticed only while nothing compiled the container's
-        # own file (measured: the dev-shape ghost does, and it failed with
-        # `the trait bound \`Left: ControlHandle\` is not satisfied`). The trait comes with its impl.
-        # `handle_contracts` 是**参与编译检查**的那一半：它断言这个面实现了点名的 trait，因此"声明了它、又只定义
-        # 了 trait 而不实现"是一棵任何 `cargo build` 都编译不过的树——它之所以一直没被发现，只是因为没有任何东西
-        # 编译容器自己的文件（实测：开发形状的幽灵会，并报
-        # `the trait bound \`Left: ControlHandle\` is not satisfied`）。trait 与它的实现一起给。
         text = text.replace(
-            f"pub struct {kind};",
-            f"pub trait ControlHandle {{}}\n\nimpl ControlHandle for {kind} {{}}\n\npub struct {kind};",
+            "pub struct %s;" % kind,
+            "pub trait ControlHandle {}\n\nimpl ControlHandle for %s {}\n\npub struct %s;" % (kind, kind),
         )
     return text
 

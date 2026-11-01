@@ -128,21 +128,31 @@ pub(super) fn kotlin_build_actions(request: KotlinBuild<'_>) -> Result<Vec<Actio
 /// The Kotlin standard library that ships beside `kotlinc`.
 /// `kotlinc` 同级的 Kotlin 标准库。
 fn stdlib(program: &str) -> Result<PathBuf, String> {
-    let root = Path::new(program)
-        .parent()
-        .and_then(|bin| bin.parent())
-        .ok_or_else(|| {
-            format!("`{program}` is not a `…/bin/kotlinc` layout, so its Kotlin stdlib is unknown")
-        })?;
-    let candidate = root.join("lib").join("kotlin-stdlib.jar");
-    if candidate.is_file() {
-        Ok(candidate)
-    } else {
-        Err(format!(
-            "`{program}` has no `../lib/kotlin-stdlib.jar` beside it; the tests need the Kotlin \
-             runtime on the JVM classpath"
-        ))
+    // `kotlinc` is often a symlink (a runner's `/usr/bin/kotlinc` points at the real distribution),
+    // and the standard library lives beside the **resolved** binary, not beside the link. Try the
+    // spelled path, its canonical form, and `KOTLIN_HOME`; a runner that ships only a wrapper has
+    // none of them, and the error names the path the caller gave rather than guessing silently.
+    // `kotlinc` 常常是符号链接（runner 的 `/usr/bin/kotlinc` 指向真正的发行目录），而标准库在**解析后**
+    // 的二进制旁边，不在链接旁边。依次尝试书写路径、规范路径与 `KOTLIN_HOME`；只带 wrapper 的 runner 三者
+    // 都没有，错误里点名调用方给的那条路径，而不是静默猜测。
+    let mut candidates = Vec::new();
+    let spelled = Path::new(program).to_path_buf();
+    let resolved = std::fs::canonicalize(&spelled).unwrap_or_else(|_| spelled.clone());
+    for path in [&spelled, &resolved] {
+        if let Some(root) = path.parent().and_then(Path::parent) {
+            candidates.push(root.join("lib").join("kotlin-stdlib.jar"));
+        }
     }
+    if let Some(home) = std::env::var_os("KOTLIN_HOME") {
+        candidates.push(PathBuf::from(home).join("lib").join("kotlin-stdlib.jar"));
+    }
+    if let Some(found) = candidates.iter().find(|candidate| candidate.is_file()) {
+        return Ok(found.clone());
+    }
+    Err(format!(
+        "`{program}` has no `../lib/kotlin-stdlib.jar` beside it (nor beside its canonical path or \
+         `KOTLIN_HOME`); the tests need the Kotlin runtime on the JVM classpath"
+    ))
 }
 
 /// The class name `kotlinc` gives a file with top-level declarations: its stem, capitalised,

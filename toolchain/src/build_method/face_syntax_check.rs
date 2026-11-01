@@ -211,6 +211,12 @@ pub(crate) fn aggregate_registry_rule_errors(
 ) -> BuildDiagnostics {
     let mut errors = BuildDiagnostics::default();
     visit_registry_rule_errors(src, nodes, include_demo, scope, false, &mut errors);
+    // A `source:` that names no file fails for the same reason as a missing rule: the build and the
+    // declaration disagree before any crate compiles. The two travel together so the pipeline keeps
+    // one call site for the declaration-level checks.
+    // 点名不到文件的 `source:` 与缺失规则同因：在任何 crate 编译之前，构建与声明就已有分歧。两者一起走，
+    // 让管线对声明层检查只保留一个调用点。
+    visit_face_source_errors(src, nodes, include_demo, scope, false, &mut errors);
     errors
 }
 
@@ -314,6 +320,87 @@ fn missing_registry_rule(src: &Path, file: &Path, line: usize) -> BuildDiagnosti
     .field("needs_registry")
     .expected(canonical)
     .actual("no sibling registry_rule module")
+}
+
+/// Refuse a face whose `source:` names no file in this package.
+/// 拒绝 `source:` 点名了本包中不存在的文件的注册面。
+///
+/// The spelling is an identity input: the compiled declaration derives its id from it, while the
+/// plan bakes the id it read during discovery, so a spelling that names nothing is a face the build
+/// stamps one id for and compiles another. `check` said ok and `cargo build` died with `E0080`
+/// ("this face compiles an id the build did not bake") — measured by `tools/xirang-daily-behaviors`
+/// case 9 after the example moved to the native builder form. Look beside the source root and
+/// beside the package root, which are the two bases the shipped external declarations use.
+/// 这条拼写是身份输入：编译出的声明由它导出 id，而计划烘焙的是发现在读取时的那一个，因此点名不到东西的
+/// 拼写就是"构建盖一个 id、编译出另一个 id"的面。`check` 说 ok 而 `cargo build` 以 `E0080` 死掉
+/// （"this face compiles an id the build did not bake"）——示例迁到原生构建器形之后由
+/// `tools/xirang-daily-behaviors` 第 9 格实测。查找在源根与包根两处进行，出厂的外部声明用的正是这两个
+/// 基准。
+fn visit_face_source_errors(
+    src: &Path,
+    nodes: &[Node],
+    include_demo: bool,
+    scope: &SourceScope,
+    selected_ancestor: bool,
+    errors: &mut BuildDiagnostics,
+) {
+    for node in nodes {
+        if node.name == crate::build_method::DEMO_ONLY_DIRECTORY && !include_demo
+            || !scope.includes(src, node, selected_ancestor)
+        {
+            continue;
+        }
+        let selected_here = selected_ancestor
+            || node_id(src, node).is_some_and(|id| {
+                scope
+                    .roots
+                    .as_ref()
+                    .is_some_and(|roots| roots.contains(&id))
+            });
+        if let Some(file) = &node.file
+            && let relative = relative_display(src, file)
+            && face_source_is_active(src, node, scope, selected_ancestor)
+            && let Some((value, line)) =
+                super::discovery_cache::face_string_field(file, &relative, "source")
+        {
+            let spelled = Path::new(&value);
+            let exists = if spelled.is_absolute() {
+                spelled.is_file()
+            } else {
+                src.join(spelled).is_file()
+                    || src
+                        .parent()
+                        .is_some_and(|package| package.join(spelled).is_file())
+            };
+            if !exists {
+                errors.push(missing_source(src, file, line, &value));
+            }
+        }
+        visit_face_source_errors(
+            src,
+            &node.children,
+            include_demo,
+            scope,
+            selected_here,
+            errors,
+        );
+    }
+}
+
+fn missing_source(src: &Path, file: &Path, line: usize, value: &str) -> BuildDiagnostic {
+    BuildDiagnostic::new(
+        "face-source",
+        format!(
+            "this face names the source `{value}`, which is not a file in this package: the \
+             compiled declaration derives its identity from that spelling, so the build bakes one \
+             id and the declaration compiles another (`E0080`)\n\
+             way forward: write the path of the file that really holds the implementation, or drop \
+             `source(...)` if this face is compiled from the file it is written in"
+        ),
+    )
+    .at(relative_display(src, file), line)
+    .field("source")
+    .actual(value.to_owned())
 }
 
 /// Decode the face in one discovered file, or `None` when it has none.
