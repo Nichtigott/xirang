@@ -10,7 +10,21 @@ description = "Language adapters for XiRang registration authoring"
 keywords = ["registration", "multilang", "authoring", "cpp"]
 categories = ["development-tools"]
 readme = "README.md"
-include = ["src/**/*.rs", "sdk/**", "Cargo.toml", "README.md"]
+include = [
+    "src/**/*.rs",
+    "sdk/c/**",
+    "sdk/cpp/**",
+    "sdk/go/**",
+    "sdk/java/**",
+    "sdk/js/**",
+    "sdk/ts/**",
+    "sdk/zig/**",
+    "sdk/csharp/*/*.cs",
+    "sdk/csharp/*/*.csproj",
+    "sdk/python/xirang/*.py",
+    "Cargo.toml",
+    "README.md",
+]
 
 [lib]
 name = "xirang_multilang"

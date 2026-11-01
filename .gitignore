@@ -62,3 +62,8 @@ bench/**/calls.log
 multilang/sdk/csharp/**/bin/
 multilang/sdk/csharp/**/obj/
 node_modules/
+
+# SDK sources and example producers that happen to be Python are shipped with the crate/repo.
+# 恰好用 Python 写的 SDK 与示例生产者随 crate/仓库保存。
+!multilang/sdk/python/xirang/*.py
+!examples/record-gauge/gauge/native/write_faces.py
