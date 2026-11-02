@@ -33,7 +33,7 @@ checkout. It was first published on 2026-09-29 and then **deleted** from crates.
 **re-published on 2026-10-07** from the then-current checkout, so today's `0.2.0` is *not*
 byte-identical to the deleted one (the checksum differs, and a lockfile pinning the old one will fail
 to verify — `cargo publish` is immutable, which is why the re-publication needed the deletion first).
-Prefer `0.2.1` or later once it exists.
+Prefer `0.2.2` or later.
 Raising the line to `1.0.0` is a separate decision that would move every internal
 `xirang-*` version requirement with it, and that step is what freezes the public
 surface. The third-party audit's fixes below moved the workspace version and every
@@ -75,7 +75,7 @@ the package audit is back to `verified:` all nine with `skipped: none`.
 `tools/xirang-publish --verify-consumers` 已在检出之外的一次性 crate 里按版本解析并构建了它们。
 它曾于 2026-09-29 首发、随后被**从 crates.io 删除**；这一次是 **2026-10-07** 用当时的检出**重发**的，
 因此今天的 `0.2.0` 与被删掉的那份**并非逐字节相同**（校验和不同，把旧校验和钉在 lockfile 里的消费者
-会校验失败——`cargo publish` 不可变，这正是重发必须先有那次删除的原因）。能升到 `0.2.1` 或更高时，
+会校验失败——`cargo publish` 不可变，这正是重发必须先有那次删除的原因）。能升到 `0.2.2` 或更高时，
 优先用新版本。
 
 ## [0.1.0] — 2026-10-09
@@ -102,13 +102,12 @@ because the new crate names are new crates on the index.
 （graft 计划、采信台账、外部计划）不再解析；迁移＝把 `.nichlink` 改名成 `.xirang`，重跑 `check`
 并重新登记。**本节之前的发布物，其真实名字是 `nichlink-*`** ✓。
 
-## [0.2.2] — unreleased
+## [0.2.2] — 2026-11-02
 
-Everything below landed **after** 0.2.1 was uploaded, so it needs its own version: 0.2.1 on the index
-still spells the two host-facing modules `build_time` / `runtime`, and its kernel has no
-`superseded_by_later`.
-下面这些都在 **0.2.1 上传之后**才落地，因此需要自己的版本号：index 上的 0.2.1 仍把两个宿主面模块写成
-`build_time` / `runtime`，它的 kernel 里也没有 `superseded_by_later`。
+Everything below landed **after** 0.2.0 was uploaded, so it needs its own version: 0.2.0 is the release
+on the index today, and `0.2.1` was never uploaded (its section stays as history, the way `0.1.6` does).
+下面这些都在 **0.2.0 上传之后**才落地，因此需要自己的版本号：index 上当前的发行版是 0.2.0，而 `0.2.1`
+从未上传（它那一节作为历史保留，与 `0.1.6` 相同）。
 
 ### Changed
 
@@ -159,7 +158,7 @@ still spells the two host-facing modules `build_time` / `runtime`, and its kerne
   `cfg(rust_analyzer)` 上，而生成的构建脚本没有告诉 rustc 这个名字是预期的——于是每次拆分产出的每个包都
   对自己报 `unexpected_cfgs`。构建脚本现在为它发出那行 `rustc-check-cfg`。
 
-## [0.2.1] — 2026-10-07
+## [0.2.1] — 2026-10-07 (never uploaded; the index has no 0.2.1)
 
 ### Added
 

@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "xirang-kernel"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -145,7 +145,7 @@ dependencies = [
 
 [[package]]
 name = "xirang-macro"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "xirang-multilang"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "serde_json",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "xirang-toolchain"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "serde_json",

@@ -10,7 +10,7 @@ name = "control_button_graft"
 path = "src/lib.rs"
 
 [dependencies]
-xirang-toolchain = { path = "../../toolchain", version = "0.2.0", features = ["run", "authoring"] }
+xirang-toolchain = { path = "../../toolchain", version = "0.2.2", features = ["run", "authoring"] }
 
 # This crate declares faces but has no build script, so nothing passes
 # `--check-cfg` for it. The IDE-only field splice uses `cfg(rust_analyzer)`,
