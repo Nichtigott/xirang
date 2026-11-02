@@ -8,12 +8,6 @@ target/
 # 本机来源绑定：**这个**检出把已声明外部来源放在哪里。它不得随项目传播，因为另一台机器把它放在别处
 # （或者根本没有）。
 **/.xirang/source-bindings.tsv
-# Editor state is per-machine. The scaffold writes `.vscode/` into a *host* project it creates;
-# this checkout's own `.vscode/` is somebody's local settings, so it stays out of the repository.
-# 编辑器状态属于每台机器：脚手架会把 `.vscode/` 写进它创建的**宿主**项目，而本检出自己的 `.vscode/`
-# 是某个人的本地设置，因此不进仓库。
-.vscode/
-
 # AgentTeams runtime state and the workspace memory database: tool state, not source.
 # AgentTeams 运行期状态与工作区记忆库：属于工具状态，不是源码，不入库。
 .agent-teams/
