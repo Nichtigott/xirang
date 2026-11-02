@@ -1,5 +1,17 @@
 # README visuals / 首页视觉素材
 
+`xirang-operations.svg` shows before/after registration trees for move, graft and partition. Gold marks a changed parent edge or implementation binding; dashed outlines mark compilation ownership. `xirang-graft.svg` shows four independent base/effective tree pairs: G1 single-face, G2 multi-cut group, G3 intermediate layer retaining children, and G4 whole-subtree replacement. The README usage section follows the same G1–G4 labels. This figure uses the control-button example, where the whole-subtree replacement has no children; replacements with children bring their own subtree. The English README uses these English diagrams; the Chinese README uses `xirang-operations.zh-CN.svg` and `xirang-graft.zh-CN.svg`. Code identifiers stay unchanged across languages.
+
+操作图用注册树的前后对照表示移动、嫁接与分区：金色标出父级连线或实现绑定的变化，虚线框表示编译归属。嫁接详图用 G1–G4 四组独立的基树／有效树对照，分别展示局部替换、多个切口群替换、中间层保留子级、整子树替换。使用章节沿用同一编号；图中 control-button 示例的整子树替换件无子级，若替换件自带子树则一起接入。英文首页使用英文 SVG，中文首页使用 `.zh-CN.svg` 中文版本；两种语言中的代码标识符保持原名。
+
+These are editable vector diagrams, not UI screenshots or evidence of universal automatic dispatch. Their meaning is also stated in the READMEs and alternative text. They reuse the existing mark's dark green, warm gold and neutral palette.
+
+这些是可维护矢量示意图，不是界面截图，也不代表通用自动分派已实现。要点同时写在 README 与替代文本中，配色沿用现有标识的深绿、暖金和中性色。
+
+The core-concept section uses `xirang-overview.svg` in English and `xirang-overview.zh-CN.svg` in Chinese. The three cards separate logical relationships, team source placement and compilation ownership. Architecture, team collaboration and language relationships use Mermaid diagrams.
+
+核心理念章节使用 overview：英文为 `xirang-overview.svg`，中文为 `xirang-overview.zh-CN.svg`。三个面板区分逻辑关系、团队源码落点与编译归属；架构、团队协作与混合语言关系使用 Mermaid 表达。
+
 `xirang-mark.svg` is a proposed XiRang mark: a shared foundation, a parent node, and two extension branches. It accompanies the existing brand assets rather than replacing their history.
 
 `xirang-mark.svg` 是本次提供的标识方案：共同基础、父节点与两个扩展分支。旧字标与截图保留，未覆盖历史素材。

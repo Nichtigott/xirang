@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1180" role="img" aria-labelledby="title desc" xml:lang="en">
+<title id="title">Three operations. See what changes in the tree.</title><desc id="desc">Before and after trees: move changes parentage, graft changes a slot implementation, partition changes compilation ownership. Gold marks changes; grey marks retained structure.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1L6 4L1 7" fill="none" stroke="#d8bb82" stroke-width="1.5"/></marker><style>text{font-family:DejaVu Sans,"Noto Sans CJK SC","Microsoft YaHei","PingFang SC","Sarasa Gothic SC",Arial,sans-serif}</style></defs>
+<rect width="1200" height="1180" rx="24" fill="#101412"/>
+<text x="38" y="43" font-size="19" fill="#d8bb82" font-weight="400">XIRANG / ENGINEERING OPERATIONS</text>
+<text x="38" y="94" font-size="34" fill="#f0eee8" font-weight="600">Three operations. See what changes in the tree.</text>
+<rect x="28" y="130" width="1144" height="300" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="52" y="176" font-size="27" fill="#f0eee8" font-weight="600">01 / MOVE</text>
+<text x="52" y="211" font-size="20" fill="#acb0ac" font-weight="400">Change the parent</text>
+<text x="312" y="164" font-size="18" fill="#acb0ac" font-weight="400">BEFORE</text>
+<text x="804" y="164" font-size="18" fill="#d8bb82" font-weight="400">AFTER</text>
+<path d="M700 274H765" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="312" cy="205" r="5" fill="#687165"/>
+<text x="327" y="213" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<circle cx="804" cy="205" r="5" fill="#687165"/>
+<text x="819" y="213" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<path d="M312 213V259H337" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="344" cy="259" r="5" fill="#687165"/>
+<text x="359" y="267" font-size="23" fill="#f0eee8" font-weight="400">panel</text>
+<path d="M344 267V313H369" fill="none" stroke="#d8bb82" stroke-width="2"/>
+<circle cx="376" cy="313" r="5" fill="#d8bb82"/>
+<text x="391" y="321" font-size="23" fill="#d8bb82" font-weight="400">reading</text>
+<path d="M804 213V259H829" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="836" cy="259" r="5" fill="#687165"/>
+<text x="851" y="267" font-size="23" fill="#f0eee8" font-weight="400">panel</text>
+<path d="M804 213V313H829" fill="none" stroke="#d8bb82" stroke-width="2"/>
+<circle cx="836" cy="313" r="5" fill="#d8bb82"/>
+<text x="851" y="321" font-size="23" fill="#d8bb82" font-weight="400">reading</text>
+<text x="312" y="393" font-size="20" fill="#acb0ac" font-weight="400">reading moves from panel to root.</text>
+<text x="52" y="260" font-size="18" fill="#acb0ac" font-weight="400">Object continuity</text>
+<text x="52" y="286" font-size="18" fill="#acb0ac" font-weight="400">Track IDs + references</text>
+<rect x="28" y="450" width="1144" height="300" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="52" y="496" font-size="27" fill="#f0eee8" font-weight="600">02 / GRAFT · G1</text>
+<text x="52" y="531" font-size="20" fill="#acb0ac" font-weight="400">Choose replacement scope</text>
+<text x="312" y="484" font-size="18" fill="#acb0ac" font-weight="400">BEFORE</text>
+<text x="804" y="484" font-size="18" fill="#d8bb82" font-weight="400">AFTER</text>
+<path d="M700 594H765" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="312" cy="515" r="5" fill="#687165"/>
+<text x="327" y="523" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<path d="M312 523V557H337" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="344" cy="557" r="5" fill="#687165"/>
+<text x="359" y="565" font-size="23" fill="#f0eee8" font-weight="400">control</text>
+<path d="M344 565V599H369" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="376" cy="599" r="5" fill="#d8bb82"/>
+<text x="391" y="607" font-size="23" fill="#d8bb82" font-weight="400">button</text>
+<text x="391" y="633" font-size="20" fill="#d8bb82" font-weight="400">impl: Button</text>
+<path d="M344 565V667H369" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="376" cy="667" r="5" fill="#687165"/>
+<text x="391" y="675" font-size="23" fill="#f0eee8" font-weight="400">slider</text>
+<circle cx="804" cy="515" r="5" fill="#687165"/>
+<text x="819" y="523" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<path d="M804 523V557H829" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="836" cy="557" r="5" fill="#687165"/>
+<text x="851" y="565" font-size="23" fill="#f0eee8" font-weight="400">control</text>
+<path d="M836 565V599H861" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="868" cy="599" r="5" fill="#d8bb82"/>
+<text x="883" y="607" font-size="23" fill="#d8bb82" font-weight="400">button</text>
+<text x="883" y="633" font-size="20" fill="#d8bb82" font-weight="400">impl: ButtonFast</text>
+<path d="M836 565V667H861" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="868" cy="667" r="5" fill="#687165"/>
+<text x="883" y="675" font-size="23" fill="#f0eee8" font-weight="400">slider</text>
+<text x="52" y="580" font-size="18" fill="#acb0ac" font-weight="400">Keep the slot identity</text>
+<text x="52" y="606" font-size="18" fill="#acb0ac" font-weight="400">Check the contract</text>
+<text x="312" y="720" font-size="20" fill="#acb0ac" font-weight="400">Single-face example here; see G1–G4 for group, layer and subtree cuts.</text>
+<rect x="28" y="770" width="1144" height="300" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="52" y="816" font-size="27" fill="#f0eee8" font-weight="600">03 / PARTITION</text>
+<text x="52" y="851" font-size="20" fill="#acb0ac" font-weight="400">Change the owner</text>
+<text x="312" y="804" font-size="18" fill="#acb0ac" font-weight="400">BEFORE</text>
+<text x="804" y="804" font-size="18" fill="#d8bb82" font-weight="400">AFTER</text>
+<path d="M700 914H765" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="312" cy="835" r="5" fill="#687165"/>
+<text x="327" y="843" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<rect x="328" y="864" width="324" height="139" rx="12" fill="#22291f" stroke="#687165" stroke-dasharray="7 5"/>
+<path d="M312 843V889H345" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="352" cy="889" r="5" fill="#687165"/>
+<text x="367" y="897" font-size="23" fill="#f0eee8" font-weight="400">panel</text>
+<path d="M352 897V930H377" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="384" cy="930" r="5" fill="#687165"/>
+<text x="399" y="938" font-size="23" fill="#f0eee8" font-weight="400">reading</text>
+<text x="346" y="985" font-size="20" fill="#acb0ac" font-weight="400">owner: host crate</text>
+<circle cx="804" cy="835" r="5" fill="#687165"/>
+<text x="819" y="843" font-size="23" fill="#f0eee8" font-weight="400">root</text>
+<rect x="820" y="864" width="324" height="139" rx="12" fill="#22291f" stroke="#d8bb82" stroke-dasharray="7 5"/>
+<path d="M804 843V889H837" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="844" cy="889" r="5" fill="#687165"/>
+<text x="859" y="897" font-size="23" fill="#f0eee8" font-weight="400">panel</text>
+<path d="M844 897V930H869" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="876" cy="930" r="5" fill="#687165"/>
+<text x="891" y="938" font-size="23" fill="#f0eee8" font-weight="400">reading</text>
+<text x="838" y="985" font-size="20" fill="#d8bb82" font-weight="400">owner: panel crate</text>
+<text x="52" y="900" font-size="18" fill="#acb0ac" font-weight="400">Keep the logical tree</text>
+<text x="52" y="926" font-size="18" fill="#acb0ac" font-weight="400">Host source stays</text>
+<text x="52" y="951" font-size="18" fill="#acb0ac" font-weight="400">authoritative</text>
+<text x="312" y="1040" font-size="20" fill="#acb0ac" font-weight="400">The outlined subtree compiles in a generated crate; parentage stays.</text>
+<text x="42" y="1113" font-size="20" fill="#acb0ac" font-weight="400">Gold: changed     Grey: retained     Dashed box: compilation owner</text>
+<text x="42" y="1151" font-size="22" fill="#d8bb82" font-weight="400">Preview plan → Check constraints → Apply operation → Verify result</text>
+</svg>

@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1480" role="img" aria-labelledby="title desc" xml:lang="en">
+<title id="title">Graft: choose exactly what to replace.</title><desc id="desc">Four independent base-to-effective tree comparisons: a single face, multiple cuts, an intermediate layer retaining children, and a complete subtree. Labels show slot name then implementation kind. Gold marks replacements. Base and external trees are unchanged.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1L6 4L1 7" fill="none" stroke="#d8bb82" stroke-width="1.5"/></marker><style>text{font-family:DejaVu Sans,"Noto Sans CJK SC","Microsoft YaHei","PingFang SC","Sarasa Gothic SC",Arial,sans-serif}</style></defs><rect width="1200" height="1480" rx="24" fill="#101412"/>
+<text x="38" y="43" font-size="19" fill="#d8bb82" font-weight="400">XIRANG / GRAFT SCOPE</text>
+<text x="38" y="91" font-size="34" fill="#f0eee8" font-weight="600">Graft: choose exactly what to replace.</text>
+<text x="38" y="124" font-size="20" fill="#acb0ac" font-weight="400">slot name · implementation kind     Each row starts from the same base tree</text>
+<rect x="28" y="150" width="1144" height="292" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="50" y="196" font-size="24" fill="#f0eee8" font-weight="600">G1 / LOCAL</text>
+<text x="50" y="239" font-size="18" fill="#acb0ac" font-weight="400">Replace button</text>
+<text x="50" y="269" font-size="18" fill="#acb0ac" font-weight="400">Keep parent + sibling</text>
+<text x="310" y="184" font-size="18" fill="#acb0ac" font-weight="400">BASE TREE</text>
+<text x="786" y="184" font-size="18" fill="#d8bb82" font-weight="400">EFFECTIVE TREE</text>
+<circle cx="310" cy="216" r="5" fill="#acb0ac"/>
+<text x="325" y="224" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M310 228V262H335" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="342" cy="262" r="5" fill="#acb0ac"/>
+<text x="357" y="270" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M342 274V322H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="322" r="5" fill="#acb0ac"/>
+<text x="389" y="330" font-size="22" fill="#acb0ac" font-weight="400">button · Button</text>
+<path d="M342 274V377H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="377" r="5" fill="#acb0ac"/>
+<text x="389" y="385" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<circle cx="786" cy="216" r="5" fill="#acb0ac"/>
+<text x="801" y="224" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M786 228V262H811" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="818" cy="262" r="5" fill="#acb0ac"/>
+<text x="833" y="270" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M818 274V322H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="322" r="5" fill="#d8bb82"/>
+<text x="865" y="330" font-size="22" fill="#d8bb82" font-weight="400">button · ButtonFast</text>
+<path d="M818 274V377H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="377" r="5" fill="#acb0ac"/>
+<text x="865" y="385" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<path d="M690 301H752" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="310" y="423" font-size="17" fill="#d8bb82" font-weight="400">G1  →  graft(button).with(button_fast)</text>
+<rect x="28" y="460" width="1144" height="292" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="50" y="506" font-size="24" fill="#f0eee8" font-weight="600">G2 / GROUP</text>
+<text x="50" y="549" font-size="18" fill="#acb0ac" font-weight="400">One plan, multiple cuts</text>
+<text x="50" y="579" font-size="18" fill="#acb0ac" font-weight="400">Choose each replacement</text>
+<text x="310" y="494" font-size="18" fill="#acb0ac" font-weight="400">BASE TREE</text>
+<text x="786" y="494" font-size="18" fill="#d8bb82" font-weight="400">EFFECTIVE TREE</text>
+<circle cx="310" cy="526" r="5" fill="#acb0ac"/>
+<text x="325" y="534" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M310 538V572H335" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="342" cy="572" r="5" fill="#acb0ac"/>
+<text x="357" y="580" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M342 584V632H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="632" r="5" fill="#acb0ac"/>
+<text x="389" y="640" font-size="22" fill="#acb0ac" font-weight="400">button · Button</text>
+<path d="M342 584V687H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="687" r="5" fill="#acb0ac"/>
+<text x="389" y="695" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<circle cx="786" cy="526" r="5" fill="#acb0ac"/>
+<text x="801" y="534" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M786 538V572H811" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="818" cy="572" r="5" fill="#acb0ac"/>
+<text x="833" y="580" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M818 584V632H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="632" r="5" fill="#d8bb82"/>
+<text x="865" y="640" font-size="22" fill="#d8bb82" font-weight="400">button · ButtonFast</text>
+<path d="M818 584V687H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="687" r="5" fill="#d8bb82"/>
+<text x="865" y="695" font-size="22" fill="#d8bb82" font-weight="400">slider · SliderFast</text>
+<path d="M690 611H752" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="310" y="733" font-size="17" fill="#d8bb82" font-weight="400">G2  →  graft(button).with(button_fast) + graft(slider).with(slider_fast)</text>
+<rect x="28" y="770" width="1144" height="292" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="50" y="816" font-size="24" fill="#f0eee8" font-weight="600">G3 / MIDDLE</text>
+<text x="50" y="859" font-size="18" fill="#acb0ac" font-weight="400">Replace control only</text>
+<text x="50" y="889" font-size="18" fill="#acb0ac" font-weight="400">Keep its original children</text>
+<text x="310" y="804" font-size="18" fill="#acb0ac" font-weight="400">BASE TREE</text>
+<text x="786" y="804" font-size="18" fill="#d8bb82" font-weight="400">EFFECTIVE TREE</text>
+<circle cx="310" cy="836" r="5" fill="#acb0ac"/>
+<text x="325" y="844" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M310 848V882H335" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="342" cy="882" r="5" fill="#acb0ac"/>
+<text x="357" y="890" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M342 894V942H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="942" r="5" fill="#acb0ac"/>
+<text x="389" y="950" font-size="22" fill="#acb0ac" font-weight="400">button · Button</text>
+<path d="M342 894V997H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="997" r="5" fill="#acb0ac"/>
+<text x="389" y="1005" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<circle cx="786" cy="836" r="5" fill="#acb0ac"/>
+<text x="801" y="844" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M786 848V882H811" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="818" cy="882" r="5" fill="#d8bb82"/>
+<text x="833" y="890" font-size="22" fill="#d8bb82" font-weight="400">control · ControlFast</text>
+<path d="M818 894V942H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="942" r="5" fill="#acb0ac"/>
+<text x="865" y="950" font-size="22" fill="#acb0ac" font-weight="400">button · Button</text>
+<path d="M818 894V997H843" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="850" cy="997" r="5" fill="#acb0ac"/>
+<text x="865" y="1005" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<path d="M690 921H752" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="310" y="1043" font-size="17" fill="#d8bb82" font-weight="400">G3  →  graft(control).with(control_fast)</text>
+<rect x="28" y="1080" width="1144" height="292" rx="12" fill="#181d19" stroke="#343c33"/>
+<text x="50" y="1126" font-size="24" fill="#f0eee8" font-weight="600">G4 / SUBTREE</text>
+<text x="50" y="1169" font-size="18" fill="#acb0ac" font-weight="400">Replace control + children</text>
+<text x="50" y="1199" font-size="18" fill="#acb0ac" font-weight="400">Use replacement subtree</text>
+<text x="310" y="1114" font-size="18" fill="#acb0ac" font-weight="400">BASE TREE</text>
+<text x="786" y="1114" font-size="18" fill="#d8bb82" font-weight="400">EFFECTIVE TREE</text>
+<circle cx="310" cy="1146" r="5" fill="#acb0ac"/>
+<text x="325" y="1154" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M310 1158V1192H335" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="342" cy="1192" r="5" fill="#acb0ac"/>
+<text x="357" y="1200" font-size="22" fill="#acb0ac" font-weight="400">control · Control</text>
+<path d="M342 1204V1252H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="1252" r="5" fill="#acb0ac"/>
+<text x="389" y="1260" font-size="22" fill="#acb0ac" font-weight="400">button · Button</text>
+<path d="M342 1204V1307H367" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="374" cy="1307" r="5" fill="#acb0ac"/>
+<text x="389" y="1315" font-size="22" fill="#acb0ac" font-weight="400">slider · Slider</text>
+<circle cx="786" cy="1146" r="5" fill="#acb0ac"/>
+<text x="801" y="1154" font-size="22" fill="#acb0ac" font-weight="400">root</text>
+<path d="M786 1158V1192H811" fill="none" stroke="#687165" stroke-width="2"/>
+<circle cx="818" cy="1192" r="5" fill="#d8bb82"/>
+<text x="833" y="1200" font-size="22" fill="#d8bb82" font-weight="400">control · ControlFast</text>
+<text x="833" y="1270" font-size="22" fill="#f0eee8" font-weight="400">No children</text>
+<text x="833" y="1304" font-size="18" fill="#acb0ac" font-weight="400">Structure from replacement</text>
+<path d="M690 1231H752" fill="none" stroke="#d8bb82" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="310" y="1353" font-size="17" fill="#d8bb82" font-weight="400">G4  →  graft(subtree(control)).with(control_fast)</text>
+<text x="38" y="1410" font-size="20" fill="#acb0ac" font-weight="400">G4 uses a childless replacement here; a replacement with children brings its subtree.</text>
+<text x="38" y="1448" font-size="21" fill="#d8bb82" font-weight="400">Select scope → Check contracts → Derive the effective tree; the host connects execution.</text>
+</svg>

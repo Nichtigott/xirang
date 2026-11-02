@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="580" viewBox="0 0 1200 580" role="img" aria-labelledby="title desc">
-  <title id="title">XiRang — engineering memory, rooted in code</title>
+  <title id="title">XiRang — structure derived from code</title>
   <desc id="desc">One object, three separate concerns: registration relationships, source placement, and compilation ownership. Panel contains Area in the logical tree. Area can live in a components directory and be compiled by a generated crate without making those paths its persistent identity.</desc>
   <defs>
     <radialGradient id="light" cx="80%" cy="0%" r="90%"><stop stop-color="#343024"/><stop offset="1" stop-color="#0d1110"/></radialGradient>
@@ -7,27 +7,27 @@
   </defs>
   <rect width="1200" height="580" rx="20" fill="#0d1110"/>
   <rect x="1" y="1" width="1198" height="578" rx="20" fill="url(#light)" stroke="#393b32"/>
-  <g font-family="Inter, DejaVu Sans, sans-serif">
+  <g font-family="DejaVu Sans, Noto Sans CJK SC, Microsoft YaHei, Sarasa Gothic SC, sans-serif">
     <g fill="none" stroke="#d8bb82" stroke-width="4" stroke-linecap="round">
       <path d="M78 105V81L59 65M78 81L97 65M55 114H101"/>
       <circle cx="56" cy="61" r="5"/><circle cx="100" cy="61" r="5"/>
     </g>
     <text x="124" y="101" fill="#f4f1e9" font-size="48" font-weight="600" letter-spacing="-2">XiRang</text>
-    <text x="56" y="181" fill="#f4f1e9" font-size="42" font-weight="500" letter-spacing="-1">Engineering memory. Rooted in code.</text>
-    <text x="58" y="225" fill="#b5b7ad" font-size="20">Objects carry their place, their contracts, and the evidence to change them.</text>
+    <text x="56" y="181" fill="#f4f1e9" font-size="42" font-weight="500" letter-spacing="-1">Let code describe its own structure.</text>
+    <text x="58" y="225" fill="#b5b7ad" font-size="20">One object. Independent relationships, source placement and package boundaries.</text>
     <g stroke="#44483d" fill="#141915">
       <rect x="56" y="279" width="336" height="216" rx="12"/>
       <rect x="432" y="279" width="336" height="216" rx="12"/>
       <rect x="808" y="279" width="336" height="216" rx="12"/>
     </g>
     <g fill="#d8bb82" font-size="14" letter-spacing="2">
-      <text x="80" y="314">01 / RELATIONSHIPS</text><text x="456" y="314">02 / SOURCE PLACEMENT</text><text x="832" y="314">03 / BUILD OWNERSHIP</text>
+      <text x="80" y="314">RELATIONSHIPS</text><text x="456" y="314">SOURCE PLACEMENT</text><text x="832" y="314">BUILD OWNERSHIP</text>
     </g>
     <g fill="#eeeae0" font-size="25">
       <text x="80" y="355">Where it belongs</text><text x="456" y="355">Where you work</text><text x="832" y="355">What compiles it</text>
     </g>
     <path d="M100 388V434H130" stroke="#d8bb82" stroke-width="2" fill="none"/>
-    <g font-family="DejaVu Sans Mono, monospace" font-size="19">
+    <g font-family="DejaVu Sans Mono, Sarasa Mono SC, monospace" font-size="19">
       <text x="116" y="399" fill="#aeb6aa">Panel</text><text x="143" y="441" fill="#f1d6a0">Area</text>
       <text x="456" y="405" fill="#aeb6aa">components/area/</text><text x="456" y="442" fill="#f1d6a0">area.cpp</text>
       <text x="832" y="405" fill="#aeb6aa">host → objects</text><text x="832" y="442" fill="#f1d6a0">generated crate</text>

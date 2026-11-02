@@ -11,10 +11,15 @@ target/
 # AgentTeams 运行期状态与工作区记忆库：属于工具状态，不是源码，不入库。
 .agent-teams/
 .dsh-meow/
-# Local engineering records (audits, handoffs, design notes) stay with the checkout; the
-# repository ships the README only.
-# 本地工程记录（审计、交接、设计笔记）留在本机；仓库只带 README。
-/docs/
+# Local engineering records stay local; explicitly listed user documentation ships with the README.
+# 本地工程记录仍留在本机；只让首页链接的下列用户文档随仓库提供。
+/docs/*
+!/docs/using-xirang.md
+!/docs/extending-languages.md
+!/docs/ai-engineering-workflow.md
+!/docs/codegraph-comparison.md
+!/docs/graft.md
+!/docs/graft.zh-CN.md
 # Python measurement/evaluation scripts (benches, judges, extractors) are local tooling rather
 # than a published surface: they run against this checkout and are not committed.
 # Python 度量/评测脚本（bench、判分、抽取器）是本地工具而不是发布面：它们只对着本检出跑，不提交。
