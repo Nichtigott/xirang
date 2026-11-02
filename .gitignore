@@ -1,4 +1,5 @@
 target/
+.vscode/
 # Local code graph index (codegraph): machine-local, regenerable, megabytes.
 # 本地代码图索引（codegraph）：机器本地、可重建、体积大，不入库。
 .codegraph/
