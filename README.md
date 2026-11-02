@@ -360,6 +360,15 @@ cargo build
 xirang explain root/panel --json
 ```
 
+From crates.io instead of a checkout:
+
+```sh
+cargo install xirang-toolchain --features cli
+xirang new my-app --lib
+```
+
+Without `--path` the scaffold depends on the **published** version in both `[dependencies]` and `[build-dependencies]` (`xirang-toolchain = "0.2.2"`), so the project builds without a checkout. Add `lang-cpp` to the install features when the host declares C++ sources. [Using the published crates](docs/using-xirang.md#1-安装与新建--install-and-create) covers the CLI binaries, adding the dependency to an existing project, and the MCP bridge.
+
 `--path` names the XiRang checkout, not the new project's destination. Rust-only users can install with `--features cli`. That feature enables four binaries: `xirang`, `cargo-xirang`, `xirang-mcp` and `xirang-studio`. Enabling a language feature does not install its compiler.
 
 **Existing Rust project:** add `xirang-toolchain` from the same source to regular and build dependencies. Call `build_method::run()` in `build.rs` and `run_method::host!()` in the crate root that owns the tree. Preserve existing build work and avoid duplicate module mounts. [Full integration instructions](docs/using-xirang.md#2-接入已有-rust-项目--add-an-existing-rust-project).

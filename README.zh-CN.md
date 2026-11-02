@@ -360,6 +360,15 @@ cargo build
 xirang explain root/panel --json
 ```
 
+不克隆检出、直接用发布版：
+
+```sh
+cargo install xirang-toolchain --features cli
+xirang new my-app --lib
+```
+
+不带 `--path` 时，脚手架写的是**发布版**依赖（`[dependencies]` 与 `[build-dependencies]` 各一行 `xirang-toolchain = "0.2.2"`），因此项目不需要检出也能构建。宿主声明了 C++ 源码时，安装特性再加 `lang-cpp`。[发布版用法](docs/using-xirang.md#1-安装与新建--install-and-create) 里还有 CLI 各入口、接入已有项目与 MCP 桥。
+
 `--path` 指向息壤检出，不是新项目的目的地。纯 Rust 用户可安装 `--features cli`。cli 同时启用 xirang、cargo-xirang、xirang-mcp、xirang-studio 四个入口；语言 feature 不会替你安装对应编译器。
 
 **接已有项目：** 在普通依赖和构建依赖中加入同来源的 xirang-toolchain，在 build.rs 调用 `build_method::run()`，在拥有注册树的 crate 根调用 `run_method::host!()`。保留已有构建工作，避免重复挂载同一模块。[完整接入步骤](docs/using-xirang.md#2-接入已有-rust-项目--add-an-existing-rust-project)。

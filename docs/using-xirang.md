@@ -30,11 +30,73 @@ cd my-app
 cargo run -p xirang-toolchain --features cli,lang-cpp --bin xirang -- --help
 ```
 
-发布版 / Released CLI:
+### 从 crates.io 使用 / Use the published crates
+
+发布版不需要克隆检出。装好 CLI 就能在任意目录新建宿主（当前发布版是 `0.2.2`）：
 
 ```sh
 cargo install xirang-toolchain --features cli
+xirang new my-app --lib
+cd my-app
 ```
+
+`cli` 同时启用 `xirang`、`cargo-xirang`、`xirang-mcp`、`xirang-studio` 四个入口；宿主声明了 C++ 源码时改成 `--features cli,lang-cpp`。**不带 `--path`** 的 `xirang new` 写的是发布版依赖，生成清单里两处引用同一版本：
+
+```toml
+[dependencies]
+xirang-toolchain = "0.2.2"
+
+[build-dependencies]
+xirang-toolchain = "0.2.2"
+```
+
+接入已有项目用同样两条（`cargo add` 会取当前最新发布版）：
+
+```sh
+cargo add xirang-toolchain
+cargo add xirang-toolchain --build
+```
+
+只要 MCP 桥（`xirang-mcp` 已包含在 `cli` 里；想在最小安装里单独拿它时）：
+
+```sh
+cargo install xirang-toolchain --features mcp
+```
+
+`xirang-toolchain` 的默认特性是 `build` + `run`，即宿主入口与运行期接线；其余执行面各在自己的特性之后：`authoring`（创作执行器）、`evidence`、`plugins` / `wasm` / `process-tools`、`studio`、`mcp`、`cli`。语言实现各是 `lang-<语言>` 一枚、默认关闭，打开也不会替你安装对应编译器。
+
+The published crates need no checkout. Install the CLI, then scaffold anywhere (`0.2.2` is the current release):
+
+```sh
+cargo install xirang-toolchain --features cli
+xirang new my-app --lib
+cd my-app
+```
+
+`cli` enables four entries at once — `xirang`, `cargo-xirang`, `xirang-mcp`, `xirang-studio`; use `--features cli,lang-cpp` when the host declares C++ sources. **Without `--path`**, `xirang new` writes the published dependency, and the generated manifest names one version in both tables:
+
+```toml
+[dependencies]
+xirang-toolchain = "0.2.2"
+
+[build-dependencies]
+xirang-toolchain = "0.2.2"
+```
+
+For an existing project the same two lines apply (`cargo add` picks the newest release):
+
+```sh
+cargo add xirang-toolchain
+cargo add xirang-toolchain --build
+```
+
+The MCP bridge alone (it is part of `cli`; this is for a minimal install):
+
+```sh
+cargo install xirang-toolchain --features mcp
+```
+
+`xirang-toolchain`'s default features are `build` + `run` — the host entry and the runtime wiring. Every other surface stays behind its own feature: `authoring`, `evidence`, `plugins` / `wasm` / `process-tools`, `studio`, `mcp`, `cli`. Each language is one `lang-*` feature, off by default, and enabling one never installs its compiler.
 
 同一宿主的普通依赖和构建依赖应使用相同来源与版本。源码模式下提交前检查生成的绝对 path 依赖，团队共享时改成约定的相对路径或固定版本来源。
 
